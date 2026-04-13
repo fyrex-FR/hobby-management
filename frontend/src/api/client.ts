@@ -8,7 +8,8 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const authHeaders = await getAuthHeaders();
-  const resp = await fetch(`/api${path}`, {
+  const base = import.meta.env.VITE_API_URL ?? '';
+  const resp = await fetch(`${base}/api${path}`, {
     ...options,
     headers: {
       'Content-Type': 'application/json',

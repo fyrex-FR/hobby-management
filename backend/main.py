@@ -15,6 +15,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "https://*.pages.dev",
+        "https://hobby-management.onrender.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
