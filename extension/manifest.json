@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "NBA Vinted Prefill",
+  "version": "1.0.0",
+  "description": "Pré-remplit les annonces Vinted depuis NBA Vinted Card Studio.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["https://www.vinted.fr/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://www.vinted.fr/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}
