@@ -42,7 +42,6 @@ export function CardDetail({ card, onClose }: Props) {
   const updateCard = useUpdateCard();
 
   const identify = useIdentify();
-  const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [reanalyzeError, setReanalyzeError] = useState('');
@@ -80,12 +79,6 @@ export function CardDetail({ card, onClose }: Props) {
     setEditing(false);
   }
 
-  async function copyPriceSearch() {
-    const text = buildPriceSearchText(card);
-    await navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
 
   function openEbaySold() {
     const text = buildPriceSearchText(card);
