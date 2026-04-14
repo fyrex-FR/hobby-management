@@ -14,16 +14,8 @@ class IdentifyRequest(BaseModel):
     back_base64: str
 
 
-def _allowed_users() -> set[str]:
-    raw = os.environ.get("AI_ALLOWED_USERS", "")
-    return {uid.strip() for uid in raw.split(",") if uid.strip()}
-
-
 @router.post("/identify")
 async def identify_card(body: IdentifyRequest, user: dict = Depends(current_user)):
-    allowed = _allowed_users()
-    if allowed and user["sub"] not in allowed:
-        raise HTTPException(status_code=403, detail="AI identification not authorized for this account")
 
     if not os.environ.get("GOOGLE_API_KEY", ""):
         raise HTTPException(status_code=500, detail="GOOGLE_API_KEY not configured")
