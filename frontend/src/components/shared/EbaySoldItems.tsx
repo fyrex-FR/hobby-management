@@ -72,9 +72,9 @@ export function EbaySoldItems({ query }: Props) {
           ) : (
             <>
               {/* Stats */}
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between mb-1">
                 <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{data.count} résultats</span>
-                <div className="flex gap-3">
+                <div className="flex gap-4">
                   {data.min != null && (
                     <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
                       Min <strong style={{ color: 'var(--green)' }}>${data.min}</strong>
@@ -94,22 +94,27 @@ export function EbaySoldItems({ query }: Props) {
               </div>
 
               {/* Liste */}
-              <div className="flex flex-col gap-1 max-h-48 overflow-y-auto">
+              <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto">
                 {data.results?.map((r, i) => (
                   <a
                     key={i}
                     href={r.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center gap-2 py-1.5 px-2 rounded-lg transition-colors hover:bg-white/5"
+                    className="flex items-center gap-3 py-2 px-2 rounded-lg transition-colors hover:bg-white/5"
                   >
                     {r.image && (
-                      <img src={r.image} alt="" className="w-8 h-10 object-cover rounded shrink-0" />
+                      <img src={r.image} alt="" className="w-10 h-14 object-cover rounded-lg shrink-0" />
                     )}
-                    <span className="truncate flex-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                      {r.title}
-                    </span>
-                    <span className="text-xs font-semibold shrink-0" style={{ color: 'var(--text-primary)' }}>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs leading-snug" style={{ color: 'var(--text-secondary)' }}>
+                        {r.title}
+                      </p>
+                      {r.condition && (
+                        <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>{r.condition}</p>
+                      )}
+                    </div>
+                    <span className="text-sm font-bold shrink-0" style={{ color: 'var(--text-primary)' }}>
                       ${r.price}
                     </span>
                   </a>
