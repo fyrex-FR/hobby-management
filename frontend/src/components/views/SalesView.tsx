@@ -219,13 +219,6 @@ function PriceInput({ card, onSave }: { card: Card; onSave: (price: number) => v
   );
 }
 
-function buildQuery(card: Card): string {
-  return [card.player, card.year, card.set_name || card.brand, card.insert_name, card.numbered]
-    .filter(Boolean)
-    .join(' ')
-    .trim();
-}
-
 function SalesCard({
   card,
   tab,
