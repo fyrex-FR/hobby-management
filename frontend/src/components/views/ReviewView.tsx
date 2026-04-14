@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useCards, useUpdateCard, useDeleteCard } from '../../hooks/useCards';
+import { useQueryClient } from '@tanstack/react-query';
 import { useAppStore } from '../../stores/appStore';
 import type { Card, CardType } from '../../types';
 
@@ -244,11 +245,16 @@ function DraftRow({
 }
 
 export function ReviewView() {
+  const qc = useQueryClient();
   const { data: cards = [], isLoading } = useCards();
   const updateCard = useUpdateCard();
   const deleteCard = useDeleteCard();
   const setActiveView = useAppStore((s) => s.setActiveView);
   const [validatingAll, setValidatingAll] = useState(false);
+
+  useEffect(() => {
+    qc.invalidateQueries({ queryKey: ['cards'] });
+  }, []);
 
   const drafts = cards.filter((c) => c.status === 'draft');
 
