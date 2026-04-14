@@ -332,22 +332,6 @@ export function CardDetail({ card, onClose }: Props) {
           {/* Actions */}
           {!editing && (
             <div className="flex flex-col gap-2">
-              <div className="flex gap-2">
-                <button
-                  onClick={copyPriceSearch}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
-                  style={{
-                    background: copied ? 'rgba(61,190,122,0.1)' : 'var(--bg-elevated)',
-                    border: `1px solid ${copied ? 'rgba(61,190,122,0.3)' : 'var(--border)'}`,
-                    color: copied ? 'var(--green)' : 'var(--text-secondary)',
-                  }}
-                >
-                  {copied ? '✓ Copié !' : '📋 Copier la recherche'}
-                </button>
-              </div>
-
-              <EbaySoldItems query={buildPriceSearchText(card)} />
-
               <a
                 href={`https://130point.com/sales/?q=${encodeURIComponent(buildPriceSearchText(card))}`}
                 target="_blank"
@@ -355,8 +339,8 @@ export function CardDetail({ card, onClose }: Props) {
                 className="w-full py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
                 style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
               >
-                <img src="https://www.google.com/s2/favicons?domain=130point.com&sz=32" alt="" className="w-4 h-4 rounded-sm" />
-                130point ↗
+                <img src="/130point.svg" alt="" className="h-4 w-auto" />
+                Ventes terminées ↗
               </a>
 
               <button
@@ -372,8 +356,10 @@ export function CardDetail({ card, onClose }: Props) {
                     <tspan fill="#86B817">y</tspan>
                   </text>
                 </svg>
-                Ventes soldées ↗
+                Ventes terminées ↗
               </button>
+
+              <EbaySoldItems query={buildPriceSearchText(card)} />
 
 
               <div className="flex gap-2">
