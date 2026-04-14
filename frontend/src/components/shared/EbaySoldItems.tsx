@@ -57,7 +57,21 @@ export function EbaySoldItems({ query }: Props) {
           opacity: loading ? 0.6 : 1,
         }}
       >
-        {loading ? '⏳ Recherche eBay…' : '🔍 Dernières ventes eBay'}
+        {loading ? (
+          '⏳ Recherche eBay…'
+        ) : (
+          <span className="flex items-center gap-2">
+            <svg viewBox="0 0 100 40" width="40" height="16" aria-label="eBay">
+              <text x="0" y="32" fontSize="40" fontWeight="bold" fontFamily="Arial, sans-serif">
+                <tspan fill="#E53238">e</tspan>
+                <tspan fill="#0064D2">B</tspan>
+                <tspan fill="#F5AF02">a</tspan>
+                <tspan fill="#86B817">y</tspan>
+              </text>
+            </svg>
+            Dernières ventes
+          </span>
+        )}
       </button>
 
       {data && !loading && (
