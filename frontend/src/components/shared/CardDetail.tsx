@@ -344,18 +344,20 @@ export function CardDetail({ card, onClose }: Props) {
                 >
                   {copied ? '✓ Copié !' : '📋 Copier la recherche'}
                 </button>
-                <a
-                  href="https://130point.com/sales/"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="px-2.5 py-2.5 rounded-xl text-xs font-medium flex items-center justify-center"
-                  style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
-                >
-                  130pt ↗
-                </a>
               </div>
 
               <EbaySoldItems query={buildPriceSearchText(card)} />
+
+              <a
+                href={`https://130point.com/sales/?q=${encodeURIComponent(buildPriceSearchText(card))}`}
+                target="_blank"
+                rel="noreferrer"
+                className="w-full py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
+                style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+              >
+                <img src="https://www.google.com/s2/favicons?domain=130point.com&sz=32" alt="" className="w-4 h-4 rounded-sm" />
+                130point ↗
+              </a>
 
               <button
                 onClick={openEbaySold}
