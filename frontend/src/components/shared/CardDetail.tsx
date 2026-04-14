@@ -4,7 +4,6 @@ import { CardBadge } from './CardBadge';
 import { StatusBadge } from './StatusBadge';
 import { useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { useIdentify } from '../../hooks/useIdentify';
-import { EbaySoldItems } from './EbaySoldItems';
 
 const CARD_TYPES: { value: CardType; label: string }[] = [
   { value: 'base', label: 'Base' },
@@ -353,17 +352,24 @@ export function CardDetail({ card, onClose }: Props) {
                 >
                   130pt ↗
                 </a>
-                <button
-                  onClick={openEbaySold}
-                  className="px-2.5 py-2.5 rounded-xl text-xs font-medium flex items-center justify-center"
-                  style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
-                >
-                  eBay ↗
-                </button>
               </div>
 
-              {/* Dernières ventes eBay */}
-              <EbaySoldItems query={buildPriceSearchText(card)} />
+              <button
+                onClick={openEbaySold}
+                className="w-full py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
+                style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+              >
+                <svg viewBox="0 0 100 40" width="40" height="16" aria-label="eBay">
+                  <text x="0" y="32" fontSize="40" fontWeight="bold" fontFamily="Arial, sans-serif">
+                    <tspan fill="#E53238">e</tspan>
+                    <tspan fill="#0064D2">B</tspan>
+                    <tspan fill="#F5AF02">a</tspan>
+                    <tspan fill="#86B817">y</tspan>
+                  </text>
+                </svg>
+                Ventes soldées ↗
+              </button>
+
 
               <div className="flex gap-2">
                 <button

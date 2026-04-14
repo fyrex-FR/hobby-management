@@ -2,7 +2,6 @@ import { useState, useMemo } from 'react';
 import { useCards, useUpdateCard } from '../../hooks/useCards';
 import type { Card } from '../../types';
 import { CardDetail } from '../shared/CardDetail';
-import { EbaySoldItems } from '../shared/EbaySoldItems';
 
 type SalesTab = 'stats' | 'a_traiter' | 'pret' | 'en_ligne' | 'vendu';
 
@@ -238,7 +237,6 @@ function SalesCard({
   onUpdate: (id: string, fields: Partial<Card>) => void;
   onClick: () => void;
 }) {
-  const [showEbay, setShowEbay] = useState(false);
 
   return (
     <div
@@ -273,19 +271,7 @@ function SalesCard({
         {tab === 'a_traiter' && (
           <>
             <PriceInput card={card} onSave={(price) => onUpdate(card.id, { price })} />
-            <button
-              onClick={() => setShowEbay((v) => !v)}
-              className="text-xs px-2 py-1.5 rounded-lg font-medium transition-all"
-              style={{
-                background: showEbay ? 'rgba(245,166,35,0.1)' : 'var(--bg-elevated)',
-                border: `1px solid ${showEbay ? 'rgba(245,166,35,0.3)' : 'var(--border)'}`,
-                color: showEbay ? 'var(--accent)' : 'var(--text-muted)',
-              }}
-              title="Voir les ventes eBay"
-            >
-              eBay
-            </button>
-            <button
+<button
               onClick={() => onUpdate(card.id, { listing_validated: true })}
               disabled={card.price == null}
               className="text-xs px-3 py-1.5 rounded-lg font-medium transition-all disabled:opacity-30"
@@ -335,13 +321,7 @@ function SalesCard({
         )}
       </div>
     </div>
-    {/* Panel eBay dépliable (tab à traiter uniquement) */}
-    {tab === 'a_traiter' && showEbay && (
-      <div className="px-4 pb-3">
-        <EbaySoldItems query={buildQuery(card)} />
-      </div>
-    )}
-    </div>
+</div>
   );
 }
 
