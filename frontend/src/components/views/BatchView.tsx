@@ -51,6 +51,46 @@ function normalizeName(name: string): string {
   return name.toLowerCase().replace(/\.[^.]+$/, '').replace(/[_\-\s]+/g, ' ').trim();
 }
 
+type PairMethod = 'sequential' | 'suffix';
+
+// Suffixes reconnus pour recto/verso
+const FRONT_SUFFIXES = ['recto', 'front', 'face', 'r'];
+const BACK_SUFFIXES = ['verso', 'back', 'dos', 'v'];
+
+function pairBySuffix(files: File[]): { pairs: Pair[]; unpaired: string } {
+  // Extrait le suffixe après le dernier " - " ou "_" avant l'extension
+  function getSuffix(name: string): { base: string; side: 'front' | 'back' | null } {
+    const noExt = name.replace(/\.[^.]+$/, '');
+    const match = noExt.match(/^(.*?)[\s_-]+([a-zA-Z]+)$/);
+    if (!match) return { base: noExt, side: null };
+    const suffix = match[2].toLowerCase();
+    if (FRONT_SUFFIXES.includes(suffix)) return { base: match[1].trim(), side: 'front' };
+    if (BACK_SUFFIXES.includes(suffix)) return { base: match[1].trim(), side: 'back' };
+    return { base: noExt, side: null };
+  }
+
+  const fronts = new Map<string, File>();
+  const backs = new Map<string, File>();
+  const unmatched: string[] = [];
+
+  files.forEach((f) => {
+    const { base, side } = getSuffix(f.name);
+    if (side === 'front') fronts.set(base, f);
+    else if (side === 'back') backs.set(base, f);
+    else unmatched.push(f.name);
+  });
+
+  const pairs: Pair[] = [];
+  fronts.forEach((front, base) => {
+    const back = backs.get(base);
+    if (back) { pairs.push({ front, back }); backs.delete(base); }
+    else unmatched.push(front.name);
+  });
+  backs.forEach((f) => unmatched.push(f.name));
+
+  return { pairs, unpaired: unmatched.join(', ') };
+}
+
 const PAIR_DELAY_MS = 6500; // ~9 req/min to stay under Gemini free tier 10 RPM limit
 
 interface Pair {
@@ -87,6 +127,7 @@ function sleep(ms: number) {
 
 export function BatchView() {
   const fileRef = useRef<HTMLInputElement>(null);
+  const [method, setMethod] = useState<PairMethod>('sequential');
   const [pairs, setPairs] = useState<Pair[]>([]);
   const [unpaired, setUnpaired] = useState<string>('');
   const [results, setResults] = useState<PairResult[]>([]);
@@ -105,19 +146,32 @@ export function BatchView() {
     });
   }, []);
 
+  // Re-parse si on change de méthode après avoir sélectionné des fichiers
+  const allFiles = useRef<File[]>([]);
+  function reparseFiles(files: File[], m: PairMethod) {
+    let newPairs: Pair[] = [];
+    let unpairedStr = '';
+    if (m === 'sequential') {
+      for (let i = 0; i + 1 < files.length; i += 2) newPairs.push({ front: files[i], back: files[i + 1] });
+      unpairedStr = files.length % 2 === 1 ? files[files.length - 1].name : '';
+    } else {
+      const result = pairBySuffix(files);
+      newPairs = result.pairs;
+      unpairedStr = result.unpaired;
+    }
+    setPairs(newPairs);
+    setUnpaired(unpairedStr);
+    setResults(newPairs.map((pair) => ({ pair, status: 'pending' })));
+    setSummary('');
+    setDraftCount(0);
+  }
+
   function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
     const files = Array.from(e.target.files ?? []).sort((a, b) =>
       a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }),
     );
-    const newPairs: Pair[] = [];
-    for (let i = 0; i + 1 < files.length; i += 2) {
-      newPairs.push({ front: files[i], back: files[i + 1] });
-    }
-    setPairs(newPairs);
-    setUnpaired(files.length % 2 === 1 ? files[files.length - 1].name : '');
-    setResults(newPairs.map((pair) => ({ pair, status: 'pending' })));
-    setSummary('');
-    setDraftCount(0);
+    allFiles.current = files;
+    reparseFiles(files, method);
   }
 
   function updateResult(index: number, update: Partial<PairResult>) {
@@ -276,7 +330,31 @@ export function BatchView() {
         </div>
 
         {/* Quota */}
-        {quota && <div className="mb-6"><QuotaBar quota={quota} /></div>}
+        {quota && <div className="mb-4"><QuotaBar quota={quota} /></div>}
+
+        {/* Méthode d'appairage */}
+        <div className="rounded-2xl p-4 mb-4" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
+          <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-muted)' }}>Méthode de détection des paires</p>
+          <div className="flex flex-col gap-2">
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input type="radio" name="method" value="sequential" checked={method === 'sequential'} onChange={() => { setMethod('sequential'); if (allFiles.current.length) reparseFiles(allFiles.current, 'sequential'); }} className="mt-0.5 accent-[var(--accent)]" />
+              <div>
+                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Numéros consécutifs</p>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>img1.jpg, img2.jpg, img3.jpg, img4.jpg → paire 1 + 2, paire 3 + 4…</p>
+              </div>
+            </label>
+            <label className="flex items-start gap-3 cursor-pointer">
+              <input type="radio" name="method" value="suffix" checked={method === 'suffix'} onChange={() => { setMethod('suffix'); if (allFiles.current.length) reparseFiles(allFiles.current, 'suffix'); }} className="mt-0.5 accent-[var(--accent)]" />
+              <div>
+                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Suffixe Recto / Verso</p>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  Nom - Recto.jpg + Nom - Verso.jpg<br />
+                  Suffixes reconnus : Recto, Front, Face, R / Verso, Back, Dos, V
+                </p>
+              </div>
+            </label>
+          </div>
+        </div>
 
         {/* File input */}
         <div
