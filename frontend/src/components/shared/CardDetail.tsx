@@ -5,6 +5,7 @@ import { StatusBadge } from './StatusBadge';
 import { useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { useVintedPrice } from '../../hooks/useVintedPrice';
 import { useIdentify } from '../../hooks/useIdentify';
+import { EbaySoldItems } from './EbaySoldItems';
 
 const CARD_TYPES: { value: CardType; label: string }[] = [
   { value: 'base', label: 'Base' },
@@ -409,6 +410,9 @@ export function CardDetail({ card, onClose }: Props) {
                   )}
                 </div>
               )}
+              {/* Dernières ventes eBay */}
+              <EbaySoldItems query={buildPriceSearchText(card)} />
+
               <div className="flex gap-2">
                 <button
                   onClick={publishToVinted}
