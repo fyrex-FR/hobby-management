@@ -273,7 +273,7 @@ export function BatchView() {
         ]);
 
         // 4. Update card with image URLs
-        await fetch(`/api/cards/${newCard.id}`, {
+        await fetch(`${API_BASE}/api/cards/${newCard.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ image_front_url, image_back_url }),
