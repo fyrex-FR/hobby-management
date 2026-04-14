@@ -4,6 +4,7 @@ import { CardBadge } from './CardBadge';
 import { StatusBadge } from './StatusBadge';
 import { useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { useIdentify } from '../../hooks/useIdentify';
+import { EbaySoldItems } from './EbaySoldItems';
 
 const CARD_TYPES: { value: CardType; label: string }[] = [
   { value: 'base', label: 'Base' },
@@ -353,6 +354,8 @@ export function CardDetail({ card, onClose }: Props) {
                   130pt ↗
                 </a>
               </div>
+
+              <EbaySoldItems query={buildPriceSearchText(card)} />
 
               <button
                 onClick={openEbaySold}
