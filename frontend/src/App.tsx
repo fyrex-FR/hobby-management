@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuth } from './hooks/useAuth';
 import { useAppStore } from './stores/appStore';
@@ -10,9 +11,101 @@ import { BatchView } from './components/views/BatchView';
 import { ReviewView } from './components/views/ReviewView';
 import { SalesView } from './components/views/SalesView';
 import { CompareView } from './components/views/CompareView';
+import { ResetPasswordView } from './components/views/ResetPasswordView';
 import { supabase } from './lib/supabase';
 
 const queryClient = new QueryClient();
+
+function ChangePasswordModal({ onClose }: { onClose: () => void }) {
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [done, setDone] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (password !== confirm) { setError('Les mots de passe ne correspondent pas.'); return; }
+    if (password.length < 8) { setError('Minimum 8 caractères.'); return; }
+    setError('');
+    setLoading(true);
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) setError(error.message);
+    else setDone(true);
+    setLoading(false);
+  }
+
+  const inputClass = 'w-full rounded-xl px-3 py-2.5 text-sm outline-none transition-all';
+  const inputStyle = { background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="rounded-2xl w-full max-w-sm p-6" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }} onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Changer le mot de passe</h2>
+          <button onClick={onClose} style={{ color: 'var(--text-muted)' }}>✕</button>
+        </div>
+        {done ? (
+          <div className="text-center py-4 space-y-2">
+            <p className="text-lg">✓</p>
+            <p className="text-sm" style={{ color: 'var(--text-primary)' }}>Mot de passe mis à jour !</p>
+            <button onClick={onClose} className="mt-2 px-4 py-2 rounded-xl text-sm font-semibold" style={{ background: 'var(--accent)', color: '#0d0c0b' }}>Fermer</button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <input type="password" placeholder="Nouveau mot de passe" value={password} onChange={(e) => setPassword(e.target.value)} required className={inputClass} style={inputStyle} />
+            <input type="password" placeholder="Confirmer" value={confirm} onChange={(e) => setConfirm(e.target.value)} required className={inputClass} style={inputStyle} />
+            {error && <p className="text-xs px-1" style={{ color: 'var(--red)' }}>{error}</p>}
+            <button type="submit" disabled={loading} className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all"
+              style={{ background: loading ? 'var(--bg-elevated)' : 'var(--accent)', color: loading ? 'var(--text-muted)' : '#0d0c0b' }}>
+              {loading ? 'Enregistrement…' : 'Mettre à jour'}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function UserMenu() {
+  const [open, setOpen] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
+
+  return (
+    <>
+      <div className="relative ml-1">
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="w-8 h-8 rounded-lg flex items-center justify-center text-xs transition-colors"
+          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}
+          title="Mon compte"
+        >
+          ↪
+        </button>
+        {open && (
+          <div className="absolute right-0 top-full mt-1.5 rounded-xl overflow-hidden z-20 w-44"
+            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-strong)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+            <button
+              onClick={() => { setShowChangePassword(true); setOpen(false); }}
+              className="w-full px-4 py-2.5 text-left text-xs transition-colors hover:bg-white/[0.05]"
+              style={{ color: 'var(--text-primary)' }}
+            >
+              🔑 Changer le mot de passe
+            </button>
+            <button
+              onClick={() => supabase.auth.signOut()}
+              className="w-full px-4 py-2.5 text-left text-xs transition-colors hover:bg-white/[0.05]"
+              style={{ color: 'var(--red)' }}
+            >
+              ↪ Déconnexion
+            </button>
+          </div>
+        )}
+      </div>
+      {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
+    </>
+  );
+}
 
 function Header() {
   const { activeView, setActiveView } = useAppStore();
@@ -126,14 +219,7 @@ function Header() {
           <span className="text-base leading-none">+</span> Ajouter
         </button>
 
-        <button
-          onClick={() => supabase.auth.signOut()}
-          className="w-8 h-8 rounded-lg flex items-center justify-center text-xs ml-1 transition-colors"
-          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}
-          title="Déconnexion"
-        >
-          ↪
-        </button>
+        <UserMenu />
       </nav>
     </header>
   );
@@ -143,6 +229,9 @@ function AppShell() {
   const { session, loading } = useAuth();
   const { activeView } = useAppStore();
 
+  // Détecter le token de reset dans le hash de l'URL
+  const isResetFlow = window.location.hash.includes('type=recovery');
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-primary)' }}>
@@ -150,6 +239,8 @@ function AppShell() {
       </div>
     );
   }
+
+  if (isResetFlow) return <ResetPasswordView onDone={() => { window.location.hash = ''; window.location.reload(); }} />;
 
   if (!session) return <LoginView />;
 
