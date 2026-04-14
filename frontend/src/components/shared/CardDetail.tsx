@@ -183,7 +183,7 @@ export function CardDetail({ card, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="rounded-t-3xl sm:rounded-3xl w-full sm:max-w-lg overflow-hidden max-h-[90vh] flex flex-col"
+        className="rounded-t-3xl sm:rounded-3xl w-full sm:max-w-2xl overflow-hidden max-h-[90vh] flex flex-col"
         style={{ background: 'var(--bg-primary)', border: '1px solid rgba(255,255,255,0.1)' }}
         onClick={(e) => e.stopPropagation()}
       >
