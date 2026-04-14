@@ -3,7 +3,6 @@ import type { Card, CardType } from '../../types';
 import { CardBadge } from './CardBadge';
 import { StatusBadge } from './StatusBadge';
 import { useDeleteCard, useUpdateCard } from '../../hooks/useCards';
-import { useVintedPrice } from '../../hooks/useVintedPrice';
 import { useIdentify } from '../../hooks/useIdentify';
 import { EbaySoldItems } from './EbaySoldItems';
 
@@ -41,7 +40,7 @@ interface Props {
 export function CardDetail({ card, onClose }: Props) {
   const deleteCard = useDeleteCard();
   const updateCard = useUpdateCard();
-  const vintedPrice = useVintedPrice();
+
   const identify = useIdentify();
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -363,53 +362,6 @@ export function CardDetail({ card, onClose }: Props) {
                 </button>
               </div>
 
-              {/* Estimation prix Vinted */}
-              <button
-                onClick={() => vintedPrice.estimate(buildPriceSearchText(card))}
-                disabled={vintedPrice.loading}
-                className="w-full py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
-                style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-secondary)', opacity: vintedPrice.loading ? 0.6 : 1 }}
-              >
-                {vintedPrice.loading ? '⏳ Recherche Vinted…' : '🏷 Estimer le prix Vinted'}
-              </button>
-
-              {vintedPrice.data && !vintedPrice.loading && (
-                <div className="rounded-xl p-3 flex flex-col gap-2" style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
-                  {vintedPrice.data.error ? (
-                    <p className="text-xs" style={{ color: 'var(--red)' }}>{vintedPrice.data.error}</p>
-                  ) : vintedPrice.data.count === 0 ? (
-                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Aucune annonce trouvée sur Vinted.</p>
-                  ) : (
-                    <>
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{vintedPrice.data.count} annonces</span>
-                        <div className="flex gap-3">
-                          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                            Min <strong style={{ color: 'var(--green)' }}>{vintedPrice.data.min} €</strong>
-                          </span>
-                          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                            Moy <strong style={{ color: 'var(--accent)' }}>{vintedPrice.data.avg} €</strong>
-                          </span>
-                          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-                            Méd <strong style={{ color: 'var(--text-primary)' }}>{vintedPrice.data.median} €</strong>
-                          </span>
-                        </div>
-                      </div>
-                      <div className="flex flex-col gap-1 max-h-32 overflow-y-auto">
-                        {vintedPrice.data.results.map((r, i) => (
-                          <a key={i} href={r.url} target="_blank" rel="noreferrer"
-                            className="flex items-center justify-between text-xs py-1 px-2 rounded-lg transition-colors"
-                            style={{ color: 'var(--text-secondary)' }}
-                          >
-                            <span className="truncate flex-1 mr-2">{r.title}</span>
-                            <span className="font-semibold shrink-0" style={{ color: 'var(--text-primary)' }}>{r.price} €</span>
-                          </a>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
               {/* Dernières ventes eBay */}
               <EbaySoldItems query={buildPriceSearchText(card)} />
 
