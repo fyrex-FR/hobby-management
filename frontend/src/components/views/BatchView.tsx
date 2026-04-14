@@ -3,6 +3,8 @@ import { compressImage } from '../../lib/storage';
 import { useCards, useCreateCard } from '../../hooks/useCards';
 import { useAppStore } from '../../stores/appStore';
 import { supabase } from '../../lib/supabase';
+
+const API_BASE = import.meta.env.VITE_API_URL ?? '';
 import type { AIIdentificationResult, CardType } from '../../types';
 
 interface QuotaInfo {
@@ -14,7 +16,7 @@ interface QuotaInfo {
 
 async function fetchQuota(token: string): Promise<QuotaInfo | null> {
   try {
-    const r = await fetch('/api/identify/quota', { headers: { Authorization: `Bearer ${token}` } });
+    const r = await fetch(`${API_BASE}/api/identify/quota`, { headers: { Authorization: `Bearer ${token}` } });
     if (!r.ok) return null;
     return await r.json();
   } catch {
@@ -224,7 +226,7 @@ export function BatchView() {
           fileToBase64(pair.back),
         ]);
 
-        const identResp = await fetch('/api/identify', {
+        const identResp = await fetch(`${API_BASE}/api/identify`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ front_base64, back_base64 }),
@@ -256,7 +258,7 @@ export function BatchView() {
           form.append('file', new File([blob], `${side}.jpg`, { type: 'image/jpeg' }));
           form.append('card_id', newCard.id);
           form.append('side', side);
-          const r = await fetch('/api/upload', {
+          const r = await fetch(`${API_BASE}/api/upload`, {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}` },
             body: form,
