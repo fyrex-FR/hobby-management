@@ -325,16 +325,17 @@ export function CardDetail({ card, onClose }: Props) {
           {/* Actions */}
           {!editing && (
             <div className="flex flex-col gap-2">
-              <a
-                href={`https://130point.com/sales/?q=${encodeURIComponent(buildPriceSearchText(card))}`}
-                target="_blank"
-                rel="noreferrer"
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(buildPriceSearchText(card));
+                  window.open(`https://130point.com/sales/?q=${encodeURIComponent(buildPriceSearchText(card))}`, '_blank');
+                }}
                 className="w-full py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
                 style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
               >
                 <img src="/130point.svg" alt="" className="h-4 w-auto" />
                 Ventes terminées ↗
-              </a>
+              </button>
 
               <button
                 onClick={openEbaySold}
