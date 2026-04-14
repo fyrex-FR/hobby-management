@@ -1,114 +1,107 @@
-import os
-import time
-import base64
+import re
 import httpx
 import statistics
-from typing import Optional
+from bs4 import BeautifulSoup
 
-EBAY_CLIENT_ID = os.getenv("EBAY_CLIENT_ID", "")
-EBAY_CLIENT_SECRET = os.getenv("EBAY_CLIENT_SECRET", "")
+EBAY_SOLD_URL = "https://www.ebay.com/sch/i.html"
 
-EBAY_TOKEN_URL = "https://api.ebay.com/identity/v1/oauth2/token"
-EBAY_INSIGHTS_URL = "https://api.ebay.com/buy/marketplace_insights/v1_beta/item_sales/search"
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+}
 
-_token_cache: dict = {"token": None, "expires_at": 0}
 
-
-async def _get_access_token() -> Optional[str]:
-    now = time.time()
-    if _token_cache["token"] and now < _token_cache["expires_at"] - 60:
-        return _token_cache["token"]
-
-    credentials = base64.b64encode(
-        f"{EBAY_CLIENT_ID}:{EBAY_CLIENT_SECRET}".encode()
-    ).decode()
-
-    async with httpx.AsyncClient(timeout=10) as client:
-        resp = await client.post(
-            EBAY_TOKEN_URL,
-            headers={
-                "Authorization": f"Basic {credentials}",
-                "Content-Type": "application/x-www-form-urlencoded",
-            },
-            data={
-                "grant_type": "client_credentials",
-                "scope": "https://api.ebay.com/oauth/api_scope",
-            },
-        )
-        if resp.status_code != 200:
+def _parse_price(text: str) -> float | None:
+    match = re.search(r"[\d,]+\.?\d*", text.replace(",", ""))
+    if match:
+        try:
+            return float(match.group().replace(",", ""))
+        except ValueError:
             return None
-        data = resp.json()
-        _token_cache["token"] = data.get("access_token")
-        _token_cache["expires_at"] = now + data.get("expires_in", 7200)
-        return _token_cache["token"]
+    return None
 
 
 async def search_ebay_sold(query: str, max_results: int = 20) -> dict:
     """
-    Recherche les ventes finalisées eBay via la Marketplace Insights API.
+    Scrape les ventes finalisées eBay (LH_Sold=1 & LH_Complete=1).
     """
     if not query or not query.strip():
         return {"error": "Requête vide", "results": []}
 
-    token = await _get_access_token()
-    if not token:
-        return {"error": "Impossible d'obtenir un token eBay", "results": []}
-
     params = {
-        "q": query.strip(),
-        "sort": "lastSoldDate",
-        "limit": max_results,
+        "_nkw": query.strip(),
+        "LH_Sold": "1",
+        "LH_Complete": "1",
+        "_sop": "13",  # tri par date de fin décroissante
+        "_ipg": max_results,
     }
 
-    headers = {
-        "Authorization": f"Bearer {token}",
-        "X-EBAY-C-MARKETPLACE-ID": "EBAY_US",
-        "Content-Type": "application/json",
-    }
-
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
         try:
-            resp = await client.get(EBAY_INSIGHTS_URL, headers=headers, params=params)
+            resp = await client.get(EBAY_SOLD_URL, headers=HEADERS, params=params)
             if resp.status_code != 200:
-                return {"error": f"eBay API {resp.status_code}: {resp.text[:500]}", "results": []}
+                return {"error": f"eBay {resp.status_code}", "results": []}
 
-            data = resp.json()
-            items = data.get("itemSales", [])
-
-            if not items:
-                return {"count": 0, "results": [], "min": None, "avg": None, "median": None}
+            soup = BeautifulSoup(resp.text, "html.parser")
+            items = soup.select("li.s-item")
 
             results = []
             prices = []
 
             for item in items:
                 try:
-                    price_obj = item.get("lastSoldPrice", {})
-                    price = float(price_obj.get("value", 0))
-                    if price <= 0:
+                    # Titre
+                    title_el = item.select_one(".s-item__title")
+                    if not title_el:
+                        continue
+                    title = title_el.get_text(strip=True)
+                    if title in ("Shop on eBay", "Results matching fewer words"):
                         continue
 
-                    image = ""
-                    if item.get("image"):
-                        image = item["image"].get("imageUrl", "")
-                    elif item.get("thumbnailImages"):
-                        image = item["thumbnailImages"][0].get("imageUrl", "")
+                    # Prix
+                    price_el = item.select_one(".s-item__price")
+                    if not price_el:
+                        continue
+                    price = _parse_price(price_el.get_text(strip=True))
+                    if not price or price <= 0:
+                        continue
 
-                    buying_options = item.get("buyingOptions", [])
-                    sale_type = "Enchère" if "AUCTION" in buying_options else "Prix fixe"
+                    # URL
+                    link_el = item.select_one("a.s-item__link")
+                    url = link_el["href"] if link_el else ""
+
+                    # Image
+                    img_el = item.select_one("img.s-item__image-img")
+                    image = img_el.get("src", "") or img_el.get("data-src", "") if img_el else ""
+
+                    # Date de vente
+                    date_el = item.select_one(".s-item__ended-date") or item.select_one(".POSITIVE")
+                    end_date = date_el.get_text(strip=True) if date_el else ""
+
+                    # Type de vente
+                    type_el = item.select_one(".s-item__purchase-options-with-icon") or item.select_one(".s-item__formatBuyItNow")
+                    if type_el:
+                        sale_type = "Prix fixe" if "Buy It Now" in type_el.get_text() else "Enchère"
+                    else:
+                        sale_type = "Enchère"
+
+                    # Condition
+                    condition_el = item.select_one(".SECONDARY_INFO")
+                    condition = condition_el.get_text(strip=True) if condition_el else ""
 
                     prices.append(price)
                     results.append({
-                        "title": item.get("title", ""),
+                        "title": title,
                         "price": price,
-                        "currency": price_obj.get("currency", "USD"),
-                        "url": item.get("itemWebUrl", ""),
+                        "currency": "USD",
+                        "url": url,
                         "image": image,
-                        "condition": item.get("condition", ""),
-                        "end_date": item.get("lastSoldDate", ""),
+                        "condition": condition,
+                        "end_date": end_date,
                         "sale_type": sale_type,
                     })
-                except (ValueError, TypeError, KeyError):
+                except Exception:
                     continue
 
             if not prices:
