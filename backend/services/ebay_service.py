@@ -101,6 +101,9 @@ async def search_ebay_sold(query: str, max_results: int = 20) -> dict:
                         image = item["thumbnailImages"][0].get("imageUrl", "")
 
                     prices.append(price)
+                    buying_options = item.get("buyingOptions", [])
+                    sale_type = "Enchère" if "AUCTION" in buying_options else "Prix fixe"
+
                     results.append({
                         "title": item.get("title", ""),
                         "price": price,
@@ -109,12 +112,16 @@ async def search_ebay_sold(query: str, max_results: int = 20) -> dict:
                         "image": image,
                         "condition": item.get("condition", ""),
                         "end_date": item.get("itemEndDate", ""),
+                        "sale_type": sale_type,
                     })
                 except (ValueError, TypeError, KeyError):
                     continue
 
             if not prices:
                 return {"count": 0, "results": [], "min": None, "avg": None, "median": None}
+
+            # Trier par date de vente décroissante
+            results.sort(key=lambda x: x["end_date"] or "", reverse=True)
 
             return {
                 "count": len(prices),

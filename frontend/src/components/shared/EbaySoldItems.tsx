@@ -9,6 +9,13 @@ interface EbaySoldResult {
   image: string;
   condition: string;
   end_date: string;
+  sale_type: string;
+}
+
+function formatDate(iso: string): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' });
 }
 
 interface EbayData {
@@ -108,27 +115,44 @@ export function EbaySoldItems({ query }: Props) {
               </div>
 
               {/* Liste */}
-              <div className="flex flex-col gap-1.5 max-h-64 overflow-y-auto">
+              <div className="flex flex-col gap-1.5 max-h-80 overflow-y-auto">
                 {data.results?.map((r, i) => (
                   <a
                     key={i}
                     href={r.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center gap-3 py-2 px-2 rounded-lg transition-colors hover:bg-white/5"
+                    className="flex items-center gap-3 py-2.5 px-2 rounded-lg transition-colors hover:bg-white/5"
                   >
                     {r.image && (
-                      <img src={r.image} alt="" className="w-10 h-14 object-cover rounded-lg shrink-0" />
+                      <img src={r.image} alt="" className="w-12 h-16 object-cover rounded-lg shrink-0" />
                     )}
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs leading-snug" style={{ color: 'var(--text-secondary)' }}>
+                      <p className="text-sm leading-snug" style={{ color: 'var(--text-secondary)' }}>
                         {r.title}
                       </p>
-                      {r.condition && (
-                        <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>{r.condition}</p>
-                      )}
+                      <div className="flex items-center gap-2 mt-1 flex-wrap">
+                        {r.condition && (
+                          <span className="text-[11px] px-1.5 py-0.5 rounded" style={{ background: 'var(--bg-primary)', color: 'var(--text-muted)' }}>
+                            {r.condition}
+                          </span>
+                        )}
+                        {r.sale_type && (
+                          <span className="text-[11px] px-1.5 py-0.5 rounded" style={{
+                            background: r.sale_type === 'Enchère' ? 'rgba(59,130,246,0.1)' : 'rgba(245,166,35,0.1)',
+                            color: r.sale_type === 'Enchère' ? 'var(--blue)' : 'var(--accent)',
+                          }}>
+                            {r.sale_type}
+                          </span>
+                        )}
+                        {r.end_date && (
+                          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                            {formatDate(r.end_date)}
+                          </span>
+                        )}
+                      </div>
                     </div>
-                    <span className="text-sm font-bold shrink-0" style={{ color: 'var(--text-primary)' }}>
+                    <span className="text-base font-bold shrink-0" style={{ color: 'var(--text-primary)' }}>
                       ${r.price}
                     </span>
                   </a>
