@@ -33,13 +33,18 @@ async def search_ebay_sold(query: str, max_results: int = 20) -> dict:
         try:
             resp = await client.get(EBAY_FINDING_URL, params=params)
             if resp.status_code != 200:
-                return {"error": f"eBay API {resp.status_code}", "results": []}
+                return {"error": f"eBay API {resp.status_code}: {resp.text[:500]}", "results": []}
 
             data = resp.json()
-            search_result = (
-                data.get("findCompletedItemsResponse", [{}])[0]
-                    .get("searchResult", [{}])[0]
-            )
+
+            # Vérifier si eBay retourne une erreur applicative
+            response_root = data.get("findCompletedItemsResponse", [{}])[0]
+            ack = response_root.get("ack", [""])[0]
+            if ack == "Failure":
+                error_msg = response_root.get("errorMessage", [{}])[0].get("error", [{}])[0].get("message", ["Erreur inconnue"])[0]
+                return {"error": f"eBay: {error_msg}", "results": []}
+
+            search_result = response_root.get("searchResult", [{}])[0]
             items = search_result.get("item", [])
 
             if not items:
