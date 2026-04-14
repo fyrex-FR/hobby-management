@@ -9,7 +9,7 @@ EBAY_CLIENT_ID = os.getenv("EBAY_CLIENT_ID", "")
 EBAY_CLIENT_SECRET = os.getenv("EBAY_CLIENT_SECRET", "")
 
 EBAY_TOKEN_URL = "https://api.ebay.com/identity/v1/oauth2/token"
-EBAY_BROWSE_URL = "https://api.ebay.com/buy/browse/v1/item_summary/search"
+EBAY_INSIGHTS_URL = "https://api.ebay.com/buy/marketplace_insights/v1_beta/item_sales/search"
 
 _token_cache: dict = {"token": None, "expires_at": 0}
 
@@ -45,7 +45,7 @@ async def _get_access_token() -> Optional[str]:
 
 async def search_ebay_sold(query: str, max_results: int = 20) -> dict:
     """
-    Recherche les annonces eBay soldées via la Browse API.
+    Recherche les ventes finalisées eBay via la Marketplace Insights API.
     """
     if not query or not query.strip():
         return {"error": "Requête vide", "results": []}
@@ -56,10 +56,8 @@ async def search_ebay_sold(query: str, max_results: int = 20) -> dict:
 
     params = {
         "q": query.strip(),
-        "filter": "buyingOptions:{FIXED_PRICE|AUCTION},conditions:{USED|LIKE_NEW|VERY_GOOD|GOOD|ACCEPTABLE|NEW}",
-        "sort": "endTimeSoonest",
+        "sort": "lastSoldDate",
         "limit": max_results,
-        "fieldgroups": "EXTENDED",
     }
 
     headers = {
@@ -70,12 +68,12 @@ async def search_ebay_sold(query: str, max_results: int = 20) -> dict:
 
     async with httpx.AsyncClient(timeout=15) as client:
         try:
-            resp = await client.get(EBAY_BROWSE_URL, headers=headers, params=params)
+            resp = await client.get(EBAY_INSIGHTS_URL, headers=headers, params=params)
             if resp.status_code != 200:
                 return {"error": f"eBay API {resp.status_code}: {resp.text[:500]}", "results": []}
 
             data = resp.json()
-            items = data.get("itemSummaries", [])
+            items = data.get("itemSales", [])
 
             if not items:
                 return {"count": 0, "results": [], "min": None, "avg": None, "median": None}
@@ -85,7 +83,7 @@ async def search_ebay_sold(query: str, max_results: int = 20) -> dict:
 
             for item in items:
                 try:
-                    price_obj = item.get("price", {})
+                    price_obj = item.get("lastSoldPrice", {})
                     price = float(price_obj.get("value", 0))
                     if price <= 0:
                         continue
@@ -99,10 +97,6 @@ async def search_ebay_sold(query: str, max_results: int = 20) -> dict:
                     buying_options = item.get("buyingOptions", [])
                     sale_type = "Enchère" if "AUCTION" in buying_options else "Prix fixe"
 
-                    end_date = item.get("itemEndDate", "") or item.get("adultOnly", "")
-                    # itemEndDate est dans EXTENDED fieldgroup
-                    end_date = item.get("itemEndDate", "")
-
                     prices.append(price)
                     results.append({
                         "title": item.get("title", ""),
@@ -111,7 +105,7 @@ async def search_ebay_sold(query: str, max_results: int = 20) -> dict:
                         "url": item.get("itemWebUrl", ""),
                         "image": image,
                         "condition": item.get("condition", ""),
-                        "end_date": end_date,
+                        "end_date": item.get("lastSoldDate", ""),
                         "sale_type": sale_type,
                     })
                 except (ValueError, TypeError, KeyError):
@@ -119,8 +113,6 @@ async def search_ebay_sold(query: str, max_results: int = 20) -> dict:
 
             if not prices:
                 return {"count": 0, "results": [], "min": None, "avg": None, "median": None}
-
-            results.sort(key=lambda x: x["end_date"] or "", reverse=True)
 
             return {
                 "count": len(prices),
