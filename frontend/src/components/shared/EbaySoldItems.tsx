@@ -76,7 +76,7 @@ export function EbaySoldItems({ query }: Props) {
                 <tspan fill="#86B817">y</tspan>
               </text>
             </svg>
-            Dernières ventes
+            Annonces en cours
           </span>
         )}
       </button>
