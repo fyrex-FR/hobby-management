@@ -139,6 +139,13 @@ Select parallels (applied ON TOP of any tier):
 - NT: Ruby (red), Sapphire (blue), Emerald (green), Gold, Platinum 1/1, Printing Plates 1/1
 - Flawless: Gemstone-embedded cards (Ruby, Emerald, Sapphire in gem window)
 
+**Panini Chronicles — CRITICAL RULE:**
+Chronicles is an OMNIBUS set that contains multiple sub-sets. The back will say "PANINI CHRONICLES BASKETBALL" (or "CHRONICLES BASKETBALL"). The sub-set name (Luminance, Prestige, Flux, Score, Threads, Pink, Illusions, etc.) is printed prominently on the card design and IS the insert name.
+- set = "Chronicles" (ALWAYS — even if the sub-set name is large on the front)
+- insert = the sub-set name printed on the card (ex: "Luminance", "Prestige", "Flux", "Score", "Threads")
+- Example: A card saying "LUMINANCE" on front + "PANINI CHRONICLES BASKETBALL" on back → set="Chronicles", insert="Luminance"
+- Do NOT set set="Luminance" or set="Prestige" — these are inserts within Chronicles.
+
 **Other Panini sets:**
 - Spectra: Neon, Celestial, Interstellar, Meta, Nebula
 - Revolution: Cosmic, Astro, Galactic, Sunburst, Lava, Fractal, Groove
