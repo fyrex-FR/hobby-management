@@ -204,6 +204,14 @@ function SharedCard({ card, showPrice, onClick }: { card: Card; showPrice: boole
             </span>
           )}
         </div>
+        {showPrice && card.price != null && (
+          <div className="absolute top-2 right-2">
+            <span className="text-[10px] font-black px-2 py-1 rounded-lg"
+              style={{ background: 'rgba(0,0,0,0.75)', color: '#fff', backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.15)' }}>
+              {card.price} €
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Info */}
@@ -217,11 +225,8 @@ function SharedCard({ card, showPrice, onClick }: { card: Card; showPrice: boole
             {card.insert_name || card.parallel_name}
           </p>
         )}
-        <div className="flex items-center justify-between mt-2">
+        <div className="mt-2">
           <CardBadge type={card.card_type} />
-          {showPrice && card.price != null && (
-            <span className="text-sm font-bold text-white">{card.price} €</span>
-          )}
         </div>
         {card.vinted_url && (
           <div className="mt-2 w-full py-1 rounded-lg text-[10px] font-semibold text-center"
