@@ -13,6 +13,8 @@ import { SalesView } from './components/views/SalesView';
 import { CompareView } from './components/views/CompareView';
 import { PlayersView } from './components/views/PlayersView';
 import { GradingView } from './components/views/GradingView';
+import { ShareView } from './components/views/ShareView';
+import { ShareModal } from './components/shared/ShareModal';
 import { ResetPasswordView } from './components/views/ResetPasswordView';
 import { supabase } from './lib/supabase';
 
@@ -69,7 +71,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function UserMenu() {
+function UserMenu({ onShare }: { onShare: () => void }) {
   const [open, setOpen] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
 
@@ -87,6 +89,13 @@ function UserMenu() {
         {open && (
           <div className="absolute right-0 top-full mt-1.5 rounded-xl overflow-hidden z-20 w-44"
             style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-strong)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+            <button
+              onClick={() => { onShare(); setOpen(false); }}
+              className="w-full px-4 py-2.5 text-left text-xs transition-colors hover:bg-white/[0.05]"
+              style={{ color: 'var(--text-primary)' }}
+            >
+              🔗 Partager ma collection
+            </button>
             <button
               onClick={() => { setShowChangePassword(true); setOpen(false); }}
               className="w-full px-4 py-2.5 text-left text-xs transition-colors hover:bg-white/[0.05]"
@@ -109,7 +118,7 @@ function UserMenu() {
   );
 }
 
-function Header() {
+function Header({ onShare }: { onShare: () => void }) {
   const { activeView, setActiveView } = useAppStore();
   const { data: cards = [] } = useCards();
   const draftCount = cards.filter((c) => c.status === 'draft').length;
@@ -243,7 +252,7 @@ function Header() {
           <span className="text-base leading-none">+</span> Ajouter
         </button>
 
-        <UserMenu />
+        <UserMenu onShare={onShare} />
       </nav>
     </header>
   );
@@ -252,9 +261,16 @@ function Header() {
 function AppShell() {
   const { session, loading } = useAuth();
   const { activeView } = useAppStore();
+  const [showShare, setShowShare] = useState(false);
 
   // Détecter le token de reset dans le hash de l'URL
   const isResetFlow = window.location.hash.includes('type=recovery');
+
+  // Détecter une route /share/:token
+  const shareTokenMatch = window.location.pathname.match(/^\/share\/([A-Za-z0-9_-]+)$/);
+  if (shareTokenMatch) {
+    return <ShareView token={shareTokenMatch[1]} />;
+  }
 
   if (loading) {
     return (
@@ -270,7 +286,7 @@ function AppShell() {
 
   return (
     <div className="flex flex-col h-screen" style={{ background: 'var(--bg-primary)' }}>
-      <Header />
+      <Header onShare={() => setShowShare(true)} />
       <main className="flex flex-1 overflow-hidden">
         {activeView === 'dashboard' && <DashboardView />}
         {activeView === 'collection' && <CollectionView />}
@@ -282,6 +298,7 @@ function AppShell() {
         {activeView === 'players' && <PlayersView />}
         {activeView === 'grading' && <GradingView />}
       </main>
+      {showShare && <ShareModal onClose={() => setShowShare(false)} />}
     </div>
   );
 }
