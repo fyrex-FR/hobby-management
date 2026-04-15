@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import type { Card } from '../../types';
 import { CardBadge } from '../shared/CardBadge';
 
@@ -173,6 +173,77 @@ function CardModal({ card, showPrice, onClose }: { card: Card; showPrice: boolea
   );
 }
 
+function FilterDropdown({
+  label,
+  items,
+  selected,
+  onSelect,
+}: {
+  label: string;
+  items: string[];
+  selected: string | null;
+  onSelect: (v: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [open]);
+
+  if (items.length === 0) return null;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap"
+        style={selected
+          ? { background: '#F5AF23', color: '#0E0E11' }
+          : { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)' }
+        }
+      >
+        {selected ?? label}
+        <span style={{ opacity: 0.6 }}>{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div
+          className="absolute top-full left-0 mt-1.5 z-30 rounded-2xl overflow-hidden py-1 min-w-[180px] max-h-64 overflow-y-auto"
+          style={{ background: '#1c1c1f', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' }}
+        >
+          {selected && (
+            <button
+              onClick={() => { onSelect(null); setOpen(false); }}
+              className="flex items-center justify-between w-full px-3 py-2 text-xs"
+              style={{ color: '#F5AF23' }}
+            >
+              <span>Effacer</span><span>✕</span>
+            </button>
+          )}
+          {items.map((v) => (
+            <button
+              key={v}
+              onClick={() => { onSelect(v); setOpen(false); }}
+              className="w-full px-3 py-2 text-sm text-left transition-colors"
+              style={{
+                background: selected === v ? 'rgba(245,166,35,0.1)' : 'transparent',
+                color: selected === v ? '#F5AF23' : 'rgba(255,255,255,0.8)',
+              }}
+            >
+              {v}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SharedCard({ card, showPrice, onClick }: { card: Card; showPrice: boolean; onClick: () => void }) {
   return (
     <div
@@ -258,6 +329,11 @@ export function ShareView({ token }: { token: string }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Card | null>(null);
+  const [search, setSearch] = useState('');
+  const [playerFilter, setPlayerFilter] = useState<string | null>(null);
+  const [teamFilter, setTeamFilter] = useState<string | null>(null);
+  const [setFilter, setSetFilter] = useState<string | null>(null);
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
 
   useEffect(() => {
     fetch(`${API_BASE}/api/share/${token}/view`)
@@ -295,11 +371,40 @@ export function ShareView({ token }: { token: string }) {
   }
 
   const TYPE_ORDER = ['auto_patch', 'auto', 'patch', 'numbered', 'parallel', 'insert', 'base'];
-  const sorted = [...data.cards].sort((a, b) => {
-    const ai = TYPE_ORDER.indexOf(a.card_type ?? 'base');
-    const bi = TYPE_ORDER.indexOf(b.card_type ?? 'base');
-    return ai - bi;
-  });
+  const TYPE_LABELS: Record<string, string> = {
+    base: 'Base', insert: 'Insert', parallel: 'Parallel', numbered: 'Numbered',
+    auto: 'Auto', patch: 'Patch', auto_patch: 'Auto/Patch',
+  };
+
+  // Facettes
+  const players = useMemo(() => [...new Set(data.cards.map((c) => c.player).filter(Boolean) as string[])].sort(), [data]);
+  const teams = useMemo(() => [...new Set(data.cards.map((c) => c.team).filter(Boolean) as string[])].sort(), [data]);
+  const sets = useMemo(() => [...new Set(data.cards.map((c) => c.set_name).filter(Boolean) as string[])].sort(), [data]);
+  const types = useMemo(() => [...new Set(data.cards.map((c) => c.card_type).filter(Boolean) as string[])], [data]);
+
+  const activeCount = [playerFilter, teamFilter, setFilter, typeFilter].filter(Boolean).length;
+
+  const filtered = useMemo(() => {
+    return data.cards
+      .filter((c) => {
+        if (playerFilter && c.player !== playerFilter) return false;
+        if (teamFilter && c.team !== teamFilter) return false;
+        if (setFilter && c.set_name !== setFilter) return false;
+        if (typeFilter && c.card_type !== typeFilter) return false;
+        if (search) {
+          const q = search.toLowerCase();
+          const hay = [c.player, c.team, c.brand, c.set_name, c.insert_name, c.parallel_name, c.year]
+            .filter(Boolean).join(' ').toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        const ai = TYPE_ORDER.indexOf(a.card_type ?? 'base');
+        const bi = TYPE_ORDER.indexOf(b.card_type ?? 'base');
+        return ai - bi;
+      });
+  }, [data, playerFilter, teamFilter, setFilter, typeFilter, search]);
 
   return (
     <div className="min-h-screen" style={{ background: '#0E0E11' }}>
@@ -347,16 +452,59 @@ export function ShareView({ token }: { token: string }) {
 
       <div className="border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }} />
 
+      {/* Filters */}
+      <div className="max-w-6xl mx-auto px-6 py-4 flex flex-wrap items-center gap-2">
+        {/* Search */}
+        <div className="relative">
+          <input
+            type="text"
+            placeholder="Rechercher…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="rounded-xl pl-7 pr-3 py-1.5 text-xs outline-none w-36"
+            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.8)' }}
+          />
+          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px]" style={{ color: 'rgba(255,255,255,0.3)' }}>🔍</span>
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px]" style={{ color: 'rgba(255,255,255,0.3)' }}>✕</button>
+          )}
+        </div>
+
+        <FilterDropdown label="Joueur" items={players} selected={playerFilter} onSelect={setPlayerFilter} />
+        <FilterDropdown label="Équipe" items={teams} selected={teamFilter} onSelect={setTeamFilter} />
+        <FilterDropdown label="Set" items={sets} selected={setFilter} onSelect={setSetFilter} />
+        <FilterDropdown
+          label="Type"
+          items={types}
+          selected={typeFilter ? (TYPE_LABELS[typeFilter] ?? typeFilter) : null}
+          onSelect={(v) => setTypeFilter(v ? (Object.entries(TYPE_LABELS).find(([, l]) => l === v)?.[0] ?? v) : null)}
+        />
+
+        {activeCount > 0 && (
+          <button
+            onClick={() => { setPlayerFilter(null); setTeamFilter(null); setSetFilter(null); setTypeFilter(null); setSearch(''); }}
+            className="px-2.5 py-1.5 rounded-xl text-xs font-medium"
+            style={{ color: '#F5AF23', border: '1px solid rgba(245,166,35,0.2)' }}
+          >
+            ✕ Effacer ({activeCount})
+          </button>
+        )}
+
+        <span className="ml-auto text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>
+          {filtered.length} carte{filtered.length !== 1 ? 's' : ''}
+        </span>
+      </div>
+
       {/* Grid */}
-      <div className="max-w-6xl mx-auto px-6 py-8">
-        {sorted.length === 0 ? (
+      <div className="max-w-6xl mx-auto px-6 pb-8">
+        {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-48 gap-3">
             <span className="text-4xl opacity-20">🃏</span>
-            <p className="text-sm" style={{ color: 'rgba(255,255,255,0.3)' }}>Aucune carte dans cette collection.</p>
+            <p className="text-sm" style={{ color: 'rgba(255,255,255,0.3)' }}>Aucune carte ne correspond.</p>
           </div>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-            {sorted.map((card) => (
+            {filtered.map((card) => (
               <SharedCard key={card.id} card={card} showPrice={data.show_prices} onClick={() => setSelected(card)} />
             ))}
           </div>
