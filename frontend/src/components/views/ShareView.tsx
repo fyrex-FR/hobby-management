@@ -18,8 +18,7 @@ const GRADE_COLOR: Record<string, string> = {
 };
 
 function CardModal({ card, showPrice, onClose }: { card: Card; showPrice: boolean; onClose: () => void }) {
-  const [imgSide, setImgSide] = useState<'front' | 'back'>('front');
-  const imgUrl = imgSide === 'front' ? card.image_front_url : card.image_back_url;
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const details = [
     ['Joueur', card.player],
@@ -48,41 +47,30 @@ function CardModal({ card, showPrice, onClose }: { card: Card; showPrice: boolea
         style={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)' }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Image zone */}
+        {/* Image zone — front + back côte à côte, clic = lightbox */}
         <div className="relative flex-shrink-0" style={{ background: '#0E0E11' }}>
-          <div className="flex items-center justify-center py-6 px-4" style={{ minHeight: '260px' }}>
-            {imgUrl ? (
+          <div className="flex items-center justify-center gap-4 py-6 px-6" style={{ minHeight: '240px' }}>
+            {card.image_front_url ? (
               <img
-                src={imgUrl}
-                alt=""
-                className="max-h-56 w-auto rounded-xl object-contain shadow-2xl transition-all duration-300"
-                style={{ boxShadow: '0 0 60px rgba(0,0,0,0.8)' }}
+                src={card.image_front_url}
+                alt="Face"
+                className="max-h-52 w-auto rounded-xl object-contain shadow-2xl cursor-zoom-in hover:scale-105 transition-transform"
+                style={{ boxShadow: '0 0 40px rgba(0,0,0,0.8)' }}
+                onClick={(e) => { e.stopPropagation(); setLightboxUrl(card.image_front_url!); }}
               />
             ) : (
-              <div className="h-56 w-40 rounded-xl flex items-center justify-center text-5xl opacity-10">🃏</div>
+              <div className="h-52 w-36 rounded-xl flex items-center justify-center text-4xl opacity-10">🃏</div>
+            )}
+            {card.image_back_url && (
+              <img
+                src={card.image_back_url}
+                alt="Dos"
+                className="max-h-52 w-auto rounded-xl object-contain shadow-2xl cursor-zoom-in hover:scale-105 transition-transform opacity-75 hover:opacity-100"
+                style={{ boxShadow: '0 0 40px rgba(0,0,0,0.8)' }}
+                onClick={(e) => { e.stopPropagation(); setLightboxUrl(card.image_back_url!); }}
+              />
             )}
           </div>
-
-          {/* Face / Dos toggle */}
-          {card.image_front_url && card.image_back_url && (
-            <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex rounded-xl overflow-hidden"
-              style={{ border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)' }}>
-              <button
-                onClick={() => setImgSide('front')}
-                className="px-3 py-1.5 text-xs font-medium transition-all"
-                style={imgSide === 'front'
-                  ? { background: 'rgba(245,166,35,0.2)', color: '#F5AF23' }
-                  : { color: 'rgba(255,255,255,0.4)' }}
-              >Face</button>
-              <button
-                onClick={() => setImgSide('back')}
-                className="px-3 py-1.5 text-xs font-medium transition-all"
-                style={imgSide === 'back'
-                  ? { background: 'rgba(245,166,35,0.2)', color: '#F5AF23' }
-                  : { color: 'rgba(255,255,255,0.4)' }}
-              >Dos</button>
-            </div>
-          )}
 
           {/* Badges */}
           <div className="absolute top-3 left-3 flex flex-col gap-1">
@@ -119,6 +107,26 @@ function CardModal({ card, showPrice, onClose }: { card: Card; showPrice: boolea
             style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)' }}
           >✕</button>
         </div>
+
+        {/* Lightbox */}
+        {lightboxUrl && (
+          <div
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/95"
+            onClick={() => setLightboxUrl(null)}
+          >
+            <img
+              src={lightboxUrl}
+              alt=""
+              className="max-h-[90vh] max-w-[90vw] rounded-2xl object-contain"
+              style={{ boxShadow: '0 0 80px rgba(0,0,0,0.9)' }}
+            />
+            <button
+              className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full text-sm"
+              style={{ background: 'rgba(255,255,255,0.1)', color: '#fff' }}
+              onClick={() => setLightboxUrl(null)}
+            >✕</button>
+          </div>
+        )}
 
         {/* Info */}
         <div className="overflow-y-auto flex-1 p-5">
