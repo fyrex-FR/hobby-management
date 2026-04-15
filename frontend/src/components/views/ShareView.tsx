@@ -74,6 +74,18 @@ function SharedCard({ card, showPrice }: { card: Card; showPrice: boolean }) {
               <span className="text-sm font-bold text-white">{card.price} €</span>
             )}
           </div>
+          {card.vinted_url && (
+            <a
+              href={card.vinted_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="mt-2 w-full py-1.5 rounded-lg text-xs font-semibold flex items-center justify-center gap-1.5 transition-all hover:opacity-90"
+              style={{ background: 'rgba(9,182,109,0.15)', color: 'rgb(9,182,109)', border: '1px solid rgba(9,182,109,0.25)' }}
+            >
+              Acheter sur Vinted ↗
+            </a>
+          )}
         </div>
       </div>
 

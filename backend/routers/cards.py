@@ -50,6 +50,7 @@ class CardCreate(BaseModel):
     grading_grade: Optional[str] = None
     grading_cert: Optional[str] = None
     grading_cost: Optional[float] = None
+    vinted_url: Optional[str] = None
 
 
 class CardUpdate(BaseModel):
@@ -81,6 +82,7 @@ class CardUpdate(BaseModel):
     grading_grade: Optional[str] = None
     grading_cert: Optional[str] = None
     grading_cost: Optional[float] = None
+    vinted_url: Optional[str] = None
 
 
 @router.get("/cards")

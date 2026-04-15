@@ -37,6 +37,7 @@ export interface Card {
   grading_grade: string | null;
   grading_cert: string | null;
   grading_cost: number | null;
+  vinted_url: string | null;
 }
 
 export interface AIIdentificationResult {

@@ -164,6 +164,7 @@ export function CardDetail({ card, onClose }: Props) {
     status: card.status,
     purchase_price: card.purchase_price?.toString() ?? '',
     price: card.price?.toString() ?? '',
+    vinted_url: card.vinted_url ?? '',
   });
 
   function set(key: keyof typeof fields, value: string) {
@@ -178,6 +179,7 @@ export function CardDetail({ card, onClose }: Props) {
       card_type: (fields.card_type || null) as CardType | null,
       purchase_price: fields.purchase_price ? parseFloat(fields.purchase_price) : null,
       price: fields.price ? parseFloat(fields.price) : null,
+      vinted_url: fields.vinted_url || null,
     });
     setSaving(false);
     setEditing(false);
@@ -445,6 +447,7 @@ export function CardDetail({ card, onClose }: Props) {
                 ['numbered', 'Tirage'],
                 ['purchase_price', 'Prix achat (€)'],
                 ['price', 'Prix vente (€)'],
+                ['vinted_url', 'Lien Vinted'],
               ] as [keyof typeof fields, string][]).map(([key, label]) => (
                 <div key={key}>
                   <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>{label}</label>
@@ -559,13 +562,25 @@ export function CardDetail({ card, onClose }: Props) {
               )}
 
               <div className="flex gap-2">
-                <button
-                  onClick={publishToVinted}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
-                  style={{ background: 'var(--accent)', color: '#0d0c0b', boxShadow: '0 0 20px var(--accent-glow)' }}
-                >
-                  Publier sur Vinted
-                </button>
+                {card.vinted_url ? (
+                  <a
+                    href={card.vinted_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-center transition-all"
+                    style={{ background: 'var(--accent)', color: '#0d0c0b', boxShadow: '0 0 20px var(--accent-glow)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
+                  >
+                    Voir sur Vinted ↗
+                  </a>
+                ) : (
+                  <button
+                    onClick={publishToVinted}
+                    className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
+                    style={{ background: 'var(--accent)', color: '#0d0c0b', boxShadow: '0 0 20px var(--accent-glow)' }}
+                  >
+                    Publier sur Vinted
+                  </button>
+                )}
                 <button
                   onClick={handleDelete}
                   disabled={deleteCard.isPending}
