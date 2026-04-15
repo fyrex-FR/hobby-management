@@ -1,10 +1,109 @@
-import { useState } from 'react';
-import type { Card, CardType } from '../../types';
+import { useState, useRef } from 'react';
+import type { Card, CardType, GradingCompany, GradingStatus } from '../../types';
 import { CardBadge } from './CardBadge';
 import { StatusBadge } from './StatusBadge';
 import { useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { useIdentify } from '../../hooks/useIdentify';
 import { EbaySoldItems } from './EbaySoldItems';
+import { supabase } from '../../lib/supabase';
+import { compressImage } from '../../lib/storage';
+
+const API_BASE = import.meta.env.VITE_API_URL ?? '';
+
+const GRADING_COMPANIES: GradingCompany[] = ['PSA', 'BGS', 'SGC', 'CGC', 'HGA'];
+const GRADING_STATUS_LABELS: Record<GradingStatus, string> = {
+  submitted: 'Envoyée',
+  received: 'Reçue par le grader',
+  graded: 'Notée',
+  returned: 'Retournée',
+};
+
+function GradingPanel({ card, onSave }: { card: Card; onSave: (data: Partial<Card>) => Promise<void> }) {
+  const [form, setForm] = useState({
+    grading_company: card.grading_company ?? '',
+    grading_status: card.grading_status ?? 'submitted',
+    grading_submitted_at: card.grading_submitted_at?.slice(0, 10) ?? '',
+    grading_returned_at: card.grading_returned_at?.slice(0, 10) ?? '',
+    grading_grade: card.grading_grade ?? '',
+    grading_cert: card.grading_cert ?? '',
+    grading_cost: card.grading_cost?.toString() ?? '',
+  });
+  const [saving, setSaving] = useState(false);
+
+  function set(key: keyof typeof form, value: string) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    await onSave({
+      grading_company: (form.grading_company || null) as GradingCompany | null,
+      grading_status: (form.grading_status || null) as GradingStatus | null,
+      grading_submitted_at: form.grading_submitted_at || null,
+      grading_returned_at: form.grading_returned_at || null,
+      grading_grade: form.grading_grade || null,
+      grading_cert: form.grading_cert || null,
+      grading_cost: form.grading_cost ? parseFloat(form.grading_cost) : null,
+    });
+    setSaving(false);
+  }
+
+  const inputCls = 'w-full rounded-lg px-2.5 py-1.5 text-sm outline-none transition-all';
+  const inputStyle = { background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' };
+
+  return (
+    <div className="rounded-2xl overflow-hidden mt-4" style={{ border: '1px solid var(--border)' }}>
+      <div className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
+        Grading
+      </div>
+      <div className="p-4 grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-[10px] uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Société</label>
+          <select className={inputCls} style={inputStyle} value={form.grading_company} onChange={(e) => set('grading_company', e.target.value)}>
+            <option value="">—</option>
+            {GRADING_COMPANIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[10px] uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Statut</label>
+          <select className={inputCls} style={inputStyle} value={form.grading_status} onChange={(e) => set('grading_status', e.target.value)}>
+            {(Object.entries(GRADING_STATUS_LABELS) as [GradingStatus, string][]).map(([k, v]) => (
+              <option key={k} value={k}>{v}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="block text-[10px] uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Date d'envoi</label>
+          <input type="date" className={inputCls} style={inputStyle} value={form.grading_submitted_at} onChange={(e) => set('grading_submitted_at', e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-[10px] uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Date de retour</label>
+          <input type="date" className={inputCls} style={inputStyle} value={form.grading_returned_at} onChange={(e) => set('grading_returned_at', e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-[10px] uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Note</label>
+          <input className={inputCls} style={inputStyle} placeholder="ex: 9.5" value={form.grading_grade} onChange={(e) => set('grading_grade', e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-[10px] uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>N° certificat</label>
+          <input className={inputCls} style={inputStyle} placeholder="ex: 12345678" value={form.grading_cert} onChange={(e) => set('grading_cert', e.target.value)} />
+        </div>
+        <div className="col-span-2">
+          <label className="block text-[10px] uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Coût du grading (€)</label>
+          <input type="number" className={inputCls} style={inputStyle} placeholder="0" value={form.grading_cost} onChange={(e) => set('grading_cost', e.target.value)} />
+        </div>
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          className="col-span-2 py-2 rounded-xl text-sm font-semibold transition-all"
+          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-strong)', color: saving ? 'var(--text-muted)' : 'var(--text-primary)', opacity: saving ? 0.6 : 1 }}
+        >
+          {saving ? 'Enregistrement…' : 'Enregistrer le grading'}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 const CARD_TYPES: { value: CardType; label: string }[] = [
   { value: 'base', label: 'Base' },
@@ -45,6 +144,11 @@ export function CardDetail({ card, onClose }: Props) {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [reanalyzeError, setReanalyzeError] = useState('');
+  const [dragOver, setDragOver] = useState<'front' | 'back' | null>(null);
+  const [uploadingImage, setUploadingImage] = useState<'front' | 'back' | null>(null);
+  const [showGrading, setShowGrading] = useState(false);
+  const frontInputRef = useRef<HTMLInputElement>(null);
+  const backInputRef = useRef<HTMLInputElement>(null);
   const [fields, setFields] = useState({
     player: card.player ?? '',
     team: card.team ?? '',
@@ -163,6 +267,34 @@ export function CardDetail({ card, onClose }: Props) {
     }
   }
 
+  async function handleImageUpload(file: File, side: 'front' | 'back') {
+    if (!file.type.startsWith('image/')) return;
+    setUploadingImage(side);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) return;
+      const blob = await compressImage(file);
+      const form = new FormData();
+      form.append('file', new File([blob], `${side}.jpg`, { type: 'image/jpeg' }));
+      form.append('card_id', card.id);
+      form.append('side', side);
+      const r = await fetch(`${API_BASE}/api/upload`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+      if (!r.ok) throw new Error(await r.text());
+      const { url } = await r.json();
+      await updateCard.mutateAsync({
+        id: card.id,
+        [side === 'front' ? 'image_front_url' : 'image_back_url']: url,
+      });
+    } finally {
+      setUploadingImage(null);
+    }
+  }
+
   async function handleDelete() {
     if (!confirm(`Supprimer ${card.player ?? 'cette carte'} ?`)) return;
     await deleteCard.mutateAsync(card.id);
@@ -181,14 +313,63 @@ export function CardDetail({ card, onClose }: Props) {
       >
         {/* Header images */}
         <div className="flex gap-3 p-5 border-b shrink-0" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)' }}>
-          {card.image_front_url ? (
-            <img src={card.image_front_url} alt="Face" className="h-32 w-auto rounded-xl object-contain" />
-          ) : (
-            <div className="h-32 w-20 rounded-xl flex items-center justify-center text-2xl" style={{ background: 'var(--bg-elevated)' }}>🃏</div>
-          )}
-          {card.image_back_url && (
-            <img src={card.image_back_url} alt="Dos" className="h-32 w-auto rounded-xl object-contain opacity-60" />
-          )}
+          {/* Front image — drag & drop zone */}
+          <div
+            className="relative shrink-0 rounded-xl overflow-hidden cursor-pointer transition-all"
+            style={{
+              outline: dragOver === 'front' ? '2px solid var(--accent)' : '2px solid transparent',
+              background: dragOver === 'front' ? 'rgba(245,166,35,0.1)' : 'transparent',
+            }}
+            onDragOver={(e) => { e.preventDefault(); setDragOver('front'); }}
+            onDragLeave={() => setDragOver(null)}
+            onDrop={(e) => { e.preventDefault(); setDragOver(null); const f = e.dataTransfer.files[0]; if (f) handleImageUpload(f, 'front'); }}
+            onClick={() => frontInputRef.current?.click()}
+            title="Cliquer ou déposer une image pour remplacer"
+          >
+            {card.image_front_url ? (
+              <img src={card.image_front_url} alt="Face" className="h-32 w-auto rounded-xl object-contain" />
+            ) : (
+              <div className="h-32 w-20 rounded-xl flex items-center justify-center text-2xl" style={{ background: 'var(--bg-elevated)' }}>🃏</div>
+            )}
+            {(uploadingImage === 'front' || dragOver === 'front') && (
+              <div className="absolute inset-0 rounded-xl flex items-center justify-center"
+                style={{ background: 'rgba(0,0,0,0.5)' }}>
+                <span className="text-white text-xs font-medium">
+                  {uploadingImage === 'front' ? '⟳' : '📥'}
+                </span>
+              </div>
+            )}
+            <input ref={frontInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageUpload(f, 'front'); e.target.value = ''; }} />
+          </div>
+
+          {/* Back image — drag & drop zone */}
+          <div
+            className="relative shrink-0 rounded-xl overflow-hidden cursor-pointer transition-all"
+            style={{
+              outline: dragOver === 'back' ? '2px solid var(--accent)' : '2px solid transparent',
+              background: dragOver === 'back' ? 'rgba(245,166,35,0.1)' : 'transparent',
+            }}
+            onDragOver={(e) => { e.preventDefault(); setDragOver('back'); }}
+            onDragLeave={() => setDragOver(null)}
+            onDrop={(e) => { e.preventDefault(); setDragOver(null); const f = e.dataTransfer.files[0]; if (f) handleImageUpload(f, 'back'); }}
+            onClick={() => backInputRef.current?.click()}
+            title="Cliquer ou déposer une image pour remplacer"
+          >
+            {card.image_back_url ? (
+              <img src={card.image_back_url} alt="Dos" className="h-32 w-auto rounded-xl object-contain opacity-60" />
+            ) : (
+              <div className="h-32 w-20 rounded-xl flex items-center justify-center text-2xl opacity-40" style={{ background: 'var(--bg-elevated)' }}>🃏</div>
+            )}
+            {(uploadingImage === 'back' || dragOver === 'back') && (
+              <div className="absolute inset-0 rounded-xl flex items-center justify-center"
+                style={{ background: 'rgba(0,0,0,0.5)' }}>
+                <span className="text-white text-xs font-medium">
+                  {uploadingImage === 'back' ? '⟳' : '📥'}
+                </span>
+              </div>
+            )}
+            <input ref={backInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageUpload(f, 'back'); e.target.value = ''; }} />
+          </div>
           <div className="flex-1 flex flex-col justify-between min-w-0">
             <div>
               <h2 className="text-lg font-bold leading-tight truncate" style={{ color: 'var(--text-primary)' }}>
@@ -355,6 +536,27 @@ export function CardDetail({ card, onClose }: Props) {
 
               <EbaySoldItems query={buildPriceSearchText(card)} />
 
+              {/* Grading toggle */}
+              <button
+                onClick={() => setShowGrading((v) => !v)}
+                className="w-full py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
+                style={showGrading
+                  ? { background: 'var(--bg-elevated)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }
+                  : { background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }
+                }
+              >
+                🏅 {card.grading_status ? `Grading — ${GRADING_STATUS_LABELS[card.grading_status]}${card.grading_grade ? ` · ${card.grading_grade}` : ''}` : 'Grading'}
+                <span style={{ opacity: 0.5 }}>{showGrading ? '▲' : '▼'}</span>
+              </button>
+
+              {showGrading && (
+                <GradingPanel
+                  card={card}
+                  onSave={async (data) => {
+                    await updateCard.mutateAsync({ id: card.id, ...data });
+                  }}
+                />
+              )}
 
               <div className="flex gap-2">
                 <button

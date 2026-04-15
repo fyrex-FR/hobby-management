@@ -1,5 +1,7 @@
 export type CardType = 'base' | 'insert' | 'parallel' | 'numbered' | 'auto' | 'patch' | 'auto_patch';
 export type CardStatus = 'draft' | 'collection' | 'a_vendre' | 'reserve' | 'vendu';
+export type GradingCompany = 'PSA' | 'BGS' | 'SGC' | 'CGC' | 'HGA';
+export type GradingStatus = 'submitted' | 'received' | 'graded' | 'returned';
 
 export interface Card {
   id: string;
@@ -27,6 +29,14 @@ export interface Card {
   image_front_url: string | null;
   image_back_url: string | null;
   created_at: string;
+  // Grading
+  grading_company: GradingCompany | null;
+  grading_status: GradingStatus | null;
+  grading_submitted_at: string | null;
+  grading_returned_at: string | null;
+  grading_grade: string | null;
+  grading_cert: string | null;
+  grading_cost: number | null;
 }
 
 export interface AIIdentificationResult {

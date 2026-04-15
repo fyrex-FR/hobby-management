@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-type ActiveView = 'dashboard' | 'collection' | 'add_card' | 'batch' | 'review' | 'sales' | 'compare';
+type ActiveView = 'dashboard' | 'collection' | 'add_card' | 'batch' | 'review' | 'sales' | 'compare' | 'players' | 'grading';
 type ViewMode = 'grid' | 'table';
 
 export interface DrillFilter {

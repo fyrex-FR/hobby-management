@@ -11,6 +11,8 @@ import { BatchView } from './components/views/BatchView';
 import { ReviewView } from './components/views/ReviewView';
 import { SalesView } from './components/views/SalesView';
 import { CompareView } from './components/views/CompareView';
+import { PlayersView } from './components/views/PlayersView';
+import { GradingView } from './components/views/GradingView';
 import { ResetPasswordView } from './components/views/ResetPasswordView';
 import { supabase } from './lib/supabase';
 
@@ -164,6 +166,28 @@ function Header() {
         ))}
 
         <button
+          onClick={() => setActiveView('players')}
+          className="hidden sm:block px-3 py-1.5 rounded-lg text-sm transition-all"
+          style={{
+            color: activeView === 'players' ? 'var(--text-primary)' : 'var(--text-secondary)',
+            background: activeView === 'players' ? 'var(--bg-elevated)' : 'transparent',
+          }}
+        >
+          Joueurs
+        </button>
+
+        <button
+          onClick={() => setActiveView('grading')}
+          className="hidden sm:block px-3 py-1.5 rounded-lg text-sm transition-all"
+          style={{
+            color: activeView === 'grading' ? 'var(--text-primary)' : 'var(--text-secondary)',
+            background: activeView === 'grading' ? 'var(--bg-elevated)' : 'transparent',
+          }}
+        >
+          Grading
+        </button>
+
+        <button
           onClick={() => setActiveView('batch')}
           className="px-3 py-1.5 rounded-lg text-sm transition-all"
           style={{
@@ -255,6 +279,8 @@ function AppShell() {
         {activeView === 'review' && <ReviewView />}
         {activeView === 'sales' && <SalesView />}
         {activeView === 'compare' && <CompareView />}
+        {activeView === 'players' && <PlayersView />}
+        {activeView === 'grading' && <GradingView />}
       </main>
     </div>
   );

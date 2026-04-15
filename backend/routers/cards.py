@@ -43,6 +43,13 @@ class CardCreate(BaseModel):
     listing_validated: Optional[bool] = False
     image_front_url: Optional[str] = None
     image_back_url: Optional[str] = None
+    grading_company: Optional[str] = None
+    grading_status: Optional[str] = None
+    grading_submitted_at: Optional[str] = None
+    grading_returned_at: Optional[str] = None
+    grading_grade: Optional[str] = None
+    grading_cert: Optional[str] = None
+    grading_cost: Optional[float] = None
 
 
 class CardUpdate(BaseModel):
@@ -67,6 +74,13 @@ class CardUpdate(BaseModel):
     listing_validated: Optional[bool] = None
     image_front_url: Optional[str] = None
     image_back_url: Optional[str] = None
+    grading_company: Optional[str] = None
+    grading_status: Optional[str] = None
+    grading_submitted_at: Optional[str] = None
+    grading_returned_at: Optional[str] = None
+    grading_grade: Optional[str] = None
+    grading_cert: Optional[str] = None
+    grading_cost: Optional[float] = None
 
 
 @router.get("/cards")

@@ -431,6 +431,42 @@ export function CollectionView() {
 
   const activeFiltersCount = [playerFilter, teamFilter, brandFilter, setFilter, yearFilter, typeFilter].filter(Boolean).length;
 
+  function exportCSV() {
+    const CSV_COLS: { key: keyof Card; label: string }[] = [
+      { key: 'player', label: 'Joueur' },
+      { key: 'team', label: 'Équipe' },
+      { key: 'year', label: 'Année' },
+      { key: 'brand', label: 'Marque' },
+      { key: 'set_name', label: 'Set' },
+      { key: 'insert_name', label: 'Insert' },
+      { key: 'parallel_name', label: 'Parallel' },
+      { key: 'card_number', label: 'N° carte' },
+      { key: 'numbered', label: 'Tirage' },
+      { key: 'card_type', label: 'Type' },
+      { key: 'status', label: 'Statut' },
+      { key: 'condition_notes', label: 'État' },
+      { key: 'purchase_price', label: 'Prix achat (€)' },
+      { key: 'price', label: 'Prix vente (€)' },
+    ];
+    function escapeCell(v: unknown): string {
+      const s = v == null ? '' : String(v);
+      if (s.includes(',') || s.includes('"') || s.includes('\n')) return `"${s.replace(/"/g, '""')}"`;
+      return s;
+    }
+    const header = CSV_COLS.map((c) => escapeCell(c.label)).join(',');
+    const rows = filtered.map((card) =>
+      CSV_COLS.map((c) => escapeCell(card[c.key])).join(','),
+    );
+    const csv = [header, ...rows].join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `collection_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   const columns = useMemo(() => buildColumns(setSelectedCard), []);
 
   const table = useReactTable({
@@ -531,6 +567,21 @@ export function CollectionView() {
               ✕ Effacer ({activeFiltersCount})
             </button>
           )}
+
+          <div className="flex-1 hidden sm:block" />
+
+          <button
+            onClick={exportCSV}
+            title={`Exporter ${filtered.length} carte(s) en CSV`}
+            className="px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all whitespace-nowrap hidden sm:flex items-center gap-1.5 shrink-0"
+            style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+          >
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d="M8 2v8M5 7l3 3 3-3" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M3 12h10" strokeLinecap="round"/>
+            </svg>
+            CSV ({filtered.length})
+          </button>
         </div>
       </div>
 

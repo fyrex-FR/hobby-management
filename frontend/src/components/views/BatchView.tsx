@@ -176,6 +176,20 @@ export function BatchView() {
     reparseFiles(files, method);
   }
 
+  const [draggingOver, setDraggingOver] = useState(false);
+
+  function handleDrop(e: React.DragEvent<HTMLDivElement>) {
+    e.preventDefault();
+    setDraggingOver(false);
+    if (running) return;
+    const files = Array.from(e.dataTransfer.files)
+      .filter((f) => f.type.startsWith('image/'))
+      .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+    if (files.length === 0) return;
+    allFiles.current = files;
+    reparseFiles(files, method);
+  }
+
   function updateResult(index: number, update: Partial<PairResult>) {
     setResults((prev) => prev.map((r, i) => (i === index ? { ...r, ...update } : r)));
   }
@@ -360,16 +374,22 @@ export function BatchView() {
 
         {/* File input */}
         <div
-          className="rounded-2xl border-2 border-dashed p-8 mb-6 flex flex-col items-center gap-3 cursor-pointer transition-colors"
-          style={{ borderColor: pairs.length > 0 ? 'var(--accent)' : 'var(--border)' }}
+          className="rounded-2xl border-2 border-dashed p-8 mb-6 flex flex-col items-center gap-3 cursor-pointer transition-all"
+          style={{
+            borderColor: draggingOver ? 'var(--accent)' : pairs.length > 0 ? 'var(--accent)' : 'var(--border)',
+            background: draggingOver ? 'rgba(245,166,35,0.06)' : 'transparent',
+          }}
           onClick={() => !running && fileRef.current?.click()}
+          onDragOver={(e) => { e.preventDefault(); if (!running) setDraggingOver(true); }}
+          onDragLeave={() => setDraggingOver(false)}
+          onDrop={handleDrop}
         >
-          <div className="text-3xl">📂</div>
+          <div className="text-3xl">{draggingOver ? '📥' : '📂'}</div>
           <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-            {pairs.length > 0 ? `${pairs.length} paire(s) sélectionnée(s)` : 'Cliquer pour sélectionner les images'}
+            {draggingOver ? 'Déposer les images ici' : pairs.length > 0 ? `${pairs.length} paire(s) sélectionnée(s)` : 'Glisser-déposer ou cliquer pour sélectionner'}
           </p>
           <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            {pairs.length > 0 ? 'Cliquer pour changer la sélection' : 'Sélection multiple — JPG, PNG, HEIC'}
+            {pairs.length > 0 && !draggingOver ? 'Cliquer ou déposer pour changer la sélection' : 'Sélection multiple — JPG, PNG, HEIC'}
           </p>
           <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFiles} />
         </div>
