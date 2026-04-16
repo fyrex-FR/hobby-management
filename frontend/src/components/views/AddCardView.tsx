@@ -6,6 +6,8 @@ import { useAppStore } from '../../stores/appStore';
 import { supabase } from '../../lib/supabase';
 import type { CardType, CardStatus } from '../../types';
 
+const API_BASE = import.meta.env.VITE_API_URL ?? '';
+
 const CARD_TYPES: { value: CardType; label: string }[] = [
   { value: 'base', label: 'Base' },
   { value: 'insert', label: 'Insert' },
@@ -163,7 +165,7 @@ export function AddCardView() {
         form.append('file', new File([blob], `${side}.jpg`, { type: 'image/jpeg' }));
         form.append('card_id', newCard.id);
         form.append('side', side);
-        const resp = await fetch('/api/upload', {
+        const resp = await fetch(`${API_BASE}/api/upload`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${data.session!.access_token}` },
           body: form,
