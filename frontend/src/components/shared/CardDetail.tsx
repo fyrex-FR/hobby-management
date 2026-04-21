@@ -8,6 +8,7 @@ import { useIdentify } from '../../hooks/useIdentify';
 import { EbaySoldItems } from './EbaySoldItems';
 import { supabase } from '../../lib/supabase';
 import { compressImage } from '../../lib/storage';
+import { RookieBadge } from './RookieBadge';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
@@ -162,6 +163,7 @@ export function CardDetail({ card, onClose }: Props) {
     parallel_name: card.parallel_name ?? '',
     card_number: card.card_number ?? '',
     numbered: card.numbered ?? '',
+    is_rookie: card.is_rookie ?? false,
     condition_notes: card.condition_notes ?? '',
     status: card.status,
     purchase_price: card.purchase_price?.toString() ?? '',
@@ -176,7 +178,7 @@ export function CardDetail({ card, onClose }: Props) {
     grading_cost: card.grading_cost?.toString() ?? '',
   });
 
-  function set(key: keyof typeof fields, value: string) {
+  function set(key: keyof typeof fields, value: string | boolean) {
     setFields((prev) => ({ ...prev, [key]: value }));
   }
 
@@ -189,6 +191,7 @@ export function CardDetail({ card, onClose }: Props) {
       purchase_price: fields.purchase_price ? parseFloat(fields.purchase_price) : null,
       price: fields.price ? parseFloat(fields.price) : null,
       vinted_url: fields.vinted_url || null,
+      is_rookie: fields.is_rookie,
       grading_company: (fields.grading_company || null) as GradingCompany | null,
       grading_status: (fields.grading_status || null) as GradingStatus | null,
       grading_grade: fields.grading_grade || null,
@@ -278,6 +281,7 @@ export function CardDetail({ card, onClose }: Props) {
         parallel_name: r.parallel || prev.parallel_name,
         card_number: r.card_number || prev.card_number,
         numbered: r.numbered || prev.numbered,
+        is_rookie: r.is_rookie ?? prev.is_rookie,
         condition_notes: r.condition_notes || prev.condition_notes,
       }));
     } catch (e) {
@@ -417,6 +421,7 @@ export function CardDetail({ card, onClose }: Props) {
             <div className="flex flex-wrap gap-1.5">
               <CardBadge type={card.card_type} />
               <StatusBadge status={card.status} />
+              {card.is_rookie && <RookieBadge compact />}
               {card.grading_company && <GradingBadge card={card} />}
               {card.numbered && (
                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md" style={{ background: 'rgba(245,166,35,0.12)', color: 'var(--accent)', border: '1px solid rgba(245,166,35,0.2)' }}>
@@ -455,6 +460,7 @@ export function CardDetail({ card, onClose }: Props) {
                 ['Set', card.set_name],
                 ['Insert', card.insert_name],
                 ['Parallel', card.parallel_name],
+                ['RC', card.is_rookie ? 'Oui' : null],
                 ['Grading', card.grading_company ? `${card.grading_company}${card.grading_status ? ` - ${GRADING_STATUS_LABELS[card.grading_status]}` : ''}${card.grading_grade ? ` - ${card.grading_grade}` : ''}` : null],
                 ['N° carte', card.card_number],
                 ['État', card.condition_notes || 'Mint'],
@@ -516,6 +522,20 @@ export function CardDetail({ card, onClose }: Props) {
                   </div>
                 </div>
 
+                <div className="mt-3">
+                  <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Rookie Card</label>
+                  <button
+                    type="button"
+                    onClick={() => set('is_rookie', !fields.is_rookie)}
+                    className="rounded-lg px-3 py-2 text-sm font-semibold transition-all"
+                    style={fields.is_rookie
+                      ? { background: 'rgba(37,99,235,0.16)', color: '#dbeafe', border: '1px solid rgba(96,165,250,0.45)' }
+                      : { background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+                  >
+                    {fields.is_rookie ? <RookieBadge compact /> : 'Non RC'}
+                  </button>
+                </div>
+
                 {showGrading && (
                   <div className="grid grid-cols-2 gap-3 mt-3">
                     <div>
@@ -552,7 +572,10 @@ export function CardDetail({ card, onClose }: Props) {
                 ['purchase_price', 'Prix achat (€)'],
                 ['price', 'Prix vente (€)'],
                 ['vinted_url', 'Lien Vinted'],
-              ] as [keyof typeof fields, string][]).map(([key, label]) => (
+              ] as [
+                'player' | 'team' | 'year' | 'brand' | 'set_name' | 'insert_name' | 'parallel_name' | 'card_number' | 'numbered' | 'purchase_price' | 'price' | 'vinted_url',
+                string
+              ][]).map(([key, label]) => (
                 <div key={key}>
                   <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>{label}</label>
                   <input className={inputClass} style={inputStyle} value={fields[key]} onChange={(e) => set(key, e.target.value)} />

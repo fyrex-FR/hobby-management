@@ -15,6 +15,7 @@ interface CardResult {
   parallel_confidence?: number;
   card_number?: string;
   numbered?: string;
+  is_rookie?: boolean;
   condition_notes?: string;
   card_type?: string;
   _meta: { latency_ms: number; cost_usd: number; error: string | null };
@@ -45,6 +46,7 @@ const FIELDS = [
   { key: 'parallel_confidence', label: 'Confiance parallel' },
   { key: 'card_number', label: 'N° carte' },
   { key: 'numbered', label: 'Tirage' },
+  { key: 'is_rookie', label: 'RC' },
   { key: 'card_type', label: 'Type' },
   { key: 'condition_notes', label: 'État' },
 ] as const;

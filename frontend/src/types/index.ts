@@ -17,6 +17,7 @@ export interface Card {
   parallel_confidence: number | null;
   card_number: string | null;
   numbered: string | null;
+  is_rookie: boolean | null;
   condition_notes: string | null;
   status: CardStatus;
   price: number | null;
@@ -51,6 +52,7 @@ export interface AIIdentificationResult {
   parallel_confidence: number;
   card_number: string;
   numbered: string;
+  is_rookie: boolean;
   condition_notes: string;
   card_type: CardType;
 }

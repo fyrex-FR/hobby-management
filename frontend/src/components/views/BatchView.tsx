@@ -278,6 +278,7 @@ export function BatchView() {
         parallel_confidence: ai.parallel_confidence ?? null,
         card_number: ai.card_number || null,
         numbered: ai.numbered || null,
+        is_rookie: !!ai.is_rookie,
         condition_notes: ai.condition_notes || null,
         card_type: null as CardType | null,
         status: 'draft',

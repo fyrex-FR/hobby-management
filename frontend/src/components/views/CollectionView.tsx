@@ -14,6 +14,7 @@ import { CardBadge } from '../shared/CardBadge';
 import { GradingBadge } from '../shared/GradingBadge';
 import { StatusBadge } from '../shared/StatusBadge';
 import { CardDetail } from '../shared/CardDetail';
+import { RookieBadge } from '../shared/RookieBadge';
 
 type FilterTab = 'all' | 'a_vendre' | 'vendu';
 type GroupBy = 'none' | 'player' | 'team' | 'brand' | 'set_name' | 'year';
@@ -81,6 +82,7 @@ function buildColumns(onEdit: (card: Card) => void) {
         const isPatch = card.card_type === 'patch' || card.card_type === 'auto_patch';
         return (
           <div className="flex items-center gap-1">
+            {card.is_rookie && <RookieBadge compact />}
             {card.grading_company && (
               <GradingBadge card={card} compact />
             )}
@@ -162,8 +164,9 @@ function GridCard({ card, onClick }: { card: Card; onClick: () => void }) {
           </div>
         )}
         {/* top-left: auto / patch / numbered badges */}
-        {(card.grading_company || card.card_type === 'auto' || card.card_type === 'auto_patch' || card.card_type === 'patch' || card.numbered) && (
+        {(card.is_rookie || card.grading_company || card.card_type === 'auto' || card.card_type === 'auto_patch' || card.card_type === 'patch' || card.numbered) && (
           <div className="absolute top-2 left-2 flex flex-row gap-1 flex-wrap max-w-[80%]">
+            {card.is_rookie && <RookieBadge compact />}
             {card.grading_company && (
               <GradingBadge card={card} compact />
             )}
@@ -215,7 +218,10 @@ function GridCard({ card, onClick }: { card: Card; onClick: () => void }) {
           </p>
         )}
         <div className="flex items-center justify-between pt-0.5">
-          <CardBadge type={card.card_type} />
+          <div className="flex items-center gap-1.5">
+            <CardBadge type={card.card_type} />
+            {card.is_rookie && <RookieBadge compact />}
+          </div>
           {card.price != null && (
             <span className="text-xs font-medium text-white">{card.price} €</span>
           )}
@@ -367,6 +373,7 @@ export function CollectionView() {
   const [setFilter, setSetFilter] = useState<string | null>(drillFilter.set_name ?? null);
   const [yearFilter, setYearFilter] = useState<string | null>(drillFilter.year ?? null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [rookieOnly, setRookieOnly] = useState(false);
   const [groupBy, setGroupBy] = useState<GroupBy>('none');
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -389,6 +396,7 @@ export function CollectionView() {
       if (setFilter && c.set_name !== setFilter) return false;
       if (yearFilter && c.year !== yearFilter) return false;
       if (typeFilter && c.card_type !== typeFilter) return false;
+      if (rookieOnly && !c.is_rookie) return false;
       if (search) {
         const q = search.toLowerCase();
         const haystack = [c.player, c.team, c.brand, c.set_name, c.insert_name, c.parallel_name, c.year]
@@ -399,7 +407,7 @@ export function CollectionView() {
       }
       return true;
     });
-  }, [cards, statusFilter, playerFilter, teamFilter, brandFilter, setFilter, yearFilter, typeFilter, search]);
+  }, [cards, statusFilter, playerFilter, teamFilter, brandFilter, setFilter, yearFilter, typeFilter, rookieOnly, search]);
 
   // Sidebar facets (calculées sur toute la collection, pas sur filtered)
   function facets(key: keyof Card) {
@@ -436,7 +444,8 @@ export function CollectionView() {
     return Object.fromEntries(Object.entries(groups).sort(([a], [b]) => a.localeCompare(b)));
   }, [filtered, groupBy]);
 
-  const activeFiltersCount = [playerFilter, teamFilter, brandFilter, setFilter, yearFilter, typeFilter].filter(Boolean).length;
+  const rookieCount = useMemo(() => cards.filter((c) => c.is_rookie).length, [cards]);
+  const activeFiltersCount = [playerFilter, teamFilter, brandFilter, setFilter, yearFilter, typeFilter, rookieOnly ? 'rookie' : null].filter(Boolean).length;
 
   function exportCSV() {
     const CSV_COLS: { key: keyof Card; label: string }[] = [
@@ -449,6 +458,7 @@ export function CollectionView() {
       { key: 'parallel_name', label: 'Parallel' },
       { key: 'card_number', label: 'N° carte' },
       { key: 'numbered', label: 'Tirage' },
+      { key: 'is_rookie', label: 'RC' },
       { key: 'card_type', label: 'Type' },
       { key: 'status', label: 'Statut' },
       { key: 'condition_notes', label: 'État' },
@@ -565,9 +575,20 @@ export function CollectionView() {
           <FilterDropdown label="Set" items={sets} selected={setFilter} onSelect={setSetFilter} />
           <FilterDropdown label="Année" items={years} selected={yearFilter} onSelect={setYearFilter} />
           <FilterDropdown label="Type" items={types} selected={typeFilter} onSelect={setTypeFilter} />
+          {rookieCount > 0 && (
+            <button
+              onClick={() => setRookieOnly((v) => !v)}
+              className="px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap"
+              style={rookieOnly
+                ? { background: 'linear-gradient(135deg, rgba(14,165,233,0.9), rgba(37,99,235,0.95))', color: '#eff6ff', border: '1px solid rgba(191,219,254,0.35)' }
+                : { background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+            >
+              RC <span style={{ opacity: 0.7 }}>{rookieCount}</span>
+            </button>
+          )}
           {activeFiltersCount > 0 && (
             <button
-              onClick={() => { setPlayerFilter(null); setTeamFilter(null); setBrandFilter(null); setSetFilter(null); setYearFilter(null); setTypeFilter(null); clearDrillFilter(); }}
+              onClick={() => { setPlayerFilter(null); setTeamFilter(null); setBrandFilter(null); setSetFilter(null); setYearFilter(null); setTypeFilter(null); setRookieOnly(false); clearDrillFilter(); }}
               className="px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all whitespace-nowrap"
               style={{ color: 'var(--accent)', border: '1px solid rgba(245,175,35,0.2)' }}
             >
@@ -604,7 +625,7 @@ export function CollectionView() {
               <p className="text-[var(--text-muted)] text-sm">Aucune carte ne correspond.</p>
               {(activeFiltersCount > 0 || search) && (
                 <button
-                  onClick={() => { setPlayerFilter(null); setTeamFilter(null); setBrandFilter(null); setSetFilter(null); setYearFilter(null); setTypeFilter(null); setSearch(''); }}
+                  onClick={() => { setPlayerFilter(null); setTeamFilter(null); setBrandFilter(null); setSetFilter(null); setYearFilter(null); setTypeFilter(null); setRookieOnly(false); setSearch(''); }}
                   className="text-xs text-[var(--accent)] hover:opacity-80"
                 >
                   Effacer les filtres

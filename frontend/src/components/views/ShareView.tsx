@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import type { Card } from '../../types';
 import { CardBadge } from '../shared/CardBadge';
 import { GradingBadge } from '../shared/GradingBadge';
+import { RookieBadge } from '../shared/RookieBadge';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
@@ -93,6 +94,7 @@ function CardModal({ card, showPrice, onClose }: { card: Card; showPrice: boolea
     ['Set', card.set_name],
     ['Insert', card.insert_name],
     ['Parallel', card.parallel_name && card.parallel_name !== 'Base' ? card.parallel_name : null],
+    ['RC', card.is_rookie ? 'Oui' : null],
     ['N° carte', card.card_number],
     ['Tirage', card.numbered],
     ['État', card.condition_notes || null],
@@ -128,6 +130,7 @@ function CardModal({ card, showPrice, onClose }: { card: Card; showPrice: boolea
 
           {/* Badges */}
           <div className="absolute top-3 left-3 flex flex-col gap-1">
+            {card.is_rookie && <RookieBadge compact />}
             {(card.card_type === 'auto' || card.card_type === 'auto_patch') && (
               <span className="text-[9px] font-black px-1.5 py-0.5 rounded" style={{ background: 'rgba(16,185,129,0.9)', color: '#fff' }}>AUTO</span>
             )}
@@ -174,6 +177,7 @@ function CardModal({ card, showPrice, onClose }: { card: Card; showPrice: boolea
           </div>
           <div className="flex flex-wrap gap-1.5 mb-4">
             <CardBadge type={card.card_type} />
+            {card.is_rookie && <RookieBadge compact />}
             {card.grading_company && <GradingBadge card={card} />}
             {card.numbered && (
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-md"
@@ -218,6 +222,7 @@ function SharedCard({ card, showPrice, onClick }: { card: Card; showPrice: boole
           <div className="w-full h-full flex items-center justify-center text-4xl opacity-20">🃏</div>
         )}
         <div className="absolute top-2 left-2 flex flex-col gap-1">
+          {card.is_rookie && <RookieBadge compact />}
           {card.grading_company && (
             <GradingBadge card={card} compact />
           )}
@@ -256,6 +261,7 @@ function SharedCard({ card, showPrice, onClick }: { card: Card; showPrice: boole
           </p>
         )}
         <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+          {card.is_rookie && <RookieBadge compact />}
           <CardBadge type={card.card_type} />
           {card.grading_company && <GradingBadge card={card} compact />}
         </div>

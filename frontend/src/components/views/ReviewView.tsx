@@ -3,6 +3,7 @@ import { useCards, useUpdateCard, useDeleteCard } from '../../hooks/useCards';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAppStore } from '../../stores/appStore';
 import type { Card, CardType } from '../../types';
+import { RookieBadge } from '../shared/RookieBadge';
 
 function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
   return (
@@ -75,6 +76,7 @@ function DraftRow({
     parallel_name: card.parallel_name ?? '',
     card_number: card.card_number ?? '',
     numbered: card.numbered ?? '',
+    is_rookie: card.is_rookie ?? false,
     condition_notes: card.condition_notes ?? '',
     price: card.price?.toString() ?? '',
     purchase_price: card.purchase_price?.toString() ?? '',
@@ -84,7 +86,7 @@ function DraftRow({
   const [expanded, setExpanded] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
 
-  function set(key: keyof typeof fields, value: string) {
+  function set(key: keyof typeof fields, value: string | boolean) {
     setFields((prev) => ({ ...prev, [key]: value }));
   }
 
@@ -95,6 +97,7 @@ function DraftRow({
       card_type: (fields.card_type || null) as CardType | null,
       price: fields.price ? parseFloat(fields.price) : null,
       purchase_price: fields.purchase_price ? parseFloat(fields.purchase_price) : null,
+      is_rookie: fields.is_rookie,
       status: 'collection',
     });
     setSaving(false);
@@ -149,6 +152,7 @@ function DraftRow({
             {[fields.year, fields.brand, fields.set_name, fields.parallel_name !== 'Base' ? fields.parallel_name : null]
               .filter(Boolean).join(' · ')}
           </p>
+          {fields.is_rookie && <div className="mt-1"><RookieBadge compact /></div>}
           {fields.numbered && (
             <span className="inline-block text-[10px] font-bold px-1.5 py-0.5 rounded-md mt-1"
               style={{ background: 'rgba(245,175,35,0.12)', color: 'var(--accent)', border: '1px solid rgba(245,175,35,0.2)' }}>
@@ -219,6 +223,18 @@ function DraftRow({
             </Field>
             <Field label="Tirage">
               <input className={inputCls} style={inputStyle} value={fields.numbered} onChange={(e) => set('numbered', e.target.value)} />
+            </Field>
+            <Field label="RC">
+              <button
+                type="button"
+                className="w-full rounded-lg px-2.5 py-1.5 text-sm font-semibold transition-all"
+                style={fields.is_rookie
+                  ? { background: 'rgba(37,99,235,0.16)', color: '#dbeafe', border: '1px solid rgba(96,165,250,0.45)' }
+                  : inputStyle}
+                onClick={() => set('is_rookie', !fields.is_rookie)}
+              >
+                {fields.is_rookie ? <RookieBadge compact /> : 'Non RC'}
+              </button>
             </Field>
             <Field label="Prix achat €">
               <input className={inputCls} style={inputStyle} value={fields.purchase_price} onChange={(e) => set('purchase_price', e.target.value)} placeholder="0" />

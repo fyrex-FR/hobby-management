@@ -5,6 +5,7 @@ import { compressImage } from '../../lib/storage';
 import { useAppStore } from '../../stores/appStore';
 import { supabase } from '../../lib/supabase';
 import type { CardType, CardStatus } from '../../types';
+import { RookieBadge } from '../shared/RookieBadge';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
@@ -125,6 +126,7 @@ export function AddCardView() {
     parallel_confidence: '',
     card_number: '',
     numbered: '',
+    is_rookie: false,
     condition_notes: '',
     status: 'collection' as CardStatus,
     price: '',
@@ -157,6 +159,7 @@ export function AddCardView() {
       parallel_confidence: r.parallel_confidence?.toString() || prev.parallel_confidence,
       card_number: r.card_number || prev.card_number,
       numbered: r.numbered || prev.numbered,
+      is_rookie: r.is_rookie ?? prev.is_rookie,
       condition_notes: r.condition_notes || prev.condition_notes,
     }));
   }
@@ -186,6 +189,7 @@ export function AddCardView() {
         card_type: (fields.card_type || null) as CardType | null,
         parallel_confidence: fields.parallel_confidence ? parseInt(fields.parallel_confidence) : null,
         price: fields.price ? parseFloat(fields.price) : null,
+        is_rookie: fields.is_rookie,
       });
       createdCardId = newCard.id;
 
@@ -327,8 +331,8 @@ export function AddCardView() {
             </Field>
           </div>
 
-          {/* Numéro / Tirage / Type */}
-          <div className="grid grid-cols-3 gap-4">
+          {/* Numéro / Tirage / Type / RC */}
+          <div className="grid grid-cols-4 gap-4">
             <Field label="N° carte">
               <input className={inputClass} value={fields.card_number} onChange={(e) => set('card_number', e.target.value)} placeholder="#45" />
             </Field>
@@ -346,6 +350,18 @@ export function AddCardView() {
                   <option key={t.value} value={t.value}>{t.label}</option>
                 ))}
               </select>
+            </Field>
+            <Field label="RC">
+              <button
+                type="button"
+                onClick={() => setFields((prev) => ({ ...prev, is_rookie: !prev.is_rookie }))}
+                className="w-full h-[46px] rounded-xl border text-sm font-semibold transition-all flex items-center justify-center"
+                style={fields.is_rookie
+                  ? { background: 'rgba(37,99,235,0.16)', color: '#dbeafe', border: '1px solid rgba(96,165,250,0.45)' }
+                  : { background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid rgba(255,255,255,0.05)' }}
+              >
+                {fields.is_rookie ? <RookieBadge compact /> : 'Non RC'}
+              </button>
             </Field>
           </div>
 

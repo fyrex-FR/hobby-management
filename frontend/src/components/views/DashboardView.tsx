@@ -3,6 +3,7 @@ import { useCards } from '../../hooks/useCards';
 import { useAppStore } from '../../stores/appStore';
 import type { Card } from '../../types';
 import { GradingBadge } from '../shared/GradingBadge';
+import { RookieBadge } from '../shared/RookieBadge';
 
 /* ── tiny helpers ─────────────────────────────────────────── */
 
@@ -179,6 +180,7 @@ function CardRow({ card, onClick }: { card: Card; onClick: () => void }) {
         <p className="text-xs truncate mt-0.5" style={{ color: 'var(--text-muted)' }}>{sub}</p>
       </div>
       <div className="flex items-center gap-1.5 shrink-0">
+        {card.is_rookie && <RookieBadge compact />}
         {card.grading_company && <GradingBadge card={card} compact />}
         {card.numbered && <Pill accent>{card.numbered}</Pill>}
         {(card.card_type === 'auto' || card.card_type === 'auto_patch') && <Pill>AUTO</Pill>}
