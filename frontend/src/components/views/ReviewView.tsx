@@ -130,7 +130,7 @@ function DraftEditor({
       status: fields.status,
     });
     setSaving(false);
-    if (index < total - 1) onNavigate(index + 1);
+    onNavigate(index >= total - 1 ? Math.max(0, index - 1) : index);
   }
 
   async function handleDiscardAndNext() {
@@ -382,7 +382,16 @@ export function ReviewView() {
     );
   }
 
-  const current = drafts[currentIndex];
+  const safeIndex = Math.min(currentIndex, Math.max(0, drafts.length - 1));
+  const current = drafts[safeIndex];
+
+  if (!current) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <span style={{ color: 'var(--text-muted)' }} className="text-sm">Chargement…</span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex-1 overflow-auto">
@@ -417,7 +426,7 @@ export function ReviewView() {
         <DraftEditor
           key={current.id}
           card={current}
-          index={currentIndex}
+          index={safeIndex}
           total={drafts.length}
           onNavigate={setCurrentIndex}
           onValidate={handleValidate}
