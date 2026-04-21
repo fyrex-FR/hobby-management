@@ -1,38 +1,48 @@
-"""
-In-memory daily quota tracker for Gemini API calls.
-Resets automatically at UTC midnight.
-"""
-from datetime import date
-from collections import defaultdict
+import os
+import httpx
 
 DAILY_LIMIT = 480  # leave 20 buffer under Gemini free tier 500 RPD
 
-# { "YYYY-MM-DD": count }
-_counts: dict[str, int] = defaultdict(int)
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
 
-def _today() -> str:
-    return date.today().isoformat()
-
-
-def increment() -> int:
-    """Increment today's counter. Returns new count."""
-    _counts[_today()] += 1
-    return _counts[_today()]
-
-
-def get_usage() -> dict:
-    today = _today()
-    used = _counts[today]
+def _headers() -> dict:
     return {
-        "date": today,
-        "used": used,
-        "limit": DAILY_LIMIT,
-        "remaining": max(0, DAILY_LIMIT - used),
-        "pct": round(used / DAILY_LIMIT * 100, 1),
+        "apikey": SUPABASE_SERVICE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+        "Content-Type": "application/json",
     }
 
 
-def check_quota() -> bool:
-    """Returns True if quota is available, False if exhausted."""
-    return _counts[_today()] < DAILY_LIMIT
+async def get_usage() -> dict:
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{SUPABASE_URL}/rest/v1/rpc/get_daily_ai_usage",
+            headers=_headers(),
+            json={"p_limit": DAILY_LIMIT},
+        )
+
+    if resp.status_code != 200:
+        raise RuntimeError(f"Quota lookup failed: {resp.text}")
+
+    return resp.json()
+
+
+async def increment() -> dict:
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            f"{SUPABASE_URL}/rest/v1/rpc/increment_daily_ai_usage",
+            headers=_headers(),
+            json={"p_limit": DAILY_LIMIT},
+        )
+
+    if resp.status_code != 200:
+        raise RuntimeError(f"Quota increment failed: {resp.text}")
+
+    return resp.json()
+
+
+async def check_quota() -> bool:
+    usage = await get_usage()
+    return usage["used"] < DAILY_LIMIT
