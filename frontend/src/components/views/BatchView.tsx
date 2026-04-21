@@ -280,7 +280,7 @@ export function BatchView() {
         numbered: ai.numbered || null,
         is_rookie: !!ai.is_rookie,
         condition_notes: ai.condition_notes || null,
-        card_type: null as CardType | null,
+        card_type: (ai.card_type || null) as CardType | null,
         status: 'draft',
       });
       createdCardId = newCard.id;
