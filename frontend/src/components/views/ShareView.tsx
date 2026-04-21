@@ -236,7 +236,8 @@ function OptionDropdown<T extends string>({
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap"
         style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.8)' }}
       >
-        {selectedLabel}
+        <span style={{ color: 'rgba(255,255,255,0.45)' }}>{label}:</span>
+        <span>{selectedLabel}</span>
         <span style={{ opacity: 0.6 }}>{open ? '▲' : '▼'}</span>
       </button>
       {open && (
@@ -665,9 +666,6 @@ export function ShareView({ token }: { token: string }) {
           Gradées
         </button>
 
-        <OptionDropdown label="Grouper par" options={Object.entries(GROUP_LABELS).map(([value, label]) => ({ value: value as GroupBy, label }))} selected={groupBy} onSelect={setGroupBy} />
-        <OptionDropdown label="Trier par" options={Object.entries(SORT_LABELS).map(([value, label]) => ({ value: value as SortBy, label }))} selected={sortBy} onSelect={setSortBy} />
-
         {activeCount > 0 && (
           <button
             onClick={() => {
@@ -688,6 +686,26 @@ export function ShareView({ token }: { token: string }) {
             ✕ Effacer ({activeCount})
           </button>
         )}
+
+        <div className="hidden lg:block w-px h-7 mx-1" style={{ background: 'rgba(255,255,255,0.08)' }} />
+
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'rgba(255,255,255,0.35)' }}>
+            Organisation
+          </span>
+          <OptionDropdown
+            label="Grouper"
+            options={Object.entries(GROUP_LABELS).map(([value, label]) => ({ value: value as GroupBy, label }))}
+            selected={groupBy}
+            onSelect={setGroupBy}
+          />
+          <OptionDropdown
+            label="Trier"
+            options={Object.entries(SORT_LABELS).map(([value, label]) => ({ value: value as SortBy, label }))}
+            selected={sortBy}
+            onSelect={setSortBy}
+          />
+        </div>
 
         <span className="ml-auto text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>
           {filtered.length} carte{filtered.length !== 1 ? 's' : ''}
