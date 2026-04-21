@@ -148,6 +148,7 @@ export function CardDetail({ card, onClose }: Props) {
   const [dragOver, setDragOver] = useState<'front' | 'back' | null>(null);
   const [uploadingImage, setUploadingImage] = useState<'front' | 'back' | null>(null);
   const [showGrading, setShowGrading] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const frontInputRef = useRef<HTMLInputElement>(null);
   const backInputRef = useRef<HTMLInputElement>(null);
   const [fields, setFields] = useState({
@@ -318,6 +319,17 @@ export function CardDetail({ card, onClose }: Props) {
     onClose();
   }
 
+  function handleImageClick(side: 'front' | 'back') {
+    const url = side === 'front' ? card.image_front_url : card.image_back_url;
+    if (!url) return;
+    if (editing) {
+      if (side === 'front') frontInputRef.current?.click();
+      else backInputRef.current?.click();
+      return;
+    }
+    setLightboxUrl(url);
+  }
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
@@ -337,18 +349,22 @@ export function CardDetail({ card, onClose }: Props) {
               outline: dragOver === 'front' ? '2px solid var(--accent)' : '2px solid transparent',
               background: dragOver === 'front' ? 'rgba(245,166,35,0.1)' : 'transparent',
             }}
-            onDragOver={(e) => { e.preventDefault(); setDragOver('front'); }}
-            onDragLeave={() => setDragOver(null)}
-            onDrop={(e) => { e.preventDefault(); setDragOver(null); const f = e.dataTransfer.files[0]; if (f) handleImageUpload(f, 'front'); }}
-            onClick={() => frontInputRef.current?.click()}
-            title="Cliquer ou déposer une image pour remplacer"
+            onDragOver={(e) => { if (!editing) return; e.preventDefault(); setDragOver('front'); }}
+            onDragLeave={() => { if (editing) setDragOver(null); }}
+            onDrop={(e) => { if (!editing) return; e.preventDefault(); setDragOver(null); const f = e.dataTransfer.files[0]; if (f) handleImageUpload(f, 'front'); }}
+            onClick={() => handleImageClick('front')}
+            title={editing ? 'Cliquer ou déposer une image pour remplacer' : 'Cliquer pour agrandir'}
           >
             {card.image_front_url ? (
-              <img src={card.image_front_url} alt="Face" className="h-32 w-auto rounded-xl object-contain" />
+              <img
+                src={card.image_front_url}
+                alt="Face"
+                className={`h-32 w-auto rounded-xl object-contain ${editing ? '' : 'cursor-zoom-in hover:opacity-85'}`}
+              />
             ) : (
               <div className="h-32 w-20 rounded-xl flex items-center justify-center text-2xl" style={{ background: 'var(--bg-elevated)' }}>🃏</div>
             )}
-            {(uploadingImage === 'front' || dragOver === 'front') && (
+            {editing && (uploadingImage === 'front' || dragOver === 'front') && (
               <div className="absolute inset-0 rounded-xl flex items-center justify-center"
                 style={{ background: 'rgba(0,0,0,0.5)' }}>
                 <span className="text-white text-xs font-medium">
@@ -366,18 +382,22 @@ export function CardDetail({ card, onClose }: Props) {
               outline: dragOver === 'back' ? '2px solid var(--accent)' : '2px solid transparent',
               background: dragOver === 'back' ? 'rgba(245,166,35,0.1)' : 'transparent',
             }}
-            onDragOver={(e) => { e.preventDefault(); setDragOver('back'); }}
-            onDragLeave={() => setDragOver(null)}
-            onDrop={(e) => { e.preventDefault(); setDragOver(null); const f = e.dataTransfer.files[0]; if (f) handleImageUpload(f, 'back'); }}
-            onClick={() => backInputRef.current?.click()}
-            title="Cliquer ou déposer une image pour remplacer"
+            onDragOver={(e) => { if (!editing) return; e.preventDefault(); setDragOver('back'); }}
+            onDragLeave={() => { if (editing) setDragOver(null); }}
+            onDrop={(e) => { if (!editing) return; e.preventDefault(); setDragOver(null); const f = e.dataTransfer.files[0]; if (f) handleImageUpload(f, 'back'); }}
+            onClick={() => handleImageClick('back')}
+            title={editing ? 'Cliquer ou déposer une image pour remplacer' : 'Cliquer pour agrandir'}
           >
             {card.image_back_url ? (
-              <img src={card.image_back_url} alt="Dos" className="h-32 w-auto rounded-xl object-contain opacity-60" />
+              <img
+                src={card.image_back_url}
+                alt="Dos"
+                className={`h-32 w-auto rounded-xl object-contain opacity-60 ${editing ? '' : 'cursor-zoom-in hover:opacity-75'}`}
+              />
             ) : (
               <div className="h-32 w-20 rounded-xl flex items-center justify-center text-2xl opacity-40" style={{ background: 'var(--bg-elevated)' }}>🃏</div>
             )}
-            {(uploadingImage === 'back' || dragOver === 'back') && (
+            {editing && (uploadingImage === 'back' || dragOver === 'back') && (
               <div className="absolute inset-0 rounded-xl flex items-center justify-center"
                 style={{ background: 'rgba(0,0,0,0.5)' }}>
                 <span className="text-white text-xs font-medium">
@@ -679,6 +699,27 @@ export function CardDetail({ card, onClose }: Props) {
           )}
         </div>
       </div>
+
+      {lightboxUrl && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/95"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <img
+            src={lightboxUrl}
+            alt=""
+            className="max-h-[90vh] max-w-[90vw] rounded-2xl object-contain"
+            style={{ boxShadow: '0 0 80px rgba(0,0,0,0.9)' }}
+          />
+          <button
+            className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full text-sm"
+            style={{ background: 'rgba(255,255,255,0.1)', color: '#fff' }}
+            onClick={() => setLightboxUrl(null)}
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 }
