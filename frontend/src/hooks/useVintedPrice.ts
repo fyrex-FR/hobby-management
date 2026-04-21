@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { apiFetch } from '../api/client';
 
 interface VintedPriceResult {
   count: number;
@@ -18,17 +18,10 @@ export function useVintedPrice() {
     setLoading(true);
     setData(null);
     try {
-      const { data: session } = await supabase.auth.getSession();
-      const token = session?.session?.access_token;
-      const resp = await fetch('/api/vinted/price-estimate', {
+      const json = await apiFetch<VintedPriceResult>('/vinted/price-estimate', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
         body: JSON.stringify({ query }),
       });
-      const json = await resp.json();
       setData(json);
     } catch (e) {
       setData({ count: 0, min: null, avg: null, median: null, results: [], error: String(e) });

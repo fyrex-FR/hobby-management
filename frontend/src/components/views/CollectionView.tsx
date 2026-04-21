@@ -11,6 +11,7 @@ import { useCards, useDeleteCard } from '../../hooks/useCards';
 import { useAppStore } from '../../stores/appStore';
 import type { Card, CardStatus } from '../../types';
 import { CardBadge } from '../shared/CardBadge';
+import { GradingBadge } from '../shared/GradingBadge';
 import { StatusBadge } from '../shared/StatusBadge';
 import { CardDetail } from '../shared/CardDetail';
 
@@ -80,6 +81,9 @@ function buildColumns(onEdit: (card: Card) => void) {
         const isPatch = card.card_type === 'patch' || card.card_type === 'auto_patch';
         return (
           <div className="flex items-center gap-1">
+            {card.grading_company && (
+              <GradingBadge card={card} compact />
+            )}
             {isAuto && (
               <span className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-black shrink-0" style={{ background: 'rgba(16,185,129,0.15)', color: 'rgb(16,185,129)', border: '1px solid rgba(16,185,129,0.3)' }} title="Autographe">✍</span>
             )}
@@ -158,8 +162,11 @@ function GridCard({ card, onClick }: { card: Card; onClick: () => void }) {
           </div>
         )}
         {/* top-left: auto / patch / numbered badges */}
-        {(card.card_type === 'auto' || card.card_type === 'auto_patch' || card.card_type === 'patch' || card.numbered) && (
+        {(card.grading_company || card.card_type === 'auto' || card.card_type === 'auto_patch' || card.card_type === 'patch' || card.numbered) && (
           <div className="absolute top-2 left-2 flex flex-row gap-1 flex-wrap max-w-[80%]">
+            {card.grading_company && (
+              <GradingBadge card={card} compact />
+            )}
             {(card.card_type === 'auto' || card.card_type === 'auto_patch') && (
               <div
                 className="h-5 px-1.5 rounded flex items-center justify-center text-[10px] font-black"

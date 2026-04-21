@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import { compressImage } from '../../lib/storage';
-import { useCards, useCreateCard } from '../../hooks/useCards';
+import { useCards, useCreateCard, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { useAppStore } from '../../stores/appStore';
 import { supabase } from '../../lib/supabase';
 
@@ -105,7 +105,23 @@ type PairStatus = 'pending' | 'running' | 'done' | 'error' | 'skipped';
 interface PairResult {
   pair: Pair;
   status: PairStatus;
+  step?: string;
   error?: string;
+}
+
+function statusMeta(status: PairStatus): { label: string; color: string; bg: string } {
+  switch (status) {
+    case 'running':
+      return { label: 'En cours', color: 'var(--accent)', bg: 'rgba(245,166,35,0.12)' };
+    case 'done':
+      return { label: 'OK', color: 'var(--green)', bg: 'rgba(16,185,129,0.12)' };
+    case 'error':
+      return { label: 'Erreur', color: 'var(--red)', bg: 'rgba(248,113,113,0.12)' };
+    case 'skipped':
+      return { label: 'Ignoré', color: 'var(--text-secondary)', bg: 'var(--bg-elevated)' };
+    default:
+      return { label: 'En attente', color: 'var(--text-muted)', bg: 'var(--bg-elevated)' };
+  }
 }
 
 async function fileToBase64(file: File): Promise<string> {
@@ -137,8 +153,12 @@ export function BatchView() {
   const [summary, setSummary] = useState('');
   const [draftCount, setDraftCount] = useState(0);
   const [quota, setQuota] = useState<QuotaInfo | null>(null);
+  const [retryingIndexes, setRetryingIndexes] = useState<number[]>([]);
+  const [retryingAll, setRetryingAll] = useState(false);
   const { data: existingCards = [] } = useCards();
   const createCard = useCreateCard();
+  const deleteCard = useDeleteCard();
+  const updateCard = useUpdateCard();
   const setActiveView = useAppStore((s) => s.setActiveView);
 
   useEffect(() => {
@@ -194,6 +214,125 @@ export function BatchView() {
     setResults((prev) => prev.map((r, i) => (i === index ? { ...r, ...update } : r)));
   }
 
+  function buildSummaryFromResults(nextResults: PairResult[]) {
+    const success = nextResults.filter((r) => r.status === 'done').length;
+    const skipped = nextResults.filter((r) => r.status === 'skipped').length;
+    const errors = nextResults.filter((r) => r.status === 'error').length;
+
+    return (
+      `${success} carte(s) sauvegardées en brouillon` +
+      (skipped > 0 ? ` — ${skipped} doublon(s) ignoré(s)` : '') +
+      (errors > 0 ? ` — ${errors} échec(s)` : '')
+    );
+  }
+
+  function currentKnownNames() {
+    const knownNames = new Set<string>();
+    existingCards.forEach((c) => {
+      if (c.image_front_url) knownNames.add(normalizeName(c.image_front_url.split('/').pop() ?? ''));
+      if (c.image_back_url) knownNames.add(normalizeName(c.image_back_url.split('/').pop() ?? ''));
+    });
+    return knownNames;
+  }
+
+  async function processPair(index: number, token: string, onStep?: (step: string) => void) {
+    const pair = pairs[index];
+    if (!pair) return { status: 'error' as const, error: 'Paire introuvable.' };
+
+    const knownNames = currentKnownNames();
+    const frontNorm = normalizeName(pair.front.name);
+    const backNorm = normalizeName(pair.back.name);
+    if (knownNames.has(frontNorm) || knownNames.has(backNorm)) {
+      return { status: 'skipped' as const, error: 'Doublon détecté — déjà dans la collection' };
+    }
+
+    let createdCardId: string | null = null;
+    let failedStep = 'identification';
+
+    try {
+      onStep?.('Préparation des images');
+      const [front_base64, back_base64] = await Promise.all([
+        fileToBase64(pair.front),
+        fileToBase64(pair.back),
+      ]);
+
+      onStep?.('Identification IA');
+      const identResp = await fetch(`${API_BASE}/api/identify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ front_base64, back_base64 }),
+      });
+      if (!identResp.ok) throw new Error(`Identify: ${await identResp.text()}`);
+      const ai: AIIdentificationResult = await identResp.json();
+
+      failedStep = 'création du brouillon';
+      onStep?.('Création du brouillon');
+      const newCard = await createCard.mutateAsync({
+        player: ai.player || null,
+        team: ai.team || null,
+        year: ai.year || null,
+        brand: ai.brand || null,
+        set_name: ai.set || null,
+        insert_name: ai.insert || null,
+        parallel_name: ai.parallel || null,
+        parallel_confidence: ai.parallel_confidence ?? null,
+        card_number: ai.card_number || null,
+        numbered: ai.numbered || null,
+        condition_notes: ai.condition_notes || null,
+        card_type: null as CardType | null,
+        status: 'draft',
+      });
+      createdCardId = newCard.id;
+
+      async function upload(file: File, side: 'front' | 'back'): Promise<string> {
+        const blob = await compressImage(file);
+        const form = new FormData();
+        form.append('file', new File([blob], `${side}.jpg`, { type: 'image/jpeg' }));
+        form.append('card_id', newCard.id);
+        form.append('side', side);
+        const r = await fetch(`${API_BASE}/api/upload`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: form,
+        });
+        if (!r.ok) throw new Error(await r.text());
+        return (await r.json()).url;
+      }
+
+      failedStep = 'upload des images';
+      onStep?.('Upload des images');
+      const [image_front_url, image_back_url] = await Promise.all([
+        upload(pair.front, 'front'),
+        upload(pair.back, 'back'),
+      ]);
+
+      failedStep = 'enregistrement des URLs d’images';
+      onStep?.('Enregistrement final');
+      await updateCard.mutateAsync({
+        id: newCard.id,
+        image_front_url,
+        image_back_url,
+      });
+
+      fetchQuota(token).then((q) => q && setQuota(q));
+      return { status: 'done' as const, step: undefined };
+    } catch (e) {
+      const message = (e as Error).message;
+      let error = `Échec pendant ${failedStep}: ${message}`;
+
+      if (createdCardId) {
+        try {
+          await deleteCard.mutateAsync(createdCardId);
+          error = `Échec pendant ${failedStep}: ${message}. Brouillon supprimé pour éviter un enregistrement incomplet.`;
+        } catch {
+          error = `Échec pendant ${failedStep}: ${message}. Le brouillon partiel n'a pas pu être supprimé automatiquement.`;
+        }
+      }
+
+      return { status: 'error' as const, error, step: undefined };
+    }
+  }
+
   async function runBatch() {
     if (running || pairs.length === 0) return;
     setRunning(true);
@@ -209,102 +348,30 @@ export function BatchView() {
       return;
     }
 
-    // Construire un set des noms de photos déjà en base
-    const knownNames = new Set<string>();
-    existingCards.forEach((c) => {
-      if (c.image_front_url) knownNames.add(normalizeName(c.image_front_url.split('/').pop() ?? ''));
-      if (c.image_back_url) knownNames.add(normalizeName(c.image_back_url.split('/').pop() ?? ''));
-    });
-
     let success = 0;
     let errors = 0;
     let skipped = 0;
 
     for (let i = 0; i < pairs.length; i++) {
-      const pair = pairs[i];
-      updateResult(i, { status: 'running' });
-
-      // Détection doublon par nom de fichier
-      const frontNorm = normalizeName(pair.front.name);
-      const backNorm = normalizeName(pair.back.name);
-      if (knownNames.has(frontNorm) || knownNames.has(backNorm)) {
-        updateResult(i, { status: 'skipped', error: 'Doublon détecté — déjà dans la collection' });
-        skipped++;
-        continue;
-      }
-
-      try {
-        // 1. Identify
-        const [front_base64, back_base64] = await Promise.all([
-          fileToBase64(pair.front),
-          fileToBase64(pair.back),
-        ]);
-
-        const identResp = await fetch(`${API_BASE}/api/identify`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ front_base64, back_base64 }),
-        });
-        if (!identResp.ok) throw new Error(`Identify: ${await identResp.text()}`);
-        const ai: AIIdentificationResult = await identResp.json();
-
-        // 2. Save as draft
-        const newCard = await createCard.mutateAsync({
-          player: ai.player || null,
-          team: ai.team || null,
-          year: ai.year || null,
-          brand: ai.brand || null,
-          set_name: ai.set || null,
-          insert_name: ai.insert || null,
-          parallel_name: ai.parallel || null,
-          parallel_confidence: ai.parallel_confidence ?? null,
-          card_number: ai.card_number || null,
-          numbered: ai.numbered || null,
-          condition_notes: ai.condition_notes || null,
-          card_type: null as CardType | null,
-          status: 'draft',
-        });
-
-        // 3. Upload images
-        async function upload(file: File, side: 'front' | 'back'): Promise<string> {
-          const blob = await compressImage(file);
-          const form = new FormData();
-          form.append('file', new File([blob], `${side}.jpg`, { type: 'image/jpeg' }));
-          form.append('card_id', newCard.id);
-          form.append('side', side);
-          const r = await fetch(`${API_BASE}/api/upload`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${token}` },
-            body: form,
-          });
-          if (!r.ok) throw new Error(await r.text());
-          return (await r.json()).url;
-        }
-
-        const [image_front_url, image_back_url] = await Promise.all([
-          upload(pair.front, 'front'),
-          upload(pair.back, 'back'),
-        ]);
-
-        // 4. Update card with image URLs
-        await fetch(`${API_BASE}/api/cards/${newCard.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ image_front_url, image_back_url }),
-        });
-
-        updateResult(i, { status: 'done' });
+      updateResult(i, { status: 'running', step: 'Préparation…', error: undefined });
+      const result = await processPair(i, token, (step) => updateResult(i, { status: 'running', step, error: undefined }));
+      updateResult(i, result);
+      if (result.status === 'done') {
         success++;
         setDraftCount((n) => n + 1);
-        fetchQuota(token).then((q) => q && setQuota(q));
-      } catch (e) {
-        updateResult(i, { status: 'error', error: (e as Error).message });
+      } else if (result.status === 'skipped') {
+        skipped++;
+      } else if (result.status === 'error') {
         errors++;
       }
 
       if (i + 1 < pairs.length) await sleep(PAIR_DELAY_MS);
     }
 
+    setSummary(buildSummaryFromResults(results.map((r, i) => {
+      if (i < success) return r;
+      return r;
+    })));
     setSummary(
       `${success} carte(s) sauvegardées en brouillon` +
       (skipped > 0 ? ` — ${skipped} doublon(s) ignoré(s)` : '') +
@@ -313,10 +380,64 @@ export function BatchView() {
     setRunning(false);
   }
 
+  async function retryPair(index: number) {
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) {
+      updateResult(index, { status: 'error', error: 'Non authentifié.' });
+      return;
+    }
+
+    setRetryingIndexes((prev) => [...prev, index]);
+    updateResult(index, { status: 'running', step: 'Préparation…', error: undefined });
+
+    const result = await processPair(index, token, (step) => updateResult(index, { status: 'running', step, error: undefined }));
+    let nextResults: PairResult[] = [];
+    setResults((prev) => {
+      nextResults = prev.map((r, i) => (i === index ? { ...r, ...result } : r));
+      return nextResults;
+    });
+    if (result.status === 'done') setDraftCount((n) => n + 1);
+    setSummary(buildSummaryFromResults(nextResults));
+    setRetryingIndexes((prev) => prev.filter((i) => i !== index));
+  }
+
+  async function retryFailedPairs() {
+    const failedIndexes = results.map((r, i) => ({ r, i })).filter(({ r }) => r.status === 'error').map(({ i }) => i);
+    if (failedIndexes.length === 0) return;
+
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) {
+      setSummary('Non authentifié.');
+      return;
+    }
+
+    setRetryingAll(true);
+    setRetryingIndexes(failedIndexes);
+
+    let nextResults = [...results];
+
+    for (let pos = 0; pos < failedIndexes.length; pos++) {
+      const index = failedIndexes[pos];
+      updateResult(index, { status: 'running', step: 'Préparation…', error: undefined });
+      const result = await processPair(index, token, (step) => updateResult(index, { status: 'running', step, error: undefined }));
+      nextResults = nextResults.map((r, i) => (i === index ? { ...r, ...result } : r));
+      setResults(nextResults);
+      if (result.status === 'done') setDraftCount((n) => n + 1);
+      setRetryingIndexes((prev) => prev.filter((i) => i !== index));
+      if (pos + 1 < failedIndexes.length) await sleep(PAIR_DELAY_MS);
+    }
+
+    setSummary(buildSummaryFromResults(nextResults));
+    setRetryingAll(false);
+  }
+
   const done = results.filter((r) => r.status === 'done').length;
   const total = pairs.length;
   const progress = total > 0 ? Math.round((done / total) * 100) : 0;
   const isDone = !running && summary !== '' && draftCount > 0;
+  const errorCount = results.filter((r) => r.status === 'error').length;
 
   return (
     <div className="flex-1 overflow-auto">
@@ -402,15 +523,28 @@ export function BatchView() {
                 <span style={{ color: 'var(--text-primary)' }} className="font-semibold">{pairs.length}</span> paire(s)
                 {unpaired && <span className="ml-3 text-yellow-500">⚠ "{unpaired}" sans paire</span>}
               </div>
-              {!running && !isDone && (
-                <button
-                  onClick={runBatch}
-                  className="px-5 py-2 rounded-xl text-sm font-semibold"
-                  style={{ background: 'var(--accent)', color: '#0d0c0b', boxShadow: '0 0 20px var(--accent-glow)' }}
-                >
-                  Lancer l'identification
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {!running && errorCount > 0 && (
+                  <button
+                    onClick={retryFailedPairs}
+                    disabled={retryingAll || retryingIndexes.length > 0}
+                    className="px-4 py-2 rounded-xl text-sm font-semibold"
+                    style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
+                  >
+                    {retryingAll ? 'Relance…' : `Réessayer les échecs (${errorCount})`}
+                  </button>
+                )}
+                {!running && !isDone && (
+                  <button
+                    onClick={runBatch}
+                    disabled={retryingAll || retryingIndexes.length > 0}
+                    className="px-5 py-2 rounded-xl text-sm font-semibold"
+                    style={{ background: 'var(--accent)', color: '#0d0c0b', boxShadow: '0 0 20px var(--accent-glow)' }}
+                  >
+                    Lancer l'identification
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* Progress */}
@@ -456,7 +590,7 @@ export function BatchView() {
               {results.map((r, i) => (
                 <div
                   key={i}
-                  className="flex items-center gap-3 px-4 py-3 text-sm"
+                  className="flex items-start gap-3 px-4 py-3 text-sm"
                   style={{
                     borderBottom: i < results.length - 1 ? '1px solid var(--border)' : 'none',
                     background: i % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-secondary)',
@@ -469,17 +603,38 @@ export function BatchView() {
                     <p className="truncate text-xs" style={{ color: 'var(--text-secondary)' }}>
                       {r.pair.front.name} + {r.pair.back.name}
                     </p>
+                    {r.status === 'running' && r.step && (
+                      <p className="text-xs mt-1" style={{ color: 'var(--accent)' }}>{r.step}…</p>
+                    )}
                     {r.error && (
-                      <p className="text-xs truncate" style={{ color: 'var(--red)' }}>{r.error}</p>
+                      <p className="text-xs mt-1 leading-relaxed break-words" style={{ color: 'var(--red)' }}>{r.error}</p>
                     )}
                   </div>
-                  <span className="shrink-0 text-base">
-                    {r.status === 'pending' && <span style={{ color: 'var(--text-muted)' }}>·</span>}
-                    {r.status === 'running' && <span className="animate-spin inline-block" style={{ color: 'var(--accent)' }}>⟳</span>}
-                    {r.status === 'done' && <span style={{ color: 'var(--green)' }}>✓</span>}
-                    {r.status === 'error' && <span style={{ color: 'var(--red)' }}>✕</span>}
-                    {r.status === 'skipped' && <span style={{ color: 'var(--text-muted)' }}>⊘</span>}
-                  </span>
+                  <div className="shrink-0 flex flex-col items-end gap-1">
+                    {r.status === 'error' && !running && (
+                      <button
+                        onClick={() => retryPair(i)}
+                        disabled={retryingAll || retryingIndexes.includes(i)}
+                        className="px-2.5 py-1 rounded-lg text-[11px] font-semibold"
+                        style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
+                      >
+                        {retryingIndexes.includes(i) ? 'Relance…' : 'Réessayer'}
+                      </button>
+                    )}
+                    <span
+                      className="px-2 py-1 rounded-lg text-[11px] font-semibold"
+                      style={{ color: statusMeta(r.status).color, background: statusMeta(r.status).bg }}
+                    >
+                      {statusMeta(r.status).label}
+                    </span>
+                    <span className="text-base leading-none">
+                      {r.status === 'pending' && <span style={{ color: 'var(--text-muted)' }}>·</span>}
+                      {r.status === 'running' && <span className="animate-spin inline-block" style={{ color: 'var(--accent)' }}>⟳</span>}
+                      {r.status === 'done' && <span style={{ color: 'var(--green)' }}>✓</span>}
+                      {r.status === 'error' && <span style={{ color: 'var(--red)' }}>✕</span>}
+                      {r.status === 'skipped' && <span style={{ color: 'var(--text-muted)' }}>⊘</span>}
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>

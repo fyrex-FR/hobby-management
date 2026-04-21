@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import type { Card } from '../../types';
 import { CardBadge } from '../shared/CardBadge';
+import { GradingBadge } from '../shared/GradingBadge';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
@@ -173,6 +174,7 @@ function CardModal({ card, showPrice, onClose }: { card: Card; showPrice: boolea
           </div>
           <div className="flex flex-wrap gap-1.5 mb-4">
             <CardBadge type={card.card_type} />
+            {card.grading_company && <GradingBadge card={card} />}
             {card.numbered && (
               <span className="text-[10px] font-bold px-2 py-0.5 rounded-md"
                 style={{ background: 'rgba(245,166,35,0.12)', color: '#F5AF23', border: '1px solid rgba(245,166,35,0.2)' }}>
@@ -216,6 +218,9 @@ function SharedCard({ card, showPrice, onClick }: { card: Card; showPrice: boole
           <div className="w-full h-full flex items-center justify-center text-4xl opacity-20">🃏</div>
         )}
         <div className="absolute top-2 left-2 flex flex-col gap-1">
+          {card.grading_company && (
+            <GradingBadge card={card} compact />
+          )}
           {(card.card_type === 'auto' || card.card_type === 'auto_patch') && (
             <span className="text-[9px] font-black px-1.5 py-0.5 rounded" style={{ background: 'rgba(16,185,129,0.9)', color: '#fff' }}>AUTO</span>
           )}
@@ -250,7 +255,10 @@ function SharedCard({ card, showPrice, onClick }: { card: Card; showPrice: boole
             {card.insert_name || card.parallel_name}
           </p>
         )}
-        <div className="mt-2"><CardBadge type={card.card_type} /></div>
+        <div className="mt-2 flex items-center gap-1.5 flex-wrap">
+          <CardBadge type={card.card_type} />
+          {card.grading_company && <GradingBadge card={card} compact />}
+        </div>
         {card.vinted_url && (
           <div className="mt-2 w-full py-1 rounded-lg text-[10px] font-semibold text-center"
             style={{ background: 'rgba(9,182,109,0.12)', color: 'rgb(9,182,109)', border: '1px solid rgba(9,182,109,0.2)' }}>

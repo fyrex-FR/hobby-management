@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useIdentify } from '../../hooks/useIdentify';
-import { useCreateCard } from '../../hooks/useCards';
+import { useCreateCard, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { compressImage } from '../../lib/storage';
 import { useAppStore } from '../../stores/appStore';
 import { supabase } from '../../lib/supabase';
@@ -86,6 +86,30 @@ function Field({
 const inputClass =
   'w-full bg-[var(--bg-secondary)] border border-white/5 text-white rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/20 transition-all placeholder:text-[var(--text-muted)]';
 
+function ErrorAlert({ title, message }: { title: string; message: string }) {
+  return (
+    <div
+      className="mt-6 rounded-2xl p-4"
+      style={{ background: 'rgba(127,29,29,0.28)', border: '1px solid rgba(248,113,113,0.35)' }}
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 text-sm font-bold"
+          style={{ background: 'rgba(248,113,113,0.16)', color: '#fca5a5' }}
+        >
+          !
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold" style={{ color: '#fecaca' }}>{title}</p>
+          <p className="text-sm mt-1 whitespace-pre-wrap break-words" style={{ color: '#fca5a5' }}>
+            {message}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function AddCardView() {
   const [frontFile, setFrontFile] = useState<File | null>(null);
   const [backFile, setBackFile] = useState<File | null>(null);
@@ -106,10 +130,13 @@ export function AddCardView() {
     price: '',
   });
   const [saving, setSaving] = useState(false);
+  const [saveStep, setSaveStep] = useState('');
   const [error, setError] = useState('');
 
   const identify = useIdentify();
   const createCard = useCreateCard();
+  const deleteCard = useDeleteCard();
+  const updateCard = useUpdateCard();
   const setActiveView = useAppStore((s) => s.setActiveView);
 
   function set(key: keyof typeof fields, value: string) {
@@ -148,6 +175,8 @@ export function AddCardView() {
   async function handleSave() {
     setError('');
     setSaving(true);
+    setSaveStep('Création de la carte…');
+    let createdCardId: string | null = null;
     try {
       const { data } = await supabase.auth.getSession();
       if (!data.session) throw new Error('Non authentifié');
@@ -158,6 +187,7 @@ export function AddCardView() {
         parallel_confidence: fields.parallel_confidence ? parseInt(fields.parallel_confidence) : null,
         price: fields.price ? parseFloat(fields.price) : null,
       });
+      createdCardId = newCard.id;
 
       async function uploadViaBackend(file: File, side: 'front' | 'back'): Promise<string> {
         const blob = await compressImage(file);
@@ -175,25 +205,40 @@ export function AddCardView() {
       }
 
       const updates: Record<string, string> = {};
-      if (frontFile) updates.image_front_url = await uploadViaBackend(frontFile, 'front');
-      if (backFile) updates.image_back_url = await uploadViaBackend(backFile, 'back');
+      if (frontFile) {
+        setSaveStep('Upload de la photo avant…');
+        updates.image_front_url = await uploadViaBackend(frontFile, 'front');
+      }
+      if (backFile) {
+        setSaveStep('Upload de la photo arrière…');
+        updates.image_back_url = await uploadViaBackend(backFile, 'back');
+      }
 
       if (Object.keys(updates).length > 0) {
-        await fetch(`/api/cards/${newCard.id}`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${data.session!.access_token}`,
-          },
-          body: JSON.stringify(updates),
+        setSaveStep('Enregistrement des photos…');
+        await updateCard.mutateAsync({
+          id: newCard.id,
+          ...updates,
         });
       }
 
       setActiveView('collection');
     } catch (e) {
-      setError((e as Error).message);
+      const message = (e as Error).message;
+      if (createdCardId) {
+        try {
+          await deleteCard.mutateAsync(createdCardId);
+        } catch {
+          setError(`Échec pendant "${saveStep || 'l’enregistrement'}". La carte a peut-être été créée partiellement. Détail: ${message}`);
+          return;
+        }
+        setError(`Échec pendant "${saveStep || 'l’enregistrement'}". La carte créée a été supprimée pour éviter un enregistrement incomplet. Détail: ${message}`);
+        return;
+      }
+      setError(message);
     } finally {
       setSaving(false);
+      setSaveStep('');
     }
   }
 
@@ -325,11 +370,7 @@ export function AddCardView() {
           </Field>
         </div>
 
-        {error && (
-          <div className="mt-6 p-3 bg-red-900/30 border border-red-700/40 rounded-xl text-red-400 text-sm">
-            {error}
-          </div>
-        )}
+        {error && <ErrorAlert title="Enregistrement impossible" message={error} />}
 
         {/* Actions */}
         <div className="flex gap-3 mt-8">
@@ -344,7 +385,7 @@ export function AddCardView() {
             disabled={saving}
             className="flex-1 py-3 rounded-xl text-sm font-semibold bg-[var(--accent)] hover:opacity-90 disabled:opacity-40 text-white shadow-lg shadow-orange-500/20 transition-all"
           >
-            {saving ? 'Enregistrement…' : 'Enregistrer la carte'}
+            {saving ? saveStep || 'Enregistrement…' : 'Enregistrer la carte'}
           </button>
         </div>
       </div>

@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import type { Card, CardType, GradingCompany, GradingStatus } from '../../types';
 import { CardBadge } from './CardBadge';
+import { GradingBadge } from './GradingBadge';
 import { StatusBadge } from './StatusBadge';
 import { useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { useIdentify } from '../../hooks/useIdentify';
@@ -165,6 +166,13 @@ export function CardDetail({ card, onClose }: Props) {
     purchase_price: card.purchase_price?.toString() ?? '',
     price: card.price?.toString() ?? '',
     vinted_url: card.vinted_url ?? '',
+    grading_company: card.grading_company ?? '',
+    grading_status: card.grading_status ?? 'submitted',
+    grading_grade: card.grading_grade ?? '',
+    grading_cert: card.grading_cert ?? '',
+    grading_submitted_at: card.grading_submitted_at?.slice(0, 10) ?? '',
+    grading_returned_at: card.grading_returned_at?.slice(0, 10) ?? '',
+    grading_cost: card.grading_cost?.toString() ?? '',
   });
 
   function set(key: keyof typeof fields, value: string) {
@@ -180,6 +188,13 @@ export function CardDetail({ card, onClose }: Props) {
       purchase_price: fields.purchase_price ? parseFloat(fields.purchase_price) : null,
       price: fields.price ? parseFloat(fields.price) : null,
       vinted_url: fields.vinted_url || null,
+      grading_company: (fields.grading_company || null) as GradingCompany | null,
+      grading_status: (fields.grading_status || null) as GradingStatus | null,
+      grading_grade: fields.grading_grade || null,
+      grading_cert: fields.grading_cert || null,
+      grading_submitted_at: fields.grading_submitted_at || null,
+      grading_returned_at: fields.grading_returned_at || null,
+      grading_cost: fields.grading_cost ? parseFloat(fields.grading_cost) : null,
     });
     setSaving(false);
     setEditing(false);
@@ -309,7 +324,7 @@ export function CardDetail({ card, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="rounded-t-3xl sm:rounded-3xl w-full sm:max-w-3xl overflow-hidden max-h-[90vh] flex flex-col"
+        className="rounded-t-3xl sm:rounded-3xl w-full sm:max-w-3xl overflow-hidden max-h-[90vh] flex flex-col min-h-0"
         style={{ background: 'var(--bg-primary)', border: '1px solid rgba(255,255,255,0.1)' }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -382,6 +397,7 @@ export function CardDetail({ card, onClose }: Props) {
             <div className="flex flex-wrap gap-1.5">
               <CardBadge type={card.card_type} />
               <StatusBadge status={card.status} />
+              {card.grading_company && <GradingBadge card={card} />}
               {card.numbered && (
                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md" style={{ background: 'rgba(245,166,35,0.12)', color: 'var(--accent)', border: '1px solid rgba(245,166,35,0.2)' }}>
                   {card.numbered}
@@ -409,7 +425,7 @@ export function CardDetail({ card, onClose }: Props) {
         </div>
 
         {/* Body */}
-        <div className="overflow-y-auto flex-1 p-5">
+        <div className="overflow-y-auto flex-1 min-h-0 p-5">
           {!editing ? (
             /* View mode */
             <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm mb-5">
@@ -419,6 +435,7 @@ export function CardDetail({ card, onClose }: Props) {
                 ['Set', card.set_name],
                 ['Insert', card.insert_name],
                 ['Parallel', card.parallel_name],
+                ['Grading', card.grading_company ? `${card.grading_company}${card.grading_status ? ` - ${GRADING_STATUS_LABELS[card.grading_status]}` : ''}${card.grading_grade ? ` - ${card.grading_grade}` : ''}` : null],
                 ['N° carte', card.card_number],
                 ['État', card.condition_notes || 'Mint'],
                 ['Prix achat', card.purchase_price != null ? `${card.purchase_price} €` : null],
@@ -434,7 +451,74 @@ export function CardDetail({ card, onClose }: Props) {
             </div>
           ) : (
             /* Edit mode */
-            <div className="grid grid-cols-2 gap-3 mb-5">
+            <div className="mb-5">
+              <div
+                className="rounded-2xl p-3 mb-3"
+                style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}
+              >
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+                      Grading
+                    </p>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                      PSA visible ici, sans scroll.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => setShowGrading((v) => !v)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
+                    style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                  >
+                    {showGrading ? 'Masquer détails' : 'Plus d’options'}
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Société</label>
+                    <select className={inputClass} style={inputStyle} value={fields.grading_company} onChange={(e) => set('grading_company', e.target.value)}>
+                      <option value="">—</option>
+                      {GRADING_COMPANIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Statut</label>
+                    <select className={inputClass} style={inputStyle} value={fields.grading_status} onChange={(e) => set('grading_status', e.target.value)}>
+                      {(Object.entries(GRADING_STATUS_LABELS) as [GradingStatus, string][]).map(([k, v]) => (
+                        <option key={k} value={k}>{v}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Note</label>
+                    <input className={inputClass} style={inputStyle} value={fields.grading_grade} onChange={(e) => set('grading_grade', e.target.value)} placeholder="ex: 10" />
+                  </div>
+                </div>
+
+                {showGrading && (
+                  <div className="grid grid-cols-2 gap-3 mt-3">
+                    <div>
+                      <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>N° certificat</label>
+                      <input className={inputClass} style={inputStyle} value={fields.grading_cert} onChange={(e) => set('grading_cert', e.target.value)} placeholder="ex: 12345678" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Coût grading (€)</label>
+                      <input type="number" className={inputClass} style={inputStyle} value={fields.grading_cost} onChange={(e) => set('grading_cost', e.target.value)} placeholder="0" />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Date d'envoi</label>
+                      <input type="date" className={inputClass} style={inputStyle} value={fields.grading_submitted_at} onChange={(e) => set('grading_submitted_at', e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Date de retour</label>
+                      <input type="date" className={inputClass} style={inputStyle} value={fields.grading_returned_at} onChange={(e) => set('grading_returned_at', e.target.value)} />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
               {([
                 ['player', 'Joueur'],
                 ['team', 'Équipe'],
@@ -502,6 +586,7 @@ export function CardDetail({ card, onClose }: Props) {
                 >
                   {saving ? 'Enregistrement…' : 'Enregistrer'}
                 </button>
+              </div>
               </div>
             </div>
           )}
