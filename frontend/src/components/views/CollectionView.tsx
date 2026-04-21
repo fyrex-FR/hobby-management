@@ -7,9 +7,9 @@ import {
   useReactTable,
   type SortingState,
 } from '@tanstack/react-table';
-import { useCards, useDeleteCard } from '../../hooks/useCards';
+import { useCards, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { useAppStore } from '../../stores/appStore';
-import type { Card, CardStatus } from '../../types';
+import type { Card, CardStatus, CardType } from '../../types';
 import { CardBadge } from '../shared/CardBadge';
 import { GradingBadge } from '../shared/GradingBadge';
 import { StatusBadge } from '../shared/StatusBadge';
@@ -18,6 +18,23 @@ import { RookieBadge } from '../shared/RookieBadge';
 
 type FilterTab = 'all' | 'a_vendre' | 'vendu';
 type GroupBy = 'none' | 'player' | 'team' | 'brand' | 'set_name' | 'year';
+
+const CARD_TYPE_OPTIONS: { value: CardType; label: string }[] = [
+  { value: 'base', label: 'Base' },
+  { value: 'insert', label: 'Insert' },
+  { value: 'parallel', label: 'Parallel' },
+  { value: 'numbered', label: 'Numbered' },
+  { value: 'auto', label: 'Auto' },
+  { value: 'patch', label: 'Patch' },
+  { value: 'auto_patch', label: 'Auto/Patch' },
+];
+
+const STATUS_OPTIONS: { value: CardStatus; label: string }[] = [
+  { value: 'collection', label: 'Collection' },
+  { value: 'a_vendre', label: 'À vendre' },
+  { value: 'reserve', label: 'Réservé' },
+  { value: 'vendu', label: 'Vendu' },
+];
 
 declare module '@tanstack/react-table' {
   interface ColumnMeta<TData, TValue> {
@@ -51,6 +68,106 @@ function TableActions({ card, onEdit }: { card: Card; onEdit: () => void }) {
   );
 }
 
+function QuickRookieToggle({ card }: { card: Card }) {
+  const updateCard = useUpdateCard();
+  const saving = updateCard.isPending;
+
+  return (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        updateCard.mutate({ id: card.id, is_rookie: !card.is_rookie });
+      }}
+      disabled={saving}
+      className="transition-all"
+      title={card.is_rookie ? 'Retirer RC' : 'Marquer RC'}
+      style={{ opacity: saving ? 0.6 : 1 }}
+    >
+      {card.is_rookie ? (
+        <RookieBadge compact />
+      ) : (
+        <span
+          className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold"
+          style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}
+        >
+          RC
+        </span>
+      )}
+    </button>
+  );
+}
+
+function QuickTypeSelect({ card }: { card: Card }) {
+  const updateCard = useUpdateCard();
+
+  return (
+    <select
+      value={card.card_type ?? ''}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => updateCard.mutate({ id: card.id, card_type: (e.target.value || null) as CardType | null })}
+      className="rounded-lg px-2 py-1 text-[11px] font-medium outline-none transition-all min-w-[108px]"
+      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+    >
+      <option value="">—</option>
+      {CARD_TYPE_OPTIONS.map((option) => (
+        <option key={option.value} value={option.value}>{option.label}</option>
+      ))}
+    </select>
+  );
+}
+
+function QuickStatusSelect({ card }: { card: Card }) {
+  const updateCard = useUpdateCard();
+
+  return (
+    <select
+      value={card.status}
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => updateCard.mutate({ id: card.id, status: e.target.value as CardStatus })}
+      className="rounded-lg px-2 py-1 text-[11px] font-medium outline-none transition-all min-w-[118px]"
+      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+    >
+      {STATUS_OPTIONS.map((option) => (
+        <option key={option.value} value={option.value}>{option.label}</option>
+      ))}
+    </select>
+  );
+}
+
+function QuickParallelInput({ card }: { card: Card }) {
+  const updateCard = useUpdateCard();
+  const [value, setValue] = useState(card.parallel_name && card.parallel_name !== 'Base' ? card.parallel_name : '');
+
+  useEffect(() => {
+    setValue(card.parallel_name && card.parallel_name !== 'Base' ? card.parallel_name : '');
+  }, [card.parallel_name]);
+
+  async function save() {
+    const normalized = value.trim();
+    const current = card.parallel_name && card.parallel_name !== 'Base' ? card.parallel_name : '';
+    if (normalized === current) return;
+    await updateCard.mutateAsync({ id: card.id, parallel_name: normalized || null });
+  }
+
+  return (
+    <input
+      value={value}
+      placeholder="Parallel"
+      onClick={(e) => e.stopPropagation()}
+      onChange={(e) => setValue(e.target.value)}
+      onBlur={() => { void save(); }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          (e.currentTarget as HTMLInputElement).blur();
+        }
+      }}
+      className="w-full rounded-lg px-2 py-1 text-[11px] outline-none transition-all"
+      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--accent)' }}
+    />
+  );
+}
+
 const columnHelper = createColumnHelper<Card>();
 
 function buildColumns(onEdit: (card: Card) => void) {
@@ -60,10 +177,10 @@ function buildColumns(onEdit: (card: Card) => void) {
       cell: (info) => {
         const card = info.row.original;
         return (
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-3">
             {card.image_front_url
-              ? <img src={card.image_front_url} alt="" className="w-7 h-9 object-contain rounded shrink-0" />
-              : <div className="w-7 h-9 rounded shrink-0 flex items-center justify-center text-xs" style={{ background: 'var(--bg-elevated)' }}>🃏</div>
+              ? <img src={card.image_front_url} alt="" className="w-10 h-14 object-contain rounded-md shrink-0" />
+              : <div className="w-10 h-14 rounded-md shrink-0 flex items-center justify-center text-sm" style={{ background: 'var(--bg-elevated)' }}>🃏</div>
             }
             <div>
               <div className="font-medium text-sm whitespace-nowrap">{info.getValue() ?? '—'}</div>
@@ -75,14 +192,14 @@ function buildColumns(onEdit: (card: Card) => void) {
     }),
     columnHelper.display({
       id: 'icons',
-      header: '',
+      header: 'RC',
       cell: (info) => {
         const card = info.row.original;
         const isAuto = card.card_type === 'auto' || card.card_type === 'auto_patch';
         const isPatch = card.card_type === 'patch' || card.card_type === 'auto_patch';
         return (
-          <div className="flex items-center gap-1">
-            {card.is_rookie && <RookieBadge compact />}
+          <div className="flex items-center gap-1.5">
+            <QuickRookieToggle card={card} />
             {card.grading_company && (
               <GradingBadge card={card} compact />
             )}
@@ -108,11 +225,10 @@ function buildColumns(onEdit: (card: Card) => void) {
       header: 'Set',
       cell: (info) => {
         const card = info.row.original;
-        const parallel = card.parallel_name && card.parallel_name !== 'Base' ? card.parallel_name : null;
         return (
-          <div className="min-w-0">
-            <div className="text-xs whitespace-nowrap">{info.getValue() ?? <span style={{ color: 'var(--text-muted)' }}>—</span>}</div>
-            {parallel && <div className="text-[11px] whitespace-nowrap" style={{ color: 'var(--accent)' }}>{parallel}</div>}
+          <div className="min-w-0 w-[210px]">
+            <div className="text-xs whitespace-nowrap mb-1">{info.getValue() ?? <span style={{ color: 'var(--text-muted)' }}>—</span>}</div>
+            <QuickParallelInput card={card} />
           </div>
         );
       },
@@ -120,12 +236,12 @@ function buildColumns(onEdit: (card: Card) => void) {
     }),
     columnHelper.accessor('card_type', {
       header: 'Type',
-      cell: (info) => <CardBadge type={info.getValue() ?? null} />,
+      cell: (info) => <QuickTypeSelect card={info.row.original} />,
       meta: { mobileHide: true },
     }),
     columnHelper.accessor('status', {
       header: 'Statut',
-      cell: (info) => <StatusBadge status={info.getValue()} />,
+      cell: (info) => <QuickStatusSelect card={info.row.original} />,
     }),
     columnHelper.accessor('purchase_price', {
       header: 'Achat',
@@ -348,7 +464,7 @@ function TableView({ table, onRowClick }: { table: ReturnType<typeof useReactTab
               {row.getVisibleCells().map((cell) => {
                 if (isMobile && (cell.column.columnDef.meta as any)?.mobileHide) return null;
                 return (
-                  <td key={cell.id} className="px-3 py-2.5 text-[var(--text-primary)]">
+                  <td key={cell.id} className="px-3 py-3 text-[var(--text-primary)] align-middle">
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
                   </td>
                 );
