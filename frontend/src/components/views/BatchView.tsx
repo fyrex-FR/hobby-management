@@ -12,8 +12,6 @@ import {
   Info,
   Layers,
   ArrowRight,
-  X,
-  CreditCard,
   History
 } from 'lucide-react';
 import { compressImage } from '../../lib/storage';
@@ -166,11 +164,7 @@ export function BatchView() {
   const [unpaired, setUnpaired] = useState<string>('');
   const [results, setResults] = useState<PairResult[]>([]);
   const [running, setRunning] = useState(false);
-  const [summary, setSummary] = useState('');
-  const [draftCount, setDraftCount] = useState(0);
   const [quota, setQuota] = useState<QuotaInfo | null>(null);
-  const [retryingIndexes, setRetryingIndexes] = useState<number[]>([]);
-  const [retryingAll, setRetryingAll] = useState(false);
   const { data: existingCards = [] } = useCards();
   const createCard = useCreateCard();
   const deleteCard = useDeleteCard();
@@ -199,8 +193,6 @@ export function BatchView() {
     setPairs(newPairs);
     setUnpaired(unpairedStr);
     setResults(newPairs.map((pair) => ({ pair, status: 'pending' })));
-    setSummary('');
-    setDraftCount(0);
   }
 
   function handleFiles(e: React.ChangeEvent<HTMLInputElement>) {
@@ -229,17 +221,6 @@ export function BatchView() {
     setResults((prev) => prev.map((r, i) => (i === index ? { ...r, ...update } : r)));
   }
 
-  function buildSummaryFromResults(nextResults: PairResult[]) {
-    const success = nextResults.filter((r) => r.status === 'done').length;
-    const skipped = nextResults.filter((r) => r.status === 'skipped').length;
-    const errors = nextResults.filter((r) => r.status === 'error').length;
-
-    return (
-      `${success} carte(s) traitées` +
-      (skipped > 0 ? ` · ${skipped} doublons` : '') +
-      (errors > 0 ? ` · ${errors} erreurs` : '')
-    );
-  }
 
   function currentKnownNames() {
     const knownNames = new Set<string>();
@@ -262,7 +243,6 @@ export function BatchView() {
     }
 
     let createdCardId: string | null = null;
-    let failedStep = 'identification';
 
     try {
       onStep?.('Optimisation');
@@ -280,7 +260,6 @@ export function BatchView() {
       if (!identResp.ok) throw new Error(`Identify: ${await identResp.text()}`);
       const ai: AIIdentificationResult = await identResp.json();
 
-      failedStep = 'création du brouillon';
       onStep?.('Extraction');
       const newCard = await createCard.mutateAsync({
         player: ai.player || null,
@@ -315,14 +294,12 @@ export function BatchView() {
         return (await r.json()).url;
       }
 
-      failedStep = 'upload des images';
       onStep?.('Stockage Cloud');
       const [image_front_url, image_back_url] = await Promise.all([
         upload(pair.front, 'front'),
         upload(pair.back, 'back'),
       ]);
 
-      failedStep = 'enregistrement final';
       onStep?.('Finalisation');
       await updateCard.mutateAsync({
         id: newCard.id,
@@ -349,19 +326,15 @@ export function BatchView() {
   async function runBatch() {
     if (running || pairs.length === 0) return;
     setRunning(true);
-    setSummary('');
-    setDraftCount(0);
 
     const { data } = await supabase.auth.getSession();
     const token = data.session?.access_token;
     const userId = data.session?.user?.id;
     if (!token || !userId) {
-      setSummary('Non authentifié.');
       setRunning(false);
       return;
     }
 
-    const currentResults = [...results];
 
     for (let i = 0; i < pairs.length; i++) {
       // Filter out already done ones or those we might want to skip? 
@@ -370,13 +343,11 @@ export function BatchView() {
       const result = await processPair(i, token, (step) => updateResult(i, { status: 'running', step, error: undefined }));
       updateResult(i, result);
 
-      if (result.status === 'done') setDraftCount((n) => n + 1);
 
       if (i + 1 < pairs.length) await sleep(PAIR_DELAY_MS);
     }
 
     setRunning(false);
-    setSummary('Importation terminée');
   }
 
   async function retryPair(index: number) {
@@ -384,13 +355,10 @@ export function BatchView() {
     const token = data.session?.access_token;
     if (!token) return;
 
-    setRetryingIndexes((prev) => [...prev, index]);
     updateResult(index, { status: 'running', step: 'Retry…', error: undefined });
 
     const result = await processPair(index, token, (step) => updateResult(index, { status: 'running', step, error: undefined }));
-    updateResult(index, result);
-    if (result.status === 'done') setDraftCount((n) => n + 1);
-    setRetryingIndexes((prev) => prev.filter((i) => i !== index));
+    setResults((prev) => prev.map((r, i) => (i === index ? { ...r, ...result } : r)));
   }
 
   async function retryFailedPairs() {
@@ -401,19 +369,13 @@ export function BatchView() {
     const token = data.session?.access_token;
     if (!token) return;
 
-    setRetryingAll(true);
-    setRetryingIndexes(failedIndexes);
-
     for (let pos = 0; pos < failedIndexes.length; pos++) {
       const index = failedIndexes[pos];
       updateResult(index, { status: 'running', step: 'Retry…', error: undefined });
       const result = await processPair(index, token, (step) => updateResult(index, { status: 'running', step, error: undefined }));
       updateResult(index, result);
-      if (result.status === 'done') setDraftCount((n) => n + 1);
-      setRetryingIndexes((prev) => prev.filter((i) => i !== index));
       if (pos + 1 < failedIndexes.length) await sleep(PAIR_DELAY_MS);
     }
-    setRetryingAll(false);
   }
 
   const doneCount = results.filter((r) => r.status === 'done').length;
@@ -521,9 +483,9 @@ export function BatchView() {
                             </button>
                           )}
                           <div className={`px-2 py-1 rounded-md text-[9px] font-black tracking-widest ${r.status === 'done' ? 'bg-green-500/20 text-green-400' :
-                              r.status === 'error' ? 'bg-red-500/20 text-red-400' :
-                                r.status === 'running' ? 'bg-[var(--accent-dim)] text-[var(--accent)] animate-pulse' :
-                                  'bg-white/5 text-white/20'
+                            r.status === 'error' ? 'bg-red-500/20 text-red-400' :
+                              r.status === 'running' ? 'bg-[var(--accent-dim)] text-[var(--accent)] animate-pulse' :
+                                'bg-white/5 text-white/20'
                             }`}>
                             {statusMeta(r.status).label}
                           </div>
@@ -585,14 +547,12 @@ export function BatchView() {
                     </div>
                   )}
 
-                  {!running && !isFinished && (
-                    <button
-                      onClick={runBatch}
-                      className="w-full py-4 rounded-2xl bg-[var(--accent)] border border-[var(--border-accent)] text-[#09090B] text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-xl shadow-[var(--accent-glow)] hover:brightness-110 active:scale-[0.98] transition-all"
-                    >
-                      Lancer l'Analyse <ArrowRight size={16} />
-                    </button>
-                  )}
+                  <button
+                    onClick={runBatch}
+                    className="w-full py-4 rounded-2xl bg-[var(--accent)] border border-[var(--border-accent)] text-[#09090B] text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-xl shadow-[var(--accent-glow)] hover:brightness-110 active:scale-[0.98] transition-all"
+                  >
+                    Lancer l'Analyse <ArrowRight size={16} />
+                  </button>
 
                   {isFinished && (
                     <button
@@ -614,7 +574,7 @@ export function BatchView() {
             </div>
 
             {isFinished && (
-              <div className="panel p-6 rounded-[32px] bg-[var(--accent-dim)] border border-[var(--border-accent)]">
+              <div className="panel p-6 rounded-[32px] bg-[var(--accent-dim)] border border-[var(--border-accent)] mt-4">
                 <div className="flex items-center gap-3 mb-2">
                   <div className="w-8 h-8 rounded-lg bg-[var(--accent)] flex items-center justify-center text-[#09090B]">
                     <CheckCircle2 size={16} />

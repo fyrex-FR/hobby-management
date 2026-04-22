@@ -15,9 +15,8 @@ import {
   Hash,
   Tag,
   Clock,
-  ExternalLink,
-  Save,
-  ArrowRight
+  ArrowRight,
+  RefreshCw
 } from 'lucide-react';
 import { useCards, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { useAppStore } from '../../stores/appStore';
@@ -254,8 +253,8 @@ function DraftEditor({
               <button
                 type="button"
                 className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl border transition-all ${fields.is_rookie
-                    ? 'bg-[var(--accent-dim)] border-[var(--border-accent)] text-[var(--accent)]'
-                    : 'bg-white/5 border-white/10 text-white/40'
+                  ? 'bg-[var(--accent-dim)] border-[var(--border-accent)] text-[var(--accent)]'
+                  : 'bg-white/5 border-white/10 text-white/40'
                   }`}
                 onClick={() => set('is_rookie', !fields.is_rookie)}
               >

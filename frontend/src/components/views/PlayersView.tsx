@@ -4,22 +4,18 @@ import {
   Users,
   ChevronRight,
   Search,
-  Trophy,
   Star,
   Euro,
   Hash,
   Layers,
-  ExternalLink,
-  ChevronLeft,
   X,
-  Clock,
-  TrendingUp,
   User as UserIcon,
-  Library
+  Library,
+  RefreshCw
 } from 'lucide-react';
 import { useCards } from '../../hooks/useCards';
 import { useAppStore } from '../../stores/appStore';
-import type { Card, CardType } from '../../types';
+import type { Card } from '../../types';
 import { CardDetail } from '../shared/CardDetail';
 
 interface PlayerStats {
@@ -94,10 +90,6 @@ const TYPE_COLORS: Record<string, string> = {
   patch: '#ef4444',
   auto_patch: '#f59e0b',
 };
-const TYPE_LABELS: Record<string, string> = {
-  base: 'Base', insert: 'Insert', parallel: 'Parallel', numbered: 'Numbered',
-  auto: 'Auto', patch: 'Patch', auto_patch: 'Auto/Patch',
-};
 
 function StatCard({ label, value, icon: Icon, accent }: { label: string; value: string | number; icon: any; accent?: boolean }) {
   return (
@@ -112,7 +104,6 @@ function StatCard({ label, value, icon: Icon, accent }: { label: string; value: 
 }
 
 function PlayerRow({ stats, onClick }: { stats: PlayerStats; onClick: () => void }) {
-  const maxType = Object.entries(stats.byType).sort((a, b) => b[1] - a[1])[0];
 
   return (
     <motion.button
@@ -369,6 +360,3 @@ export function PlayersView() {
   );
 }
 
-function RefreshCw({ size, className }: { size?: number, className?: string }) {
-  return <Clock size={size} className={className} />; // Shim if not imported properly
-}

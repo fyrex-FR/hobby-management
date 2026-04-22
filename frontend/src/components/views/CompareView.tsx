@@ -5,7 +5,6 @@ import {
   ChevronLeft,
   Zap,
   Scale,
-  TrendingUp,
   RefreshCw,
   CheckCircle2,
   XCircle,
@@ -13,13 +12,10 @@ import {
   Layers,
   Sparkles,
   Camera,
-  ArrowRight,
   Hash,
   Star,
-  Euro,
   Tag,
-  Clock,
-  X
+  Clock
 } from 'lucide-react';
 import { useAppStore } from '../../stores/appStore';
 import { apiFetch } from '../../api/client';
@@ -379,8 +375,8 @@ export function CompareView() {
               onClick={handleCompare}
               disabled={!canCompare || loading}
               className={`w-full py-5 rounded-[24px] text-xs font-black uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3 shadow-xl ${!canCompare || loading
-                  ? 'bg-white/5 text-white/20 border border-white/5 cursor-not-allowed'
-                  : 'bg-[var(--accent)] border border-[var(--border-accent)] text-[#09090B] shadow-[var(--accent-glow)] hover:brightness-110 active:scale-95'
+                ? 'bg-white/5 text-white/20 border border-white/5 cursor-not-allowed'
+                : 'bg-[var(--accent)] border border-[var(--border-accent)] text-[#09090B] shadow-[var(--accent-glow)] hover:brightness-110 active:scale-95'
                 }`}
             >
               {loading ? <RefreshCw size={20} className="animate-spin" /> : <Zap size={20} />}

@@ -3,24 +3,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Trophy,
   Clock,
-  ChevronRight,
-  Plus,
-  Search,
-  Filter,
   Edit3,
-  Calendar,
-  Euro,
-  User,
-  Hash,
-  ChevronLeft,
   X,
   CreditCard,
-  Building
+  Building,
+  RefreshCw
 } from 'lucide-react';
 import { useCards, useUpdateCard } from '../../hooks/useCards';
 import type { Card, GradingCompany, GradingStatus } from '../../types';
 import { CardDetail } from '../shared/CardDetail';
-import { StatusBadge as GenericStatusBadge } from '../shared/StatusBadge';
 
 const GRADING_COMPANIES: GradingCompany[] = ['PSA', 'BGS', 'SGC', 'CGC', 'HGA'];
 

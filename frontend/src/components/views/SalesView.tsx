@@ -4,24 +4,20 @@ import {
   TrendingUp,
   DollarSign,
   CheckCircle2,
-  Clock,
   ShoppingBag,
   ArrowUpRight,
   ArrowDownRight,
   BarChart3,
-  ChevronRight,
   Tag,
-  Euro,
   Target,
   LineChart,
   PackageCheck,
   PackageOpen,
   Filter,
   Check,
-  Search
+  RefreshCw
 } from 'lucide-react';
 import { useCards, useUpdateCard } from '../../hooks/useCards';
-import { useAppStore } from '../../stores/appStore';
 import type { Card } from '../../types';
 import { CardDetail } from '../shared/CardDetail';
 
