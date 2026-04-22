@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
+  Archive,
   Camera,
   CameraOff,
   CheckCircle2,
   ChevronLeft,
   ImagePlus,
+  Keyboard,
   RefreshCw,
   RotateCcw,
   Sparkles,
+  Trash2,
   Upload,
 } from 'lucide-react';
 import { compressImage } from '../../lib/storage';
@@ -22,6 +25,7 @@ const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
 type CaptureSide = 'front' | 'back';
 type StudioStep = 'front' | 'back' | 'ready' | 'saving';
+type CapturedPair = { id: string; front: File; back: File };
 
 type ImageCaptureLike = {
   takePhoto: () => Promise<Blob>;
@@ -117,6 +121,7 @@ export function StudioView() {
 
   const [frontFile, setFrontFile] = useState<File | null>(null);
   const [backFile, setBackFile] = useState<File | null>(null);
+  const [capturedPairs, setCapturedPairs] = useState<CapturedPair[]>([]);
   const [step, setStep] = useState<StudioStep>('front');
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState('');
@@ -180,11 +185,16 @@ export function StudioView() {
     };
   }, [facingMode]);
 
-  function resetSession() {
+  function resetCurrentPair() {
     setFrontFile(null);
     setBackFile(null);
     setStep('front');
     setSaveError('');
+  }
+
+  function resetSession() {
+    resetCurrentPair();
+    setCapturedPairs([]);
     setSaveMessage('');
   }
 
@@ -222,6 +232,20 @@ export function StudioView() {
     setStep('back');
   }
 
+  function queueCurrentPair() {
+    if (!frontFile || !backFile) return;
+    setCapturedPairs((prev) => [
+      ...prev,
+      { id: `${Date.now()}-${prev.length}`, front: frontFile, back: backFile },
+    ]);
+    resetCurrentPair();
+    setSaveMessage('Paire ajoutée au lot.');
+  }
+
+  function removePair(id: string) {
+    setCapturedPairs((prev) => prev.filter((pair) => pair.id !== id));
+  }
+
   async function uploadViaBackend(file: File, cardId: string, token: string, side: CaptureSide): Promise<string> {
     const blob = await compressImage(file);
     const form = new FormData();
@@ -237,21 +261,11 @@ export function StudioView() {
     return (await response.json()).url;
   }
 
-  async function handleCreateDraft(continueAfterSave: boolean) {
-    if (!frontFile || !backFile) return;
-
-    setStep('saving');
-    setSaveError('');
-    setSaveMessage('Analyse IA…');
+  async function createDraftFromPair(pair: CapturedPair, token: string) {
     let createdCardId: string | null = null;
 
     try {
-      const identifyResult = await identify.mutateAsync({ frontFile, backFile });
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
-      if (!token) throw new Error('Non authentifié');
-
-      setSaveMessage('Création du brouillon…');
+      const identifyResult = await identify.mutateAsync({ frontFile: pair.front, backFile: pair.back });
       const newCard = await createCard.mutateAsync({
         player: identifyResult.player || null,
         team: identifyResult.team || null,
@@ -270,38 +284,58 @@ export function StudioView() {
       });
       createdCardId = newCard.id;
 
-      setSaveMessage('Upload des photos…');
       const [image_front_url, image_back_url] = await Promise.all([
-        uploadViaBackend(frontFile, newCard.id, token, 'front'),
-        uploadViaBackend(backFile, newCard.id, token, 'back'),
+        uploadViaBackend(pair.front, newCard.id, token, 'front'),
+        uploadViaBackend(pair.back, newCard.id, token, 'back'),
       ]);
 
-      setSaveMessage('Finalisation…');
       await updateCard.mutateAsync({
         id: newCard.id,
         image_front_url,
         image_back_url,
       });
-
-      if (continueAfterSave) {
-        resetSession();
-        setSaveMessage('Brouillon créé. Carte suivante.');
-      } else {
-        setActiveView('review');
-      }
     } catch (error) {
       const message = (error as Error).message;
       if (createdCardId) {
         try {
           await deleteCard.mutateAsync(createdCardId);
         } catch {
-          setSaveError(`Échec pendant le studio photo. La carte a peut-être été créée partiellement. Détail: ${message}`);
-          setStep('ready');
-          return;
+          throw new Error(`Échec pendant le studio photo. La carte a peut-être été créée partiellement. Détail: ${message}`);
         }
       }
-      setSaveError(message);
-      setStep('ready');
+      throw error;
+    }
+  }
+
+  async function handleProcessBatch(openReviewAfterSave: boolean) {
+    const pairsToProcess = [
+      ...capturedPairs,
+      ...(frontFile && backFile ? [{ id: 'current', front: frontFile, back: backFile }] : []),
+    ];
+    if (pairsToProcess.length === 0) return;
+
+    setStep('saving');
+    setSaveError('');
+
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) throw new Error('Non authentifié');
+
+      for (let index = 0; index < pairsToProcess.length; index += 1) {
+        setSaveMessage(`Traitement du lot ${index + 1}/${pairsToProcess.length}…`);
+        await createDraftFromPair(pairsToProcess[index], token);
+      }
+
+      resetSession();
+      if (openReviewAfterSave) {
+        setActiveView('review');
+      } else {
+        setSaveMessage(`${pairsToProcess.length} brouillon${pairsToProcess.length > 1 ? 's' : ''} créé${pairsToProcess.length > 1 ? 's' : ''}.`);
+      }
+    } catch (error) {
+      setSaveError((error as Error).message);
+      setStep(frontFile && backFile ? 'ready' : 'front');
     }
   }
 
@@ -315,7 +349,7 @@ export function StudioView() {
   const primaryDisabled = !!cameraError || !cameraReady || isBusy;
   const primaryAction =
     step === 'ready'
-      ? { label: 'Créer le brouillon et continuer', icon: Upload, onClick: () => handleCreateDraft(true) }
+      ? { label: 'Ajouter la paire au lot', icon: Archive, onClick: queueCurrentPair }
       : {
           label: step === 'front' ? 'Capturer le recto' : 'Capturer le verso',
           icon: Camera,
@@ -328,8 +362,37 @@ export function StudioView() {
       : step === 'back'
         ? '2/2 • Retourne la carte puis capture'
         : step === 'ready'
-          ? 'Paire prête • crée le brouillon ou reprends une photo'
+          ? 'Paire prête • ajoute-la au lot ou reprends une photo'
           : 'Enregistrement en cours…';
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName ?? '';
+      if (tagName === 'INPUT' || tagName === 'TEXTAREA' || target?.isContentEditable) return;
+      if (isBusy) return;
+
+      if (event.key === ' ' || event.key === 'Enter') {
+        event.preventDefault();
+        if (!primaryDisabled) primaryAction.onClick();
+        return;
+      }
+
+      if (event.key.toLowerCase() === 'r') {
+        event.preventDefault();
+        resetCurrentPair();
+        return;
+      }
+
+      if (event.key === 'Backspace' && capturedPairs.length > 0 && step === 'front') {
+        event.preventDefault();
+        removePair(capturedPairs[capturedPairs.length - 1].id);
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [capturedPairs, isBusy, primaryDisabled, primaryAction, step]);
 
   return (
     <div className="flex-1 overflow-auto bg-[radial-gradient(circle_at_50%_-20%,_var(--accent-dim)_0%,_transparent_70%)]">
@@ -428,16 +491,18 @@ export function StudioView() {
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
                   <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Paire</div>
-                  <div className="mt-1 text-sm font-semibold text-white">Recto / Verso</div>
+                  <div className="mt-1 text-sm font-semibold text-white">
+                    Recto / Verso {capturedPairs.length > 0 ? `• ${capturedPairs.length} en lot` : ''}
+                  </div>
                 </div>
                 {(frontFile || backFile) && (
                   <button
-                    onClick={resetSession}
+                    onClick={resetCurrentPair}
                     disabled={isBusy}
                     className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] sm:text-xs font-bold text-white/75 transition-all hover:bg-white/10"
                   >
                     <RotateCcw size={14} />
-                    Reset
+                    Reset paire
                   </button>
                 )}
               </div>
@@ -472,25 +537,66 @@ export function StudioView() {
             <div className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-4 sm:p-5 space-y-4">
               <div>
                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Actions</div>
-                <div className="mt-1 text-xs sm:text-sm font-semibold text-white">Le bouton principal reste toujours visible en bas.</div>
+                <div className="mt-1 text-xs sm:text-sm font-semibold text-white">
+                  Le bouton principal capture. `Space` / `Enter` marchent aussi avec une télécommande Bluetooth.
+                </div>
               </div>
 
               <button
-                onClick={() => handleCreateDraft(true)}
-                disabled={step !== 'ready' || isBusy}
+                onClick={() => handleProcessBatch(false)}
+                disabled={(capturedPairs.length === 0 && !(frontFile && backFile)) || isBusy}
                 className="flex w-full items-center justify-center gap-3 rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent-dim)] px-4 py-3.5 text-sm font-bold text-[var(--accent)] transition-all disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isBusy && step === 'saving' ? <RefreshCw size={16} className="animate-spin" /> : <Upload size={16} />}
-                Créer le brouillon et continuer
+                Traiter le lot
               </button>
 
               <button
-                onClick={() => handleCreateDraft(false)}
-                disabled={step !== 'ready' || isBusy}
+                onClick={() => handleProcessBatch(true)}
+                disabled={(capturedPairs.length === 0 && !(frontFile && backFile)) || isBusy}
                 className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3.5 text-sm font-bold text-white transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Créer le brouillon et ouvrir la revue
+                Traiter le lot et ouvrir la revue
               </button>
+
+              <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs sm:text-sm text-white/70">
+                <div className="mb-2 flex items-center gap-2 font-semibold text-white">
+                  <Keyboard size={15} className="text-[var(--accent)]" />
+                  Commandes rapides
+                </div>
+                <div>`Space` / `Enter` = action principale</div>
+                <div>`R` = reset paire en cours</div>
+                <div>`Backspace` = supprimer la dernière paire du lot</div>
+              </div>
+
+              {capturedPairs.length > 0 && (
+                <div className="space-y-3">
+                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Lot capturé</div>
+                  <div className="max-h-64 space-y-2 overflow-auto pr-1">
+                    {capturedPairs.map((pair, index) => (
+                      <div
+                        key={pair.id}
+                        className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2.5"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-white">Paire {index + 1}</div>
+                          <div className="truncate text-xs text-white/45">
+                            {pair.front.name} • {pair.back.name}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => removePair(pair.id)}
+                          disabled={isBusy}
+                          className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-300 transition-all hover:bg-red-500/15"
+                        >
+                          <Trash2 size={14} />
+                          Retirer
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {saveMessage && (
                 <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-xs sm:text-sm text-emerald-300">
@@ -520,12 +626,12 @@ export function StudioView() {
             </div>
             {(frontFile || backFile) && (
               <button
-                onClick={resetSession}
+                onClick={resetCurrentPair}
                 disabled={isBusy}
                 className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] sm:text-xs font-bold text-white/75 transition-all hover:bg-white/10"
               >
                 <RotateCcw size={14} />
-                Reset
+                Reset paire
               </button>
             )}
           </div>
@@ -548,11 +654,21 @@ export function StudioView() {
 
           {step === 'ready' && (
             <button
-              onClick={() => handleCreateDraft(false)}
+              onClick={() => handleProcessBatch(false)}
+              disabled={isBusy}
+              className="mt-3 w-full rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent-dim)] px-4 py-3 text-sm font-bold text-[var(--accent)] transition-all hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Traiter le lot maintenant
+            </button>
+          )}
+
+          {(capturedPairs.length > 0 || (frontFile && backFile)) && (
+            <button
+              onClick={() => handleProcessBatch(true)}
               disabled={isBusy}
               className="mt-3 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              Créer le brouillon et ouvrir la revue
+              Traiter le lot et ouvrir la revue
             </button>
           )}
         </div>
