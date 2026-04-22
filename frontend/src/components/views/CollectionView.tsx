@@ -641,7 +641,7 @@ export function CollectionView() {
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-[radial-gradient(circle_at_50%_-20%,_var(--accent-dim)_0%,_transparent_70%)]">
       {/* Toolbar */}
-      <div className="flex flex-col gap-4 px-6 py-5 border-b border-white/5 bg-black/20 backdrop-blur-3xl shrink-0">
+      <div className="flex flex-col gap-4 px-6 py-5 border-b border-white/5 bg-black/20 backdrop-blur-3xl shrink-0 relative z-40">
         {/* Row 1: status tabs + right controls */}
         <div className="flex items-center justify-between gap-4">
           {/* Status tabs */}

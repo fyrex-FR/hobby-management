@@ -555,7 +555,7 @@ export function ShareView({ token }: { token: string }) {
       </header>
 
       <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-10">
-        <div className="flex flex-wrap items-center gap-2 mb-12">
+        <div className="flex flex-wrap items-center gap-2 mb-12 relative z-30">
           <FilterDropdown label="Joueur" items={players} selected={playerFilter} onSelect={setPlayerFilter} />
           <FilterDropdown label="Équipe" items={teams} selected={teamFilter} onSelect={setTeamFilter} />
           <FilterDropdown label="Année" items={years} selected={yearFilter} onSelect={setYearFilter} />
