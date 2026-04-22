@@ -8,6 +8,7 @@ import {
   ImagePlus,
   RefreshCw,
   RotateCcw,
+  Sparkles,
   Upload,
 } from 'lucide-react';
 import { compressImage } from '../../lib/storage';
@@ -311,6 +312,16 @@ export function StudioView() {
     updateCard.isPending ||
     deleteCard.isPending;
 
+  const primaryDisabled = !!cameraError || !cameraReady || isBusy;
+  const primaryAction =
+    step === 'ready'
+      ? { label: 'Créer le brouillon et continuer', icon: Upload, onClick: () => handleCreateDraft(true) }
+      : {
+          label: step === 'front' ? 'Capturer le recto' : 'Capturer le verso',
+          icon: Camera,
+          onClick: handleCapture,
+        };
+
   const stepLabel =
     step === 'front'
       ? '1/2 • Place le recto puis capture'
@@ -325,19 +336,19 @@ export function StudioView() {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="mx-auto max-w-7xl px-6 py-10"
+        className="mx-auto max-w-7xl px-4 sm:px-6 py-5 sm:py-10 pb-36"
       >
-        <div className="mb-8 flex items-center justify-between gap-6">
-          <div className="flex items-center gap-4">
+        <div className="mb-4 sm:mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+          <div className="flex items-start gap-3 sm:items-center sm:gap-4">
             <button
               onClick={() => setActiveView('collection')}
-              className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-[var(--text-muted)] transition-all hover:bg-white/10 hover:text-white active:scale-90"
+              className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-[var(--text-muted)] transition-all hover:bg-white/10 hover:text-white active:scale-90"
             >
               <ChevronLeft size={20} />
             </button>
-            <div>
-              <h2 className="text-2xl font-black tracking-tight text-white">Studio photo</h2>
-              <p className="text-sm font-medium text-[var(--text-muted)]">
+            <div className="min-w-0">
+              <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white">Studio photo</h2>
+              <p className="text-xs sm:text-sm font-medium text-[var(--text-muted)]">
                 Photos propres pour la vente, puis brouillon IA sans quitter l’app.
               </p>
             </div>
@@ -345,7 +356,7 @@ export function StudioView() {
 
           <button
             onClick={() => setFacingMode((value) => (value === 'environment' ? 'user' : 'environment'))}
-            className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-white/10"
+            className="inline-flex items-center justify-center gap-2 self-start sm:self-auto rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-white/10"
             disabled={isBusy}
           >
             <RefreshCw size={16} />
@@ -355,17 +366,17 @@ export function StudioView() {
 
         <div className="mb-6 grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_380px]">
           <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-black/30 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-white/5 px-5 py-4">
+            <div className="flex items-center justify-between gap-3 border-b border-white/5 px-4 sm:px-5 py-3 sm:py-4">
               <div>
                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Capture</div>
-                <div className="mt-1 text-sm font-semibold text-white">{stepLabel}</div>
+                <div className="mt-1 text-xs sm:text-sm font-semibold text-white">{stepLabel}</div>
               </div>
-              <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold text-white/70">
+              <div className="shrink-0 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] sm:text-xs font-bold text-white/70">
                 {facingMode === 'environment' ? 'Caméra arrière' : 'Caméra avant'}
               </div>
             </div>
 
-            <div className="relative aspect-[4/3] bg-[#0b0c10]">
+            <div className="relative min-h-[46vh] sm:min-h-0 sm:aspect-[4/3] bg-[#0b0c10]">
               {cameraError ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-8 text-center">
                   <div className="flex h-16 w-16 items-center justify-center rounded-3xl border border-red-500/20 bg-red-500/10 text-red-400">
@@ -379,7 +390,7 @@ export function StudioView() {
               ) : (
                 <>
                   <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(0,0,0,0.30),transparent_20%,transparent_80%,rgba(0,0,0,0.35))]" />
-                  <div className="absolute inset-0 flex items-center justify-center p-5">
+                  <div className="absolute inset-0 flex items-center justify-center p-3 sm:p-5">
                     <div
                       className="relative max-h-full max-w-full overflow-hidden rounded-[1.75rem] border border-white/10 bg-black shadow-2xl"
                       style={{ aspectRatio: cameraAspectRatio, width: '100%', height: '100%' }}
@@ -387,7 +398,7 @@ export function StudioView() {
                       <video ref={videoRef} className="h-full w-full object-cover" autoPlay muted playsInline />
                       <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-[6%]">
                         <div className="relative aspect-[2/3] h-full max-h-full rounded-[2rem] border border-white/70 shadow-[0_0_0_9999px_rgba(0,0,0,0.30)]">
-                          <div className="absolute left-4 top-4 rounded-full bg-black/55 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white/80 backdrop-blur-xl">
+                          <div className="absolute left-3 top-3 rounded-full bg-black/55 px-2.5 py-1 text-[9px] sm:text-[10px] font-black uppercase tracking-[0.18em] text-white/80 backdrop-blur-xl">
                             Cadre réel
                           </div>
                           <div className="absolute inset-3 rounded-[1.6rem] border border-dashed border-white/25" />
@@ -395,17 +406,14 @@ export function StudioView() {
                       </div>
                     </div>
                   </div>
-                  <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 flex-col items-center gap-2">
-                    <div className="rounded-full border border-white/10 bg-black/55 px-4 py-2 text-xs font-semibold text-white/80 backdrop-blur-xl">
-                      Ce cadre correspond maintenant au rendu capturé.
-                    </div>
+                  <div className="absolute bottom-3 sm:bottom-5 left-1/2 flex w-[calc(100%-1.5rem)] sm:w-auto -translate-x-1/2 flex-col items-center gap-2">
                     {cameraResolution && (
-                      <div className="rounded-full border border-white/10 bg-black/55 px-4 py-2 text-xs font-semibold text-white/60 backdrop-blur-xl">
+                      <div className="rounded-full border border-white/10 bg-black/55 px-3 py-1.5 text-[11px] sm:text-xs font-semibold text-white/60 backdrop-blur-xl">
                         Flux caméra: {cameraResolution}
                       </div>
                     )}
                     {!cameraReady && (
-                      <div className="rounded-full border border-white/10 bg-black/55 px-4 py-2 text-xs font-semibold text-white/60 backdrop-blur-xl">
+                      <div className="rounded-full border border-white/10 bg-black/55 px-4 py-2 text-[11px] sm:text-xs font-semibold text-white/60 backdrop-blur-xl">
                         Initialisation caméra…
                       </div>
                     )}
@@ -415,9 +423,9 @@ export function StudioView() {
             </div>
           </section>
 
-          <aside className="space-y-5">
-            <div className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-5">
-              <div className="mb-4 flex items-center justify-between">
+          <aside className="space-y-4 sm:space-y-5">
+            <div className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-4 sm:p-5">
+              <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
                   <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Paire</div>
                   <div className="mt-1 text-sm font-semibold text-white">Recto / Verso</div>
@@ -426,25 +434,25 @@ export function StudioView() {
                   <button
                     onClick={resetSession}
                     disabled={isBusy}
-                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white/75 transition-all hover:bg-white/10"
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] sm:text-xs font-bold text-white/75 transition-all hover:bg-white/10"
                   >
                     <RotateCcw size={14} />
-                    Repartir de zéro
+                    Reset
                   </button>
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-2 gap-3">
                 <PreviewCard label="Recto" file={frontFile} active={step === 'front'} />
                 <PreviewCard label="Verso" file={backFile} active={step === 'back'} />
               </div>
 
-              <div className="mt-4 flex gap-3">
+              <div className="mt-3 flex gap-3">
                 {frontFile && (
                   <button
                     onClick={() => recapture('front')}
                     disabled={isBusy}
-                    className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm font-semibold text-white/80 transition-all hover:bg-white/10"
+                    className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs sm:text-sm font-semibold text-white/80 transition-all hover:bg-white/10"
                   >
                     Reprendre recto
                   </button>
@@ -453,7 +461,7 @@ export function StudioView() {
                   <button
                     onClick={() => recapture('back')}
                     disabled={isBusy}
-                    className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm font-semibold text-white/80 transition-all hover:bg-white/10"
+                    className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs sm:text-sm font-semibold text-white/80 transition-all hover:bg-white/10"
                   >
                     Reprendre verso
                   </button>
@@ -461,21 +469,11 @@ export function StudioView() {
               </div>
             </div>
 
-            <div className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-5 space-y-4">
+            <div className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-4 sm:p-5 space-y-4">
               <div>
                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Actions</div>
-                <div className="mt-1 text-sm font-semibold text-white">Flux pensé pour la vente puis l’IA</div>
+                <div className="mt-1 text-xs sm:text-sm font-semibold text-white">Le bouton principal reste toujours visible en bas.</div>
               </div>
-
-              <button
-                onClick={handleCapture}
-                disabled={!!cameraError || !cameraReady || isBusy || step === 'ready'}
-                className="flex w-full items-center justify-center gap-3 rounded-2xl px-4 py-4 text-base font-black text-[#0d0c0b] transition-all disabled:cursor-not-allowed disabled:opacity-50"
-                style={{ background: 'var(--accent)' }}
-              >
-                {isBusy && step === 'saving' ? <RefreshCw size={18} className="animate-spin" /> : <Camera size={18} />}
-                {step === 'front' ? 'Capturer le recto' : step === 'back' ? 'Capturer le verso' : 'Paire capturée'}
-              </button>
 
               <button
                 onClick={() => handleCreateDraft(true)}
@@ -495,7 +493,7 @@ export function StudioView() {
               </button>
 
               {saveMessage && (
-                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
+                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-xs sm:text-sm text-emerald-300">
                   <div className="flex items-center gap-2 font-semibold">
                     <CheckCircle2 size={16} />
                     {saveMessage}
@@ -504,7 +502,7 @@ export function StudioView() {
               )}
 
               {saveError && (
-                <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs sm:text-sm text-red-300">
                   {saveError}
                 </div>
               )}
@@ -512,6 +510,53 @@ export function StudioView() {
           </aside>
         </div>
       </motion.div>
+
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 px-4 pb-4">
+        <div className="pointer-events-auto mx-auto max-w-3xl rounded-[1.75rem] border border-white/10 bg-black/65 p-3 shadow-2xl backdrop-blur-2xl">
+          <div className="mb-3 flex items-center justify-between gap-3 px-2">
+            <div className="min-w-0">
+              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[var(--accent)]">Action principale</div>
+              <div className="truncate text-xs sm:text-sm font-semibold text-white">{stepLabel}</div>
+            </div>
+            {(frontFile || backFile) && (
+              <button
+                onClick={resetSession}
+                disabled={isBusy}
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] sm:text-xs font-bold text-white/75 transition-all hover:bg-white/10"
+              >
+                <RotateCcw size={14} />
+                Reset
+              </button>
+            )}
+          </div>
+
+          <button
+            onClick={primaryAction.onClick}
+            disabled={primaryDisabled}
+            className="flex w-full items-center justify-center gap-3 rounded-2xl px-4 py-4 text-base font-black text-[#0d0c0b] transition-all disabled:cursor-not-allowed disabled:opacity-50"
+            style={{ background: 'var(--accent)' }}
+          >
+            {isBusy ? (
+              <RefreshCw size={18} className="animate-spin" />
+            ) : step === 'ready' ? (
+              <Sparkles size={18} />
+            ) : (
+              <primaryAction.icon size={18} />
+            )}
+            {primaryAction.label}
+          </button>
+
+          {step === 'ready' && (
+            <button
+              onClick={() => handleCreateDraft(false)}
+              disabled={isBusy}
+              className="mt-3 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Créer le brouillon et ouvrir la revue
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
