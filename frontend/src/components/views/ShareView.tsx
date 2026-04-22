@@ -482,6 +482,16 @@ export function ShareView({ token }: { token: string }) {
     forSale: cardsList.filter(c => c.vinted_url).length,
   }), [cardsList]);
 
+  const showcaseSections = useMemo(() => {
+    const sections = [
+      { key: 'rc', title: 'RC', cards: filtered.filter((card) => card.is_rookie).slice(0, 6) },
+      { key: 'psa', title: 'PSA', cards: filtered.filter((card) => card.grading_company === 'PSA').slice(0, 6) },
+      { key: 'sale', title: 'À vendre', cards: filtered.filter((card) => card.status === 'a_vendre' || card.vinted_url).slice(0, 6) },
+      { key: 'autos', title: 'Autos', cards: filtered.filter((card) => card.card_type === 'auto' || card.card_type === 'auto_patch').slice(0, 6) },
+    ];
+    return sections.filter((section) => section.cards.length > 0);
+  }, [filtered]);
+
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center p-8">
       <div className="flex flex-col items-center gap-6">
@@ -628,6 +638,26 @@ export function ShareView({ token }: { token: string }) {
           </div>
         ) : (
           <div className="space-y-16">
+            {groupBy === 'none' && search === '' && !playerFilter && !teamFilter && !brandFilter && !setFilter && !yearFilter && !typeFilter && !parallelFilter && !rookieOnly && !gradedOnly && !vintedOnly && (
+              <div className="space-y-10">
+                {showcaseSections.map((section) => (
+                  <div key={section.key}>
+                    <div className="flex items-center gap-4 mb-6">
+                      <h3 className="text-lg font-black text-white tracking-tight">{section.title}</h3>
+                      <div className="px-2 py-0.5 rounded-lg bg-white/5 border border-white/5 text-[10px] font-black text-white/20">
+                        {section.cards.length}
+                      </div>
+                      <div className="flex-1 h-px bg-gradient-to-r from-white/10 to-transparent" />
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6">
+                      {section.cards.map((card) => (
+                        <SharedCard key={`${section.key}-${card.id}`} card={card} showPrice={data.show_prices} onClick={() => setSelected(card)} />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
             {grouped.map((group) => (
               <div key={group.key || 'all'}>
                 {groupBy !== 'none' && (

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
@@ -24,12 +24,15 @@ import {
 import type { Card, CardType, GradingCompany, GradingStatus } from '../../types';
 import { GradingBadge } from './GradingBadge';
 import { StatusBadge } from './StatusBadge';
-import { useDeleteCard, useUpdateCard } from '../../hooks/useCards';
+import { useCards, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { useIdentify } from '../../hooks/useIdentify';
 import { EbaySoldItems } from './EbaySoldItems';
 import { supabase } from '../../lib/supabase';
 import { compressImage } from '../../lib/storage';
 import { RookieBadge } from './RookieBadge';
+import { AlertChips, ConfidenceBadge } from './CardSignals';
+import { normalizeParallelName } from '../../lib/cardQuality';
+import { findDuplicateMatches } from '../../lib/cardSimilarity';
 
 const inputCls = 'w-full rounded-xl px-3 py-2 text-sm outline-none transition-all bg-white/5 border border-white/10 focus:border-[var(--accent)]/50 focus:bg-white/10';
 
@@ -69,6 +72,7 @@ interface Props {
 export function CardDetail({ card, onClose }: Props) {
   const deleteCard = useDeleteCard();
   const updateCard = useUpdateCard();
+  const { data: allCards = [] } = useCards();
 
   const identify = useIdentify();
   const [editing, setEditing] = useState(false);
@@ -104,6 +108,7 @@ export function CardDetail({ card, onClose }: Props) {
     grading_returned_at: card.grading_returned_at?.slice(0, 10) ?? '',
     grading_cost: card.grading_cost?.toString() ?? '',
   });
+  const duplicates = useMemo(() => findDuplicateMatches(card, allCards), [card, allCards]);
 
   function set(key: keyof typeof fields, value: string | boolean) {
     setFields((prev) => ({ ...prev, [key]: value }));
@@ -379,6 +384,7 @@ export function CardDetail({ card, onClose }: Props) {
                 <StatusBadge status={card.status} />
                 {card.is_rookie && <RookieBadge compact />}
                 {card.grading_company && <GradingBadge card={card} />}
+                <ConfidenceBadge card={card} />
                 {card.numbered && (
                   <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--accent-dim)] text-[var(--accent)] text-[10px] font-black border border-[var(--border-accent)]">
                     <Hash size={10} />
@@ -426,7 +432,7 @@ export function CardDetail({ card, onClose }: Props) {
                     { label: 'Marque', value: card.brand, icon: Tag },
                     { label: 'Set', value: card.set_name, icon: Hash },
                     { label: 'Insert', value: card.insert_name, icon: Star },
-                    { label: 'Parallel', value: card.parallel_name, icon: Layers },
+                    { label: 'Parallel', value: normalizeParallelName(card.parallel_name), icon: Layers },
                     { label: 'RC', value: card.is_rookie ? 'Rookie Card' : null, icon: Trophy },
                     { label: 'N° carte', value: card.card_number, icon: Hash },
                     { label: 'État', value: card.condition_notes || 'Mint / Near Mint', icon: Search },
@@ -443,6 +449,20 @@ export function CardDetail({ card, onClose }: Props) {
                         <div className="text-sm font-bold text-white truncate">{item.value}</div>
                       </div>
                     ))}
+                </div>
+
+                <div className="p-4 rounded-3xl bg-white/[0.03] border border-white/5 space-y-3">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Qualité des données</div>
+                  <AlertChips card={card} />
+                  {duplicates.length > 0 && (
+                    <div className="space-y-1.5 pt-2">
+                      {duplicates.map((match: (typeof duplicates)[number]) => (
+                        <div key={match.card.id} className="text-xs text-red-300/85">
+                          {match.reason} • {match.card.player} • {match.card.year} • {match.card.set_name} • score {match.score}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {card.grading_company && (

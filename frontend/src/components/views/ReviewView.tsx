@@ -21,8 +21,11 @@ import {
 import { useCards, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { useAppStore } from '../../stores/appStore';
 import { getStudioSession } from '../../lib/studioSessions';
+import { normalizeParallelName } from '../../lib/cardQuality';
+import { buildSimilarityPrefill, findDuplicateMatches } from '../../lib/cardSimilarity';
 import type { Card, CardStatus, CardType } from '../../types';
 import { RookieBadge } from '../shared/RookieBadge';
+import { AlertChips, ConfidenceBadge } from '../shared/CardSignals';
 
 function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
   return (
@@ -88,6 +91,7 @@ function DraftEditor({
   card,
   index,
   total,
+  cards,
   onNavigate,
   onValidate,
   onDiscard,
@@ -95,6 +99,7 @@ function DraftEditor({
   card: Card;
   index: number;
   total: number;
+  cards: Card[];
   onNavigate: (nextIndex: number) => void;
   onValidate: (id: string, fields: Partial<Card>) => Promise<void>;
   onDiscard: (id: string) => Promise<void>;
@@ -121,8 +126,31 @@ function DraftEditor({
   const [discarding, setDiscarding] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
 
+  const signalCard: Partial<Card> = {
+    ...card,
+    ...fields,
+    parallel_name: normalizeParallelName(fields.parallel_name),
+    card_type: (fields.card_type || null) as CardType | null,
+    price: fields.price ? parseFloat(fields.price) : null,
+    purchase_price: fields.purchase_price ? parseFloat(fields.purchase_price) : null,
+  };
+  const duplicateMatches = useMemo(() => findDuplicateMatches(card, cards), [card, cards]);
+  const prefill = useMemo(() => buildSimilarityPrefill(card, cards), [card, cards]);
+
   function set(key: keyof typeof fields, value: string | boolean) {
     setFields((prev) => ({ ...prev, [key]: value }));
+  }
+
+  function applyPrefill() {
+    if (!prefill) return;
+    setFields((prev) => ({
+      ...prev,
+      year: (prefill.year as string | null) ?? prev.year,
+      brand: (prefill.brand as string | null) ?? prev.brand,
+      set_name: (prefill.set_name as string | null) ?? prev.set_name,
+      team: (prefill.team as string | null) ?? prev.team,
+      card_type: (prefill.card_type as CardType | null) ?? prev.card_type,
+    }));
   }
 
   async function handleValidateAndNext() {
@@ -186,8 +214,13 @@ function DraftEditor({
         </div>
 
         <div className="panel p-6 rounded-3xl bg-white/[0.03] border border-white/10">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--text-muted)]">Aperçu Réel</span>
+          <div className="flex items-start justify-between mb-4 gap-4">
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--text-muted)]">Aperçu Réel</span>
+              <div className="mt-2">
+                <ConfidenceBadge card={signalCard} />
+              </div>
+            </div>
             <div className="flex gap-2">
               {fields.is_rookie && <RookieBadge compact />}
               {fields.numbered && (
@@ -201,6 +234,30 @@ function DraftEditor({
           <p className="text-sm text-[var(--text-muted)] font-bold mt-1 uppercase tracking-wide">
             {fields.year} {fields.brand} {fields.set_name}
           </p>
+          <div className="mt-4">
+            <AlertChips card={signalCard} />
+          </div>
+          {duplicateMatches.length > 0 && (
+            <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3">
+              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-red-300">Doublons probables</div>
+              <div className="mt-2 space-y-1.5">
+                {duplicateMatches.map((match) => (
+                  <div key={match.card.id} className="text-xs text-red-200/85">
+                    {match.reason} • {match.card.player} • {match.card.year} • {match.card.set_name} • score {match.score}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {prefill && (
+            <button
+              type="button"
+              onClick={applyPrefill}
+              className="mt-4 w-full rounded-2xl border border-[var(--accent)]/20 bg-[var(--accent)-dim] px-4 py-3 text-xs font-black uppercase tracking-widest text-[var(--accent)]"
+            >
+              Préremplir depuis cartes similaires
+            </button>
+          )}
         </div>
       </div>
 
@@ -227,7 +284,13 @@ function DraftEditor({
               <input className={inputCls} value={fields.insert_name} onChange={(e) => set('insert_name', e.target.value)} placeholder="Downtown" />
             </Field>
             <Field label="Parallel" icon={Star}>
-              <input className={inputCls} value={fields.parallel_name} onChange={(e) => set('parallel_name', e.target.value)} placeholder="Silver" />
+              <input
+                className={inputCls}
+                value={fields.parallel_name}
+                onChange={(e) => set('parallel_name', e.target.value)}
+                onBlur={() => set('parallel_name', normalizeParallelName(fields.parallel_name) ?? '')}
+                placeholder="Silver"
+              />
             </Field>
             <Field label="Type" icon={Info}>
               <select className={inputCls} value={fields.card_type} onChange={(e) => set('card_type', e.target.value)}>
@@ -443,6 +506,7 @@ export function ReviewView() {
               card={current}
               index={safeIndex}
               total={drafts.length}
+              cards={drafts}
               onNavigate={setCurrentIndex}
               onValidate={handleValidate}
               onDiscard={handleDiscard}

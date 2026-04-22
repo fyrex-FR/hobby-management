@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
+import { Fragment, useMemo, useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search,
@@ -26,6 +26,9 @@ import { GradingBadge } from '../shared/GradingBadge';
 import { StatusBadge } from '../shared/StatusBadge';
 import { CardDetail } from '../shared/CardDetail';
 import { RookieBadge } from '../shared/RookieBadge';
+import { AlertChips, ConfidenceBadge } from '../shared/CardSignals';
+import { normalizeParallelName } from '../../lib/cardQuality';
+import { findDuplicateMatches } from '../../lib/cardSimilarity';
 
 type FilterTab = 'all' | 'a_vendre' | 'vendu';
 type GroupBy = 'none' | 'player' | 'team' | 'brand' | 'set_name' | 'year';
@@ -287,6 +290,8 @@ function buildColumns(onEdit: (card: Card) => void) {
 }
 
 function GridCard({ card, onClick }: { card: Card; onClick: () => void }) {
+  const { data: allCards = [] } = useCards();
+  const duplicates = useMemo(() => findDuplicateMatches(card, allCards, 1), [card, allCards]);
   return (
     <motion.button
       whileHover={{ y: -4 }}
@@ -355,12 +360,90 @@ function GridCard({ card, onClick }: { card: Card; onClick: () => void }) {
           <div className="flex items-center gap-1.5 mt-1 overflow-hidden">
             <div className="h-1 w-1 rounded-full bg-[var(--accent)] shrink-0" />
             <p className="text-[10px] font-bold text-[var(--text-secondary)] truncate uppercase tracking-wider">
-              {card.insert_name || card.parallel_name}
+              {card.insert_name || normalizeParallelName(card.parallel_name)}
             </p>
           </div>
         )}
+
+        <div className="mt-3 flex items-center gap-2">
+          <ConfidenceBadge card={card} />
+          {duplicates.length > 0 && (
+            <div className="inline-flex items-center rounded-lg border border-red-500/25 bg-red-500/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-widest text-red-300">
+              Doublon?
+            </div>
+          )}
+        </div>
+        <div className="mt-2">
+          <AlertChips card={card} limit={2} />
+        </div>
       </div>
     </motion.button>
+  );
+}
+
+function CollectionHeatmap({
+  cards,
+  onSelect,
+}: {
+  cards: Card[];
+  onSelect: (year: string | null, brand: string | null) => void;
+}) {
+  const years = [...new Set(cards.map((card) => card.year).filter(Boolean) as string[])].sort();
+  const brands = [...new Set(cards.map((card) => card.brand).filter(Boolean) as string[])].sort();
+  const max = Math.max(
+    1,
+    ...years.flatMap((year) =>
+      brands.map((brand) => cards.filter((card) => card.year === year && card.brand === brand).length),
+    ),
+  );
+
+  if (years.length === 0 || brands.length === 0) return null;
+
+  return (
+    <div className="rounded-3xl border border-white/5 bg-white/[0.02] p-4 mb-6">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Heatmap</div>
+          <div className="text-sm font-semibold text-white">Année × Marque</div>
+        </div>
+        <div className="text-[11px] text-[var(--text-muted)]">Clique une cellule pour filtrer</div>
+      </div>
+      <div className="overflow-auto">
+        <div className="grid gap-2" style={{ gridTemplateColumns: `120px repeat(${brands.length}, minmax(48px, 1fr))` }}>
+          <div />
+          {brands.map((brand) => (
+            <div key={brand} className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest text-center">
+              {brand}
+            </div>
+          ))}
+          {years.map((year) => (
+            <Fragment key={year}>
+              <div key={`${year}-label`} className="text-[11px] font-bold text-white/70 flex items-center">
+                {year}
+              </div>
+              {brands.map((brand) => {
+                const count = cards.filter((card) => card.year === year && card.brand === brand).length;
+                const intensity = count === 0 ? 0.06 : 0.18 + (count / max) * 0.55;
+                return (
+                  <button
+                    key={`${year}-${brand}`}
+                    onClick={() => onSelect(year, brand)}
+                    className="h-11 rounded-xl border text-[11px] font-black transition-all hover:scale-[1.03]"
+                    style={{
+                      background: `rgba(245, 166, 35, ${intensity})`,
+                      borderColor: count > 0 ? 'rgba(245,166,35,0.22)' : 'rgba(255,255,255,0.06)',
+                      color: count > 0 ? '#09090B' : 'rgba(255,255,255,0.25)',
+                    }}
+                  >
+                    {count || '·'}
+                  </button>
+                );
+              })}
+            </Fragment>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -789,6 +872,7 @@ export function CollectionView() {
           </div>
         ) : viewMode === 'grid' ? (
           <div className="space-y-8">
+            <CollectionHeatmap cards={filtered} onSelect={(year, brand) => { setYearFilter(year); setBrandFilter(brand); }} />
             {Object.entries(grouped).map(([group, groupCards]) => (
               <div key={group}>
                 {groupBy !== 'none' && (
