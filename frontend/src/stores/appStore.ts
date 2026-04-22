@@ -14,18 +14,22 @@ interface AppStore {
   activeView: ActiveView;
   viewMode: ViewMode;
   drillFilter: DrillFilter;
+  reviewSessionId: string | null;
   setActiveView: (view: ActiveView) => void;
   setViewMode: (mode: ViewMode) => void;
   setDrillFilter: (filter: DrillFilter) => void;
   clearDrillFilter: () => void;
+  setReviewSessionId: (sessionId: string | null) => void;
 }
 
 export const useAppStore = create<AppStore>((set) => ({
   activeView: 'dashboard',
   viewMode: 'grid',
   drillFilter: {},
+  reviewSessionId: null,
   setActiveView: (view) => set({ activeView: view }),
   setViewMode: (mode) => set({ viewMode: mode }),
   setDrillFilter: (filter) => set({ drillFilter: filter }),
   clearDrillFilter: () => set({ drillFilter: {} }),
+  setReviewSessionId: (sessionId) => set({ reviewSessionId: sessionId }),
 }));

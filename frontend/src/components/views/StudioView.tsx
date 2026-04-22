@@ -18,6 +18,13 @@ import { useCreateCard, useDeleteCard, useUpdateCard } from '../../hooks/useCard
 import { useIdentify } from '../../hooks/useIdentify';
 import { useAppStore } from '../../stores/appStore';
 import { supabase } from '../../lib/supabase';
+import {
+  createStudioSession,
+  formatStudioDuration,
+  loadStudioSessions,
+  type StudioSessionSummary,
+  updateStudioSession,
+} from '../../lib/studioSessions';
 import type { CardType } from '../../types';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
@@ -128,6 +135,7 @@ function PreviewCard({
 
 export function StudioView() {
   const setActiveView = useAppStore((s) => s.setActiveView);
+  const setReviewSessionId = useAppStore((s) => s.setReviewSessionId);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -141,11 +149,17 @@ export function StudioView() {
   const [saveError, setSaveError] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
+  const [currentSession, setCurrentSession] = useState<StudioSessionSummary | null>(null);
+  const [sessionHistory, setSessionHistory] = useState<StudioSessionSummary[]>([]);
 
   const identify = useIdentify();
   const createCard = useCreateCard();
   const updateCard = useUpdateCard();
   const deleteCard = useDeleteCard();
+
+  useEffect(() => {
+    setSessionHistory(loadStudioSessions());
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -208,6 +222,14 @@ export function StudioView() {
     setSaveMessage('');
   }
 
+  function ensureSession() {
+    if (currentSession) return currentSession;
+    const session = createStudioSession();
+    setCurrentSession(session);
+    setSessionHistory(loadStudioSessions());
+    return session;
+  }
+
   async function handleCapture() {
     if (!videoRef.current) return;
     setSaveError('');
@@ -251,6 +273,7 @@ export function StudioView() {
     let createdCardId: string | null = null;
 
     try {
+      const session = ensureSession();
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
       if (!token) throw new Error('Non authentifié');
@@ -280,6 +303,13 @@ export function StudioView() {
           imageBackUrl,
         },
       ]);
+      const updated = updateStudioSession(session.id, (draft) => ({
+        ...draft,
+        capturedCount: draft.capturedCount + 1,
+        cardIds: [...draft.cardIds, newCard.id],
+      }));
+      if (updated) setCurrentSession(updated);
+      setSessionHistory(loadStudioSessions());
       resetCurrentPair();
       setSaveMessage('Paire enregistrée en brouillon. IA plus tard.');
     } catch (error) {
@@ -298,8 +328,19 @@ export function StudioView() {
     }
   }
 
-  function removePair(id: string) {
+  async function removePair(id: string) {
+    await deleteCard.mutateAsync(id);
     setCapturedPairs((prev) => prev.filter((pair) => pair.id !== id));
+    if (currentSession) {
+      const updated = updateStudioSession(currentSession.id, (session) => ({
+        ...session,
+        capturedCount: Math.max(0, session.capturedCount - 1),
+        cardIds: session.cardIds.filter((cardId) => cardId !== id),
+        processedCardIds: session.processedCardIds.filter((cardId) => cardId !== id),
+      }));
+      if (updated) setCurrentSession(updated);
+    }
+    setSessionHistory(loadStudioSessions());
   }
 
   async function uploadViaBackend(file: File, cardId: string, token: string, side: CaptureSide): Promise<string> {
@@ -356,11 +397,36 @@ export function StudioView() {
     try {
       for (let index = 0; index < pairsToProcess.length; index += 1) {
         setSaveMessage(`Traitement du lot ${index + 1}/${pairsToProcess.length}…`);
-        await identifyDraftPair(pairsToProcess[index]);
+        try {
+          await identifyDraftPair(pairsToProcess[index]);
+          if (currentSession) {
+            const updated = updateStudioSession(currentSession.id, (session) => ({
+              ...session,
+              processedAt: new Date().toISOString(),
+              processedCount: session.processedCount + 1,
+              processedCardIds: session.processedCardIds.includes(pairsToProcess[index].id)
+                ? session.processedCardIds
+                : [...session.processedCardIds, pairsToProcess[index].id],
+            }));
+            if (updated) setCurrentSession(updated);
+          }
+        } catch (error) {
+          if (currentSession) {
+            const updated = updateStudioSession(currentSession.id, (session) => ({
+              ...session,
+              processedAt: new Date().toISOString(),
+              errorsCount: session.errorsCount + 1,
+              lastError: (error as Error).message,
+            }));
+            if (updated) setCurrentSession(updated);
+          }
+        }
       }
 
+      setSessionHistory(loadStudioSessions());
       resetSession();
       if (openReviewAfterSave) {
+        if (currentSession) setReviewSessionId(currentSession.id);
         setActiveView('review');
       } else {
         setSaveMessage(`${pairsToProcess.length} brouillon${pairsToProcess.length > 1 ? 's' : ''} créé${pairsToProcess.length > 1 ? 's' : ''}.`);
@@ -570,6 +636,16 @@ export function StudioView() {
             </div>
 
             <div className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-4 sm:p-5 space-y-4">
+              {currentSession && (
+                <div className="rounded-2xl border border-[var(--accent)]/15 bg-[var(--accent-dim)] px-4 py-3">
+                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Session active</div>
+                  <div className="mt-1 text-sm font-semibold text-white">{currentSession.tag}</div>
+                  <div className="mt-1 text-xs text-white/55">
+                    {currentSession.capturedCount} carte{currentSession.capturedCount > 1 ? 's' : ''} • {formatStudioDuration(currentSession.startedAt)}
+                  </div>
+                </div>
+              )}
+
               <div>
                 <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Lot</div>
                 <div className="mt-1 text-xs sm:text-sm font-semibold text-white">
@@ -635,6 +711,25 @@ export function StudioView() {
               {saveError && (
                 <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs sm:text-sm text-red-300">
                   {saveError}
+                </div>
+              )}
+
+              {sessionHistory.length > 0 && (
+                <div className="space-y-3">
+                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Historique sessions</div>
+                  <div className="space-y-2">
+                    {sessionHistory.slice(0, 4).map((session) => (
+                      <div key={session.id} className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
+                        <div className="text-sm font-semibold text-white">{session.tag}</div>
+                        <div className="mt-1 text-xs text-white/50">
+                          {session.capturedCount} carte{session.capturedCount > 1 ? 's' : ''} • {session.processedCount} traitée{session.processedCount > 1 ? 's' : ''} • {session.errorsCount} erreur{session.errorsCount > 1 ? 's' : ''}
+                        </div>
+                        <div className="mt-1 text-xs text-white/35">
+                          Durée: {formatStudioDuration(session.startedAt, session.processedAt ?? session.updatedAt)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

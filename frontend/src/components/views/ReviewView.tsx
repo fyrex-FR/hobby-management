@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useCards, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { useAppStore } from '../../stores/appStore';
+import { getStudioSession } from '../../lib/studioSessions';
 import type { Card, CardStatus, CardType } from '../../types';
 import { RookieBadge } from '../shared/RookieBadge';
 
@@ -327,10 +328,18 @@ export function ReviewView() {
   const updateCard = useUpdateCard();
   const deleteCard = useDeleteCard();
   const setActiveView = useAppStore((s) => s.setActiveView);
+  const reviewSessionId = useAppStore((s) => s.reviewSessionId);
+  const setReviewSessionId = useAppStore((s) => s.setReviewSessionId);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [validatingAll, setValidatingAll] = useState(false);
 
-  const drafts = useMemo(() => cards.filter((c) => c.status === 'draft'), [cards]);
+  const reviewSession = useMemo(() => getStudioSession(reviewSessionId), [reviewSessionId]);
+  const drafts = useMemo(() => {
+    const allDrafts = cards.filter((c) => c.status === 'draft');
+    if (!reviewSession) return allDrafts;
+    const ids = new Set(reviewSession.cardIds);
+    return allDrafts.filter((c) => ids.has(c.id));
+  }, [cards, reviewSession]);
 
   // Handle case where drafts are deleted and index becomes invalid
   useEffect(() => {
@@ -353,6 +362,7 @@ export function ReviewView() {
       await updateCard.mutateAsync({ id: card.id, status: 'collection' });
     }
     setValidatingAll(false);
+    setReviewSessionId(null);
     setActiveView('collection');
   }
 
@@ -380,7 +390,7 @@ export function ReviewView() {
             <p className="text-[var(--text-muted)] font-medium mt-1">Tous vos brouillons ont été traités avec succès.</p>
           </div>
           <button
-            onClick={() => setActiveView('collection')}
+            onClick={() => { setReviewSessionId(null); setActiveView('collection'); }}
             className="px-8 py-3 rounded-2xl bg-white/[0.05] border border-white/10 text-white text-xs font-black uppercase tracking-widest hover:bg-white/10 transition-all flex items-center gap-3 mx-auto"
           >
             Retourner à la collection <ArrowRight size={16} />
@@ -399,7 +409,7 @@ export function ReviewView() {
         <div className="flex items-center justify-between mb-10">
           <div className="flex items-center gap-4">
             <button
-              onClick={() => setActiveView('batch')}
+              onClick={() => { setReviewSessionId(null); setActiveView('batch'); }}
               className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-[var(--text-muted)] hover:text-white transition-all active:scale-90"
             >
               <ChevronLeft size={20} />
@@ -411,7 +421,9 @@ export function ReviewView() {
                   {drafts.length}
                 </div>
               </div>
-              <p className="text-sm text-[var(--text-muted)] font-medium">Validez ou corrigez les données extraites par l'IA</p>
+              <p className="text-sm text-[var(--text-muted)] font-medium">
+                {reviewSession ? `${reviewSession.tag} • lot studio récent` : 'Validez ou corrigez les données extraites par l\'IA'}
+              </p>
             </div>
           </div>
 
