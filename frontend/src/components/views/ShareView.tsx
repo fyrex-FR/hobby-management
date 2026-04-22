@@ -349,6 +349,11 @@ function SharedCard({ card, showPrice, onClick }: { card: Card; showPrice: boole
               {card.numbered}
             </div>
           )}
+          {card.vinted_url && (
+            <div className="px-2 py-0.5 rounded-lg bg-[#00BDD3]/20 backdrop-blur-md border border-[#00BDD3]/30 text-[9px] font-black text-[#00BDD3]">
+              Vinted
+            </div>
+          )}
           {card.grading_grade && (
             <div
               className="px-2 py-0.5 rounded-lg bg-black text-white text-[9px] font-black"
@@ -393,6 +398,7 @@ export function ShareView({ token }: { token: string }) {
   const [parallelFilter, setParallelFilter] = useState<string | null>(initialSearch.get('parallel'));
   const [rookieOnly, setRookieOnly] = useState(initialSearch.get('rookie') === '1');
   const [gradedOnly, setGradedOnly] = useState(initialSearch.get('graded') === '1');
+  const [vintedOnly, setVintedOnly] = useState(initialSearch.get('vinted') === '1');
   const [groupBy, setGroupBy] = useState<GroupBy>((initialSearch.get('group') as GroupBy) || 'none');
   const [sortBy, setSortBy] = useState<SortBy>((initialSearch.get('sort') as SortBy) || 'recent');
 
@@ -426,11 +432,12 @@ export function ShareView({ token }: { token: string }) {
     if (parallelFilter) params.set('parallel', parallelFilter);
     if (rookieOnly) params.set('rookie', '1');
     if (gradedOnly) params.set('graded', '1');
+    if (vintedOnly) params.set('vinted', '1');
     if (groupBy !== 'none') params.set('group', groupBy);
     if (sortBy !== 'recent') params.set('sort', sortBy);
     const query = params.toString();
     window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
-  }, [search, playerFilter, teamFilter, brandFilter, setFilter, yearFilter, typeFilter, parallelFilter, rookieOnly, gradedOnly, groupBy, sortBy]);
+  }, [search, playerFilter, teamFilter, brandFilter, setFilter, yearFilter, typeFilter, parallelFilter, rookieOnly, gradedOnly, vintedOnly, groupBy, sortBy]);
 
   const filtered = useMemo(() => {
     const result = cardsList.filter((c) => {
@@ -443,6 +450,7 @@ export function ShareView({ token }: { token: string }) {
       if (parallelFilter && c.parallel_name !== parallelFilter) return false;
       if (rookieOnly && !c.is_rookie) return false;
       if (gradedOnly && !c.grading_company) return false;
+      if (vintedOnly && !c.vinted_url) return false;
       if (search) {
         const q = search.toLowerCase();
         const hay = [c.player, c.team, c.brand, c.set_name, c.insert_name, c.parallel_name, c.year].filter(Boolean).join(' ').toLowerCase();
@@ -451,7 +459,7 @@ export function ShareView({ token }: { token: string }) {
       return true;
     });
     return sortCards(result, sortBy);
-  }, [cardsList, playerFilter, teamFilter, brandFilter, setFilter, yearFilter, typeFilter, parallelFilter, rookieOnly, gradedOnly, search, sortBy]);
+  }, [cardsList, playerFilter, teamFilter, brandFilter, setFilter, yearFilter, typeFilter, parallelFilter, rookieOnly, gradedOnly, vintedOnly, search, sortBy]);
 
   const grouped = useMemo(() => {
     if (groupBy === 'none') return [{ key: '', label: '', cards: filtered }];
@@ -543,7 +551,7 @@ export function ShareView({ token }: { token: string }) {
               onClick={() => {
                 setPlayerFilter(null); setTeamFilter(null); setBrandFilter(null); setSetFilter(null);
                 setYearFilter(null); setTypeFilter(null); setParallelFilter(null);
-                setRookieOnly(false); setGradedOnly(false); setSearch('');
+                setRookieOnly(false); setGradedOnly(false); setVintedOnly(false); setSearch('');
               }}
               className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white/5 border border-white/5 text-white/40 hover:text-[var(--accent)] transition-all active:scale-90"
               title="Réinitialiser"
@@ -578,6 +586,13 @@ export function ShareView({ token }: { token: string }) {
               }`}
           >
             Gradées
+          </button>
+          <button
+            onClick={() => setVintedOnly(!vintedOnly)}
+            className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${vintedOnly ? 'bg-[#00BDD3]/20 text-[#00BDD3] border border-[#00BDD3]/30' : 'bg-white/5 border border-white/5 text-white/40'
+              }`}
+          >
+            Vinted
           </button>
 
           <div className="ml-auto flex items-center gap-2 bg-white/5 border border-white/5 p-1 rounded-2xl">
@@ -653,4 +668,3 @@ export function ShareView({ token }: { token: string }) {
     </div>
   );
 }
-
