@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   ChevronLeft,
   ImagePlus,
-  Keyboard,
   RefreshCw,
   RotateCcw,
   Sparkles,
@@ -25,7 +24,13 @@ const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
 type CaptureSide = 'front' | 'back';
 type StudioStep = 'front' | 'back' | 'ready' | 'saving';
-type CapturedPair = { id: string; front: File; back: File };
+type CapturedPair = {
+  id: string;
+  frontName: string;
+  backName: string;
+  imageFrontUrl: string;
+  imageBackUrl: string;
+};
 
 type ImageCaptureLike = {
   takePhoto: () => Promise<Blob>;
@@ -69,6 +74,13 @@ async function canvasToFile(video: HTMLVideoElement, side: CaptureSide): Promise
   );
 
   return new File([blob], `${side}-${Date.now()}.jpg`, { type: 'image/jpeg' });
+}
+
+async function urlToFile(url: string, filename: string): Promise<File> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error('Impossible de relire une photo déjà uploadée');
+  const blob = await response.blob();
+  return new File([blob], filename, { type: blob.type || 'image/jpeg' });
 }
 
 function PreviewCard({
@@ -126,7 +138,6 @@ export function StudioView() {
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState('');
   const [cameraAspectRatio, setCameraAspectRatio] = useState('4 / 3');
-  const [cameraResolution, setCameraResolution] = useState('');
   const [saveError, setSaveError] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
@@ -168,7 +179,6 @@ export function StudioView() {
           const height = videoRef.current.videoHeight;
           if (width && height) {
             setCameraAspectRatio(`${width} / ${height}`);
-            setCameraResolution(`${width} × ${height}`);
           }
         }
         setCameraReady(true);
@@ -232,14 +242,60 @@ export function StudioView() {
     setStep('back');
   }
 
-  function queueCurrentPair() {
+  async function queueCurrentPair() {
     if (!frontFile || !backFile) return;
-    setCapturedPairs((prev) => [
-      ...prev,
-      { id: `${Date.now()}-${prev.length}`, front: frontFile, back: backFile },
-    ]);
-    resetCurrentPair();
-    setSaveMessage('Paire ajoutée au lot.');
+
+    setStep('saving');
+    setSaveError('');
+    setSaveMessage('Création du brouillon…');
+    let createdCardId: string | null = null;
+
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) throw new Error('Non authentifié');
+
+      const newCard = await createCard.mutateAsync({ status: 'draft' });
+      createdCardId = newCard.id;
+
+      setSaveMessage('Upload des photos…');
+      const [imageFrontUrl, imageBackUrl] = await Promise.all([
+        uploadViaBackend(frontFile, newCard.id, token, 'front'),
+        uploadViaBackend(backFile, newCard.id, token, 'back'),
+      ]);
+
+      await updateCard.mutateAsync({
+        id: newCard.id,
+        image_front_url: imageFrontUrl,
+        image_back_url: imageBackUrl,
+      });
+
+      setCapturedPairs((prev) => [
+        ...prev,
+        {
+          id: newCard.id,
+          frontName: frontFile.name,
+          backName: backFile.name,
+          imageFrontUrl,
+          imageBackUrl,
+        },
+      ]);
+      resetCurrentPair();
+      setSaveMessage('Paire enregistrée en brouillon. IA plus tard.');
+    } catch (error) {
+      const message = (error as Error).message;
+      if (createdCardId) {
+        try {
+          await deleteCard.mutateAsync(createdCardId);
+        } catch {
+          setSaveError(`Échec pendant l’enregistrement du brouillon. La carte a peut-être été créée partiellement. Détail: ${message}`);
+          setStep('ready');
+          return;
+        }
+      }
+      setSaveError(message);
+      setStep('ready');
+    }
   }
 
   function removePair(id: string) {
@@ -261,70 +317,46 @@ export function StudioView() {
     return (await response.json()).url;
   }
 
-  async function createDraftFromPair(pair: CapturedPair, token: string) {
-    let createdCardId: string | null = null;
+  async function identifyDraftPair(pair: CapturedPair) {
+    const [frontFileFromUrl, backFileFromUrl] = await Promise.all([
+      urlToFile(pair.imageFrontUrl, pair.frontName),
+      urlToFile(pair.imageBackUrl, pair.backName),
+    ]);
 
-    try {
-      const identifyResult = await identify.mutateAsync({ frontFile: pair.front, backFile: pair.back });
-      const newCard = await createCard.mutateAsync({
-        player: identifyResult.player || null,
-        team: identifyResult.team || null,
-        year: identifyResult.year || null,
-        brand: identifyResult.brand || null,
-        set_name: identifyResult.set || null,
-        card_type: (identifyResult.card_type || null) as CardType | null,
-        insert_name: identifyResult.insert || null,
-        parallel_name: identifyResult.parallel || null,
-        parallel_confidence: identifyResult.parallel_confidence ?? null,
-        card_number: identifyResult.card_number || null,
-        numbered: identifyResult.numbered || null,
-        is_rookie: identifyResult.is_rookie ?? null,
-        condition_notes: identifyResult.condition_notes || null,
-        status: 'draft',
-      });
-      createdCardId = newCard.id;
+    const identifyResult = await identify.mutateAsync({
+      frontFile: frontFileFromUrl,
+      backFile: backFileFromUrl,
+    });
 
-      const [image_front_url, image_back_url] = await Promise.all([
-        uploadViaBackend(pair.front, newCard.id, token, 'front'),
-        uploadViaBackend(pair.back, newCard.id, token, 'back'),
-      ]);
-
-      await updateCard.mutateAsync({
-        id: newCard.id,
-        image_front_url,
-        image_back_url,
-      });
-    } catch (error) {
-      const message = (error as Error).message;
-      if (createdCardId) {
-        try {
-          await deleteCard.mutateAsync(createdCardId);
-        } catch {
-          throw new Error(`Échec pendant le studio photo. La carte a peut-être été créée partiellement. Détail: ${message}`);
-        }
-      }
-      throw error;
-    }
+    await updateCard.mutateAsync({
+      id: pair.id,
+      player: identifyResult.player || null,
+      team: identifyResult.team || null,
+      year: identifyResult.year || null,
+      brand: identifyResult.brand || null,
+      set_name: identifyResult.set || null,
+      card_type: (identifyResult.card_type || null) as CardType | null,
+      insert_name: identifyResult.insert || null,
+      parallel_name: identifyResult.parallel || null,
+      parallel_confidence: identifyResult.parallel_confidence ?? null,
+      card_number: identifyResult.card_number || null,
+      numbered: identifyResult.numbered || null,
+      is_rookie: identifyResult.is_rookie ?? null,
+      condition_notes: identifyResult.condition_notes || null,
+    });
   }
 
   async function handleProcessBatch(openReviewAfterSave: boolean) {
-    const pairsToProcess = [
-      ...capturedPairs,
-      ...(frontFile && backFile ? [{ id: 'current', front: frontFile, back: backFile }] : []),
-    ];
+    const pairsToProcess = [...capturedPairs];
     if (pairsToProcess.length === 0) return;
 
     setStep('saving');
     setSaveError('');
 
     try {
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
-      if (!token) throw new Error('Non authentifié');
-
       for (let index = 0; index < pairsToProcess.length; index += 1) {
         setSaveMessage(`Traitement du lot ${index + 1}/${pairsToProcess.length}…`);
-        await createDraftFromPair(pairsToProcess[index], token);
+        await identifyDraftPair(pairsToProcess[index]);
       }
 
       resetSession();
@@ -349,7 +381,7 @@ export function StudioView() {
   const primaryDisabled = !!cameraError || !cameraReady || isBusy;
   const primaryAction =
     step === 'ready'
-      ? { label: 'Ajouter la paire au lot', icon: Archive, onClick: queueCurrentPair }
+      ? { label: 'Enregistrer et carte suivante', icon: Archive, onClick: queueCurrentPair }
       : {
           label: step === 'front' ? 'Capturer le recto' : 'Capturer le verso',
           icon: Camera,
@@ -358,12 +390,14 @@ export function StudioView() {
 
   const stepLabel =
     step === 'front'
-      ? '1/2 • Place le recto puis capture'
+      ? 'RECTO'
       : step === 'back'
-        ? '2/2 • Retourne la carte puis capture'
+        ? 'VERSO'
         : step === 'ready'
-          ? 'Paire prête • ajoute-la au lot ou reprends une photo'
-          : 'Enregistrement en cours…';
+          ? 'ENREGISTRE'
+          : 'ENREGISTREMENT';
+
+  const lotCount = capturedPairs.length;
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -412,7 +446,7 @@ export function StudioView() {
             <div className="min-w-0">
               <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white">Studio photo</h2>
               <p className="text-xs sm:text-sm font-medium text-[var(--text-muted)]">
-                Photos propres pour la vente, puis brouillon IA sans quitter l’app.
+                Mode trépied.
               </p>
             </div>
           </div>
@@ -430,9 +464,13 @@ export function StudioView() {
         <div className="mb-6 grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_380px]">
           <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-black/30 shadow-2xl">
             <div className="flex items-center justify-between gap-3 border-b border-white/5 px-4 sm:px-5 py-3 sm:py-4">
-              <div>
-                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Capture</div>
-                <div className="mt-1 text-xs sm:text-sm font-semibold text-white">{stepLabel}</div>
+              <div className="flex items-center gap-3">
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Studio</div>
+                {lotCount > 0 && (
+                  <div className="rounded-full border border-[var(--accent)]/20 bg-[var(--accent-dim)] px-3 py-1 text-[11px] font-black text-[var(--accent)]">
+                    {lotCount} en lot
+                  </div>
+                )}
               </div>
               <div className="shrink-0 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] sm:text-xs font-bold text-white/70">
                 {facingMode === 'environment' ? 'Caméra arrière' : 'Caméra avant'}
@@ -461,20 +499,17 @@ export function StudioView() {
                       <video ref={videoRef} className="h-full w-full object-cover" autoPlay muted playsInline />
                       <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-[6%]">
                         <div className="relative aspect-[2/3] h-full max-h-full rounded-[2rem] border border-white/70 shadow-[0_0_0_9999px_rgba(0,0,0,0.30)]">
-                          <div className="absolute left-3 top-3 rounded-full bg-black/55 px-2.5 py-1 text-[9px] sm:text-[10px] font-black uppercase tracking-[0.18em] text-white/80 backdrop-blur-xl">
-                            Cadre réel
-                          </div>
                           <div className="absolute inset-3 rounded-[1.6rem] border border-dashed border-white/25" />
                         </div>
                       </div>
                     </div>
                   </div>
+                  <div className="pointer-events-none absolute inset-x-0 top-5 sm:top-6 flex justify-center px-4">
+                    <div className="rounded-full border border-white/10 bg-black/60 px-5 py-2.5 sm:px-7 sm:py-3 text-lg sm:text-2xl font-black tracking-[0.25em] text-white shadow-2xl backdrop-blur-xl">
+                      {stepLabel}
+                    </div>
+                  </div>
                   <div className="absolute bottom-3 sm:bottom-5 left-1/2 flex w-[calc(100%-1.5rem)] sm:w-auto -translate-x-1/2 flex-col items-center gap-2">
-                    {cameraResolution && (
-                      <div className="rounded-full border border-white/10 bg-black/55 px-3 py-1.5 text-[11px] sm:text-xs font-semibold text-white/60 backdrop-blur-xl">
-                        Flux caméra: {cameraResolution}
-                      </div>
-                    )}
                     {!cameraReady && (
                       <div className="rounded-full border border-white/10 bg-black/55 px-4 py-2 text-[11px] sm:text-xs font-semibold text-white/60 backdrop-blur-xl">
                         Initialisation caméra…
@@ -536,15 +571,15 @@ export function StudioView() {
 
             <div className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-4 sm:p-5 space-y-4">
               <div>
-                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Actions</div>
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Lot</div>
                 <div className="mt-1 text-xs sm:text-sm font-semibold text-white">
-                  Le bouton principal capture. `Space` / `Enter` marchent aussi avec une télécommande Bluetooth.
+                  Traitement après capture.
                 </div>
               </div>
 
               <button
                 onClick={() => handleProcessBatch(false)}
-                disabled={(capturedPairs.length === 0 && !(frontFile && backFile)) || isBusy}
+                disabled={capturedPairs.length === 0 || isBusy}
                 className="flex w-full items-center justify-center gap-3 rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent-dim)] px-4 py-3.5 text-sm font-bold text-[var(--accent)] transition-all disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isBusy && step === 'saving' ? <RefreshCw size={16} className="animate-spin" /> : <Upload size={16} />}
@@ -553,21 +588,11 @@ export function StudioView() {
 
               <button
                 onClick={() => handleProcessBatch(true)}
-                disabled={(capturedPairs.length === 0 && !(frontFile && backFile)) || isBusy}
+                disabled={capturedPairs.length === 0 || isBusy}
                 className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3.5 text-sm font-bold text-white transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Traiter le lot et ouvrir la revue
               </button>
-
-              <div className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3 text-xs sm:text-sm text-white/70">
-                <div className="mb-2 flex items-center gap-2 font-semibold text-white">
-                  <Keyboard size={15} className="text-[var(--accent)]" />
-                  Commandes rapides
-                </div>
-                <div>`Space` / `Enter` = action principale</div>
-                <div>`R` = reset paire en cours</div>
-                <div>`Backspace` = supprimer la dernière paire du lot</div>
-              </div>
 
               {capturedPairs.length > 0 && (
                 <div className="space-y-3">
@@ -581,7 +606,7 @@ export function StudioView() {
                         <div className="min-w-0">
                           <div className="text-sm font-semibold text-white">Paire {index + 1}</div>
                           <div className="truncate text-xs text-white/45">
-                            {pair.front.name} • {pair.back.name}
+                            {pair.frontName} • {pair.backName}
                           </div>
                         </div>
                         <button
@@ -622,7 +647,7 @@ export function StudioView() {
           <div className="mb-3 flex items-center justify-between gap-3 px-2">
             <div className="min-w-0">
               <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[var(--accent)]">Action principale</div>
-              <div className="truncate text-xs sm:text-sm font-semibold text-white">{stepLabel}</div>
+              <div className="truncate text-xs sm:text-sm font-semibold text-white">Bluetooth: recto, verso, enregistrement.</div>
             </div>
             {(frontFile || backFile) && (
               <button
@@ -652,7 +677,7 @@ export function StudioView() {
             {primaryAction.label}
           </button>
 
-          {step === 'ready' && (
+          {step === 'ready' && capturedPairs.length > 0 && (
             <button
               onClick={() => handleProcessBatch(false)}
               disabled={isBusy}
@@ -662,7 +687,7 @@ export function StudioView() {
             </button>
           )}
 
-          {(capturedPairs.length > 0 || (frontFile && backFile)) && (
+          {capturedPairs.length > 0 && (
             <button
               onClick={() => handleProcessBatch(true)}
               disabled={isBusy}
