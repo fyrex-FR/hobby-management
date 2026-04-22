@@ -1,5 +1,21 @@
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  LayoutDashboard,
+  Library,
+  TrendingUp,
+  Users,
+  GraduationCap,
+  Upload,
+  Database,
+  Plus,
+  User,
+  LogOut,
+  Key,
+  Share2,
+  ChevronDown
+} from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
 import { useAppStore } from './stores/appStore';
 import { useCards } from './hooks/useCards';
@@ -77,41 +93,52 @@ function UserMenu({ onShare }: { onShare: () => void }) {
 
   return (
     <>
-      <div className="relative ml-1">
+      <div className="relative ml-2">
         <button
           onClick={() => setOpen((v) => !v)}
-          className="w-8 h-8 rounded-lg flex items-center justify-center text-xs transition-colors"
-          style={{ background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}
+          className="w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:bg-white/5 active:scale-95"
+          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}
           title="Mon compte"
         >
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 12c2.7 0 4.8-2.1 4.8-4.8S14.7 2.4 12 2.4 7.2 4.5 7.2 7.2 9.3 12 12 12zm0 2.4c-3.2 0-9.6 1.6-9.6 4.8v2.4h19.2v-2.4c0-3.2-6.4-4.8-9.6-4.8z"/></svg>
+          <User size={18} className="text-[var(--text-secondary)]" />
         </button>
-        {open && (
-          <div className="absolute right-0 top-full mt-1.5 rounded-xl overflow-hidden z-20 w-44"
-            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-strong)', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
-            <button
-              onClick={() => { onShare(); setOpen(false); }}
-              className="w-full px-4 py-2.5 text-left text-xs transition-colors hover:bg-white/[0.05]"
-              style={{ color: 'var(--text-primary)' }}
+
+        <AnimatePresence>
+          {open && (
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="absolute right-0 top-full mt-2 rounded-2xl overflow-hidden z-20 w-52 glass border-strong shadow-xl p-1"
             >
-              🔗 Partager ma collection
-            </button>
-            <button
-              onClick={() => { setShowChangePassword(true); setOpen(false); }}
-              className="w-full px-4 py-2.5 text-left text-xs transition-colors hover:bg-white/[0.05]"
-              style={{ color: 'var(--text-primary)' }}
-            >
-              🔑 Changer le mot de passe
-            </button>
-            <button
-              onClick={() => supabase.auth.signOut()}
-              className="w-full px-4 py-2.5 text-left text-xs transition-colors hover:bg-white/[0.05]"
-              style={{ color: 'var(--red)' }}
-            >
-              ↪ Déconnexion
-            </button>
-          </div>
-        )}
+              <button
+                onClick={() => { onShare(); setOpen(false); }}
+                className="w-full px-4 py-2.5 text-left text-sm transition-colors hover:bg-white/5 rounded-xl flex items-center gap-3"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                <Share2 size={15} className="text-[var(--text-secondary)]" />
+                Partager ma collection
+              </button>
+              <button
+                onClick={() => { setShowChangePassword(true); setOpen(false); }}
+                className="w-full px-4 py-2.5 text-left text-sm transition-colors hover:bg-white/5 rounded-xl flex items-center gap-3"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                <Key size={15} className="text-[var(--text-secondary)]" />
+                Changer le mot de passe
+              </button>
+              <div className="h-px bg-[var(--border)] my-1 mx-2" />
+              <button
+                onClick={() => supabase.auth.signOut()}
+                className="w-full px-4 py-2.5 text-left text-sm transition-colors hover:bg-red-500/10 rounded-xl flex items-center gap-3"
+                style={{ color: 'var(--red, #ef4444)' }}
+              >
+                <LogOut size={15} />
+                Déconnexion
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
     </>
@@ -122,134 +149,134 @@ function Header({ onShare }: { onShare: () => void }) {
   const { activeView, setActiveView } = useAppStore();
   const { data: cards = [] } = useCards();
   const draftCount = cards.filter((c) => c.status === 'draft').length;
+  const [toolsOpen, setToolsOpen] = useState(false);
+
+  const mainNav = [
+    { id: 'dashboard', label: 'Vue d\'ensemble', icon: LayoutDashboard },
+    { id: 'collection', label: 'Collection', icon: Library },
+    { id: 'sales', label: 'Ventes', icon: TrendingUp },
+  ] as const;
+
+  const toolNav = [
+    { id: 'players', label: 'Joueurs', icon: Users },
+    { id: 'grading', label: 'Grading', icon: GraduationCap },
+    { id: 'batch', label: 'Import lot', icon: Upload },
+    { id: 'compare', label: 'Comparer IA', icon: Database },
+  ] as const;
 
   return (
-    <header
-      className="flex items-center justify-between px-6 py-3 sticky top-0 z-10"
-      style={{
-        background: 'rgba(14,14,17,0.85)',
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
-        borderBottom: '1px solid var(--border-strong)',
-      }}
-    >
-      <button onClick={() => setActiveView('dashboard')} className="flex items-center gap-3 group">
+    <header className="flex items-center justify-between px-6 py-3 sticky top-0 z-50 glass border-strong rounded-b-3xl mx-2 mt-2">
+      <button
+        onClick={() => setActiveView('dashboard')}
+        className="flex items-center gap-3 group transition-transform active:scale-95"
+      >
         <div
-          className="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-black"
+          className="w-9 h-9 rounded-xl flex items-center justify-center text-base font-black transition-all group-hover:scale-105"
           style={{
-            background: 'linear-gradient(135deg, #F5AF23 0%, #E8920A 100%)',
-            color: '#0E0E11',
-            boxShadow: '0 0 16px rgba(245,175,35,0.35)',
+            background: 'linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%)',
+            color: '#09090B',
+            boxShadow: '0 0 25px var(--accent-glow)',
           }}
         >
           N
         </div>
-        <div className="hidden sm:block text-left">
-          <div
-            className="text-sm font-bold leading-none transition-colors group-hover:text-[var(--accent)]"
-            style={{ color: 'var(--text-primary)' }}
-          >
-            NBA Card Studio
+        <div className="hidden md:block text-left">
+          <div className="text-sm font-bold leading-none text-white tracking-tight">
+            NBA Card <span className="text-[var(--accent)]">Studio</span>
           </div>
-          <div className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+          <div className="text-[10px] mt-1 font-medium text-[var(--text-muted)]">
             {cards.length} carte{cards.length !== 1 ? 's' : ''}
           </div>
         </div>
       </button>
 
-      <nav className="flex items-center gap-1">
-        {(['dashboard', 'collection', 'sales'] as const).map((view) => (
+      <nav className="flex items-center gap-1.5">
+        {mainNav.map((item) => (
           <button
-            key={view}
-            onClick={() => setActiveView(view)}
-            className="px-3 py-1.5 rounded-lg text-sm transition-all"
-            style={{
-              color: activeView === view ? 'var(--text-primary)' : 'var(--text-secondary)',
-              background: activeView === view ? 'var(--bg-elevated)' : 'transparent',
-            }}
+            key={item.id}
+            onClick={() => setActiveView(item.id)}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium transition-all hover:bg-white/5 relative group"
+            style={{ color: activeView === item.id ? 'var(--text-primary)' : 'var(--text-secondary)' }}
           >
-            {view === 'dashboard' ? (
-              <><span className="sm:hidden">Accueil</span><span className="hidden sm:inline">Vue d'ensemble</span></>
-            ) : view === 'collection' ? 'Collection' : 'Ventes'}
+            <item.icon size={16} className={activeView === item.id ? 'text-[var(--accent)]' : 'text-current'} />
+            <span className="hidden lg:inline">{item.label}</span>
+            {activeView === item.id && (
+              <motion.div
+                layoutId="nav-active"
+                className="absolute inset-0 bg-white/5 border border-white/10 rounded-xl -z-10 shadow-sm"
+              />
+            )}
           </button>
         ))}
 
-        <button
-          onClick={() => setActiveView('players')}
-          className="hidden sm:block px-3 py-1.5 rounded-lg text-sm transition-all"
-          style={{
-            color: activeView === 'players' ? 'var(--text-primary)' : 'var(--text-secondary)',
-            background: activeView === 'players' ? 'var(--bg-elevated)' : 'transparent',
-          }}
-        >
-          Joueurs
-        </button>
+        <div className="relative">
+          <button
+            onClick={() => setToolsOpen(!toolsOpen)}
+            className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium transition-all hover:bg-white/5"
+            style={{
+              color: toolNav.some(t => t.id === activeView) ? 'var(--text-primary)' : 'var(--text-secondary)',
+              background: toolNav.some(t => t.id === activeView) ? 'var(--bg-elevated)' : 'transparent'
+            }}
+          >
+            <Plus size={16} />
+            <span className="hidden lg:inline">Outils</span>
+            <ChevronDown size={14} className={`transition-transform duration-200 ${toolsOpen ? 'rotate-180' : ''}`} />
+          </button>
 
-        <button
-          onClick={() => setActiveView('grading')}
-          className="hidden sm:block px-3 py-1.5 rounded-lg text-sm transition-all"
-          style={{
-            color: activeView === 'grading' ? 'var(--text-primary)' : 'var(--text-secondary)',
-            background: activeView === 'grading' ? 'var(--bg-elevated)' : 'transparent',
-          }}
-        >
-          Grading
-        </button>
-
-        <button
-          onClick={() => setActiveView('batch')}
-          className="px-3 py-1.5 rounded-lg text-sm transition-all"
-          style={{
-            color: activeView === 'batch' ? 'var(--text-primary)' : 'var(--text-secondary)',
-            background: activeView === 'batch' ? 'var(--bg-elevated)' : 'transparent',
-          }}
-          title="Import lot"
-        >
-          <span className="sm:hidden">↑</span>
-          <span className="hidden sm:inline">Import lot</span>
-        </button>
-
-        <button
-          onClick={() => setActiveView('compare')}
-          className="hidden sm:block px-3 py-1.5 rounded-lg text-sm transition-all"
-          style={{
-            color: activeView === 'compare' ? 'var(--text-primary)' : 'var(--text-secondary)',
-            background: activeView === 'compare' ? 'var(--bg-elevated)' : 'transparent',
-          }}
-        >
-          Comparer IA
-        </button>
+          <AnimatePresence>
+            {toolsOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                className="absolute top-full left-0 mt-2 w-48 glass border-strong rounded-2xl shadow-2xl p-1.5 z-50 overflow-hidden"
+              >
+                {toolNav.map((tool) => (
+                  <button
+                    key={tool.id}
+                    onClick={() => { setActiveView(tool.id); setToolsOpen(false); }}
+                    className="flex items-center gap-3 w-full px-3.5 py-2.5 text-left text-sm font-medium rounded-xl transition-all hover:bg-white/5"
+                    style={{ color: activeView === tool.id ? 'var(--accent)' : 'var(--text-primary)' }}
+                  >
+                    <tool.icon size={16} />
+                    {tool.label}
+                  </button>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
 
         {draftCount > 0 && (
           <button
             onClick={() => setActiveView('review')}
-            className="relative px-3 py-1.5 rounded-lg text-sm transition-all flex items-center gap-1.5"
+            className="relative px-3.5 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 overflow-hidden group"
             style={{
-              color: activeView === 'review' ? 'var(--accent)' : 'var(--accent)',
-              background: activeView === 'review' ? 'var(--accent-dim)' : 'var(--accent-dim)',
-              border: '1px solid rgba(245,166,35,0.2)',
+              color: 'var(--accent)',
+              background: 'var(--accent-dim)',
+              border: '1px solid var(--border-accent)',
             }}
           >
-            Brouillons
-            <span
-              className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-              style={{ background: 'var(--accent)', color: '#0d0c0b' }}
-            >
+            <span className="hidden sm:inline">Brouillons</span>
+            <span className="bg-[var(--accent)] text-black text-[10px] h-4 min-w-[16px] px-1 flex items-center justify-center rounded-full">
               {draftCount}
             </span>
           </button>
         )}
 
+        <div className="w-px h-5 bg-white/10 mx-1 hidden sm:block" />
+
         <button
           onClick={() => setActiveView('add_card')}
-          className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ml-1"
+          className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 shadow-lg ml-1"
           style={
             activeView === 'add_card'
-              ? { background: 'var(--accent)', color: '#0d0c0b', boxShadow: '0 0 20px var(--accent-glow)' }
-              : { background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)' }
+              ? { background: 'var(--accent)', color: '#09090B', transform: 'translateY(-1px)' }
+              : { background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)' }
           }
         >
-          <span className="text-base leading-none">+</span> Ajouter
+          <Plus size={18} strokeWidth={3} />
+          <span className="hidden sm:inline">Ajouter</span>
         </button>
 
         <UserMenu onShare={onShare} />
@@ -275,7 +302,14 @@ function AppShell() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ background: 'var(--bg-primary)' }}>
-        <span style={{ color: 'var(--text-muted)' }} className="text-sm">Chargement…</span>
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="flex flex-col items-center gap-4"
+        >
+          <div className="w-12 h-12 border-4 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+          <span style={{ color: 'var(--text-secondary)' }} className="text-sm font-medium">Chargement du studio…</span>
+        </motion.div>
       </div>
     );
   }
@@ -285,18 +319,29 @@ function AppShell() {
   if (!session) return <LoginView />;
 
   return (
-    <div className="flex flex-col h-screen" style={{ background: 'var(--bg-primary)' }}>
+    <div className="flex flex-col h-screen overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
       <Header onShare={() => setShowShare(true)} />
-      <main className="flex flex-1 overflow-hidden">
-        {activeView === 'dashboard' && <DashboardView />}
-        {activeView === 'collection' && <CollectionView />}
-        {activeView === 'add_card' && <AddCardView />}
-        {activeView === 'batch' && <BatchView />}
-        {activeView === 'review' && <ReviewView />}
-        {activeView === 'sales' && <SalesView />}
-        {activeView === 'compare' && <CompareView />}
-        {activeView === 'players' && <PlayersView />}
-        {activeView === 'grading' && <GradingView />}
+      <main className="flex-1 overflow-hidden relative">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={activeView}
+            initial={{ opacity: 0, x: 10 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -10 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="absolute inset-0 overflow-auto"
+          >
+            {activeView === 'dashboard' && <DashboardView />}
+            {activeView === 'collection' && <CollectionView />}
+            {activeView === 'add_card' && <AddCardView />}
+            {activeView === 'batch' && <BatchView />}
+            {activeView === 'review' && <ReviewView />}
+            {activeView === 'sales' && <SalesView />}
+            {activeView === 'compare' && <CompareView />}
+            {activeView === 'players' && <PlayersView />}
+            {activeView === 'grading' && <GradingView />}
+          </motion.div>
+        </AnimatePresence>
       </main>
       {showShare && <ShareModal onClose={() => setShowShare(false)} />}
     </div>

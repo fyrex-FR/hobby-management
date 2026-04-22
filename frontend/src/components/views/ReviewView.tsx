@@ -1,4 +1,24 @@
 import { useEffect, useMemo, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle2,
+  Trash2,
+  X,
+  Maximize2,
+  Info,
+  Calendar,
+  Layers,
+  Star,
+  Euro,
+  Hash,
+  Tag,
+  Clock,
+  ExternalLink,
+  Save,
+  ArrowRight
+} from 'lucide-react';
 import { useCards, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { useAppStore } from '../../stores/appStore';
 import type { Card, CardStatus, CardType } from '../../types';
@@ -6,21 +26,28 @@ import { RookieBadge } from '../shared/RookieBadge';
 
 function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90" onClick={onClose}>
-      <img
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/95 backdrop-blur-xl"
+      onClick={onClose}
+    >
+      <motion.img
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        exit={{ scale: 0.9, opacity: 0 }}
         src={src}
         alt=""
-        className="max-h-[90vh] max-w-[90vw] rounded-2xl object-contain"
-        style={{ boxShadow: '0 0 60px rgba(0,0,0,0.8)' }}
+        className="max-h-[90vh] max-w-[90vw] rounded-2xl object-contain shadow-2xl"
       />
       <button
-        className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full text-sm"
-        style={{ background: 'rgba(255,255,255,0.1)', color: '#fff' }}
+        className="absolute top-6 right-6 w-12 h-12 flex items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-all active:scale-90"
         onClick={onClose}
       >
-        ✕
+        <X size={24} />
       </button>
-    </div>
+    </motion.div>
   );
 }
 
@@ -34,26 +61,24 @@ const CARD_TYPES: { value: CardType; label: string }[] = [
   { value: 'auto_patch', label: 'Auto/Patch' },
 ];
 
-const STATUS_OPTIONS: { value: CardStatus; label: string }[] = [
+const STATUS_OPTIONS: { value: Exclude<CardStatus, 'draft'>; label: string }[] = [
   { value: 'collection', label: 'Collection' },
   { value: 'a_vendre', label: 'À vendre' },
   { value: 'reserve', label: 'Réservé' },
   { value: 'vendu', label: 'Vendu' },
 ];
 
-const inputCls = 'w-full rounded-xl px-3 py-2.5 text-sm outline-none transition-all placeholder:text-[var(--text-muted)]';
-const inputStyle = {
-  background: 'var(--bg-card)',
-  border: '1px solid var(--border)',
-  color: 'var(--text-primary)',
-};
+const inputCls = 'w-full rounded-xl px-3 py-2.5 text-[13px] font-medium outline-none transition-all bg-white/5 border border-white/10 focus:border-[var(--accent)]/50 focus:bg-white/10 placeholder:text-white/20';
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({ label, icon: Icon, children }: { label: string; icon?: any; children: React.ReactNode }) {
   return (
-    <div>
-      <label className="block text-[10px] font-semibold tracking-wider uppercase mb-1.5" style={{ color: 'var(--text-muted)' }}>
-        {label}
-      </label>
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-1.5 ml-1">
+        {Icon && <Icon size={10} className="text-[var(--text-muted)]" />}
+        <label className="block text-[10px] font-black tracking-[0.15em] uppercase text-[var(--text-muted)]">
+          {label}
+        </label>
+      </div>
       {children}
     </div>
   );
@@ -74,6 +99,7 @@ function DraftEditor({
   onValidate: (id: string, fields: Partial<Card>) => Promise<void>;
   onDiscard: (id: string) => Promise<void>;
 }) {
+  // Use the card directly in the state initialization, and use a key on DraftEditor to reset it
   const [fields, setFields] = useState({
     player: card.player ?? '',
     team: card.team ?? '',
@@ -94,26 +120,6 @@ function DraftEditor({
   const [saving, setSaving] = useState(false);
   const [discarding, setDiscarding] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
-
-  useEffect(() => {
-    setFields({
-      player: card.player ?? '',
-      team: card.team ?? '',
-      year: card.year ?? '',
-      brand: card.brand ?? '',
-      set_name: card.set_name ?? '',
-      card_type: card.card_type ?? '',
-      insert_name: card.insert_name ?? '',
-      parallel_name: card.parallel_name ?? '',
-      card_number: card.card_number ?? '',
-      numbered: card.numbered ?? '',
-      is_rookie: card.is_rookie ?? false,
-      condition_notes: card.condition_notes ?? '',
-      price: card.price?.toString() ?? '',
-      purchase_price: card.purchase_price?.toString() ?? '',
-      status: (card.status === 'draft' ? 'collection' : card.status) as Exclude<CardStatus, 'draft'>,
-    });
-  }, [card]);
 
   function set(key: keyof typeof fields, value: string | boolean) {
     setFields((prev) => ({ ...prev, [key]: value }));
@@ -140,175 +146,180 @@ function DraftEditor({
   }
 
   return (
-    <>
-      <div className="grid lg:grid-cols-[340px_minmax(0,1fr)] gap-6">
-        <div className="space-y-4">
-          <div className="rounded-3xl p-4" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
-            <div className="grid grid-cols-2 gap-3">
-              {card.image_front_url ? (
-                <button
-                  type="button"
-                  onClick={() => setLightbox(card.image_front_url!)}
-                  className="rounded-2xl overflow-hidden transition-transform hover:scale-[1.01]"
-                  style={{ background: 'var(--bg-card)' }}
-                >
-                  <img src={card.image_front_url} alt="Face" className="w-full aspect-[3/4] object-contain cursor-zoom-in" />
-                </button>
-              ) : (
-                <div className="rounded-2xl flex items-center justify-center aspect-[3/4] text-4xl" style={{ background: 'var(--bg-card)' }}>🃏</div>
-              )}
-              {card.image_back_url ? (
-                <button
-                  type="button"
-                  onClick={() => setLightbox(card.image_back_url!)}
-                  className="rounded-2xl overflow-hidden transition-transform hover:scale-[1.01]"
-                  style={{ background: 'var(--bg-card)' }}
-                >
-                  <img src={card.image_back_url} alt="Dos" className="w-full aspect-[3/4] object-contain cursor-zoom-in opacity-80" />
-                </button>
-              ) : (
-                <div className="rounded-2xl flex items-center justify-center aspect-[3/4] text-4xl opacity-40" style={{ background: 'var(--bg-card)' }}>🃏</div>
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-2xl p-4" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-                Brouillon {index + 1} / {total}
-              </span>
-              <div className="flex items-center gap-2">
-                {fields.is_rookie && <RookieBadge compact />}
-                {fields.numbered && (
-                  <span
-                    className="text-[10px] font-bold px-1.5 py-0.5 rounded-md"
-                    style={{ background: 'rgba(245,175,35,0.12)', color: 'var(--accent)', border: '1px solid rgba(245,175,35,0.2)' }}
-                  >
-                    {fields.numbered}
-                  </span>
+    <motion.div
+      initial={{ opacity: 0, x: 20 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -20 }}
+      className="grid lg:grid-cols-[400px_1fr] gap-8"
+    >
+      {/* Visual Side */}
+      <div className="space-y-6">
+        <div className="panel p-2 rounded-[32px] bg-white/[0.02] border border-white/10 overflow-hidden">
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { url: card.image_front_url, label: 'RECTO' },
+              { url: card.image_back_url, label: 'VERSO' }
+            ].map((side, i) => (
+              <div key={i} className="relative aspect-[3/4] rounded-3xl overflow-hidden bg-white/5 border border-white/5 group">
+                {side.url ? (
+                  <>
+                    <img src={side.url} alt={side.label} className="w-full h-full object-contain cursor-zoom-in transition-transform duration-500 group-hover:scale-105" />
+                    <button
+                      onClick={() => setLightbox(side.url!)}
+                      className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                    >
+                      <Maximize2 size={24} className="text-white" />
+                    </button>
+                    <div className="absolute bottom-3 left-3 px-2 py-1 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 text-[9px] font-black tracking-widest text-white/70">
+                      {side.label}
+                    </div>
+                  </>
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center gap-2 opacity-20">
+                    <Clock size={24} />
+                    <span className="text-[10px] font-bold uppercase tracking-widest">NO {side.label}</span>
+                  </div>
                 )}
               </div>
-            </div>
-            <p className="text-lg font-semibold leading-tight" style={{ color: 'var(--text-primary)' }}>{fields.player || 'Joueur inconnu'}</p>
-            <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-              {[fields.year, fields.brand, fields.set_name].filter(Boolean).join(' · ') || 'À compléter'}
-            </p>
+            ))}
           </div>
         </div>
 
-        <div className="rounded-3xl p-5" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}>
-          <div className="grid sm:grid-cols-2 gap-4">
-            <Field label="Joueur">
-              <input className={inputCls} style={inputStyle} value={fields.player} onChange={(e) => set('player', e.target.value)} />
+        <div className="panel p-6 rounded-3xl bg-white/[0.03] border border-white/10">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--text-muted)]">Aperçu Réel</span>
+            <div className="flex gap-2">
+              {fields.is_rookie && <RookieBadge compact />}
+              {fields.numbered && (
+                <div className="px-2 py-0.5 rounded-lg bg-[var(--accent-dim)] border border-[var(--border-accent)] text-[var(--accent)] text-[10px] font-black">
+                  {fields.numbered}
+                </div>
+              )}
+            </div>
+          </div>
+          <h3 className="text-xl font-black text-white tracking-tight leading-tight">{fields.player || 'Joueur Inconnu'}</h3>
+          <p className="text-sm text-[var(--text-muted)] font-bold mt-1 uppercase tracking-wide">
+            {fields.year} {fields.brand} {fields.set_name}
+          </p>
+        </div>
+      </div>
+
+      {/* Editor Side */}
+      <div className="space-y-6">
+        <div className="panel p-8 rounded-[32px] bg-white/[0.02] border border-white/10 space-y-8">
+          <div className="grid sm:grid-cols-2 gap-6">
+            <Field label="Joueur" icon={Tag}>
+              <input className={inputCls} value={fields.player} onChange={(e) => set('player', e.target.value)} placeholder="ex: LeBron James" />
             </Field>
-            <Field label="Équipe">
-              <input className={inputCls} style={inputStyle} value={fields.team} onChange={(e) => set('team', e.target.value)} />
+            <Field label="Équipe" icon={Tag}>
+              <input className={inputCls} value={fields.team} onChange={(e) => set('team', e.target.value)} placeholder="ex: Lakers" />
             </Field>
-            <Field label="Année">
-              <input className={inputCls} style={inputStyle} value={fields.year} onChange={(e) => set('year', e.target.value)} />
+            <Field label="Année" icon={Calendar}>
+              <input className={inputCls} value={fields.year} onChange={(e) => set('year', e.target.value)} placeholder="2024-25" />
             </Field>
-            <Field label="Marque">
-              <input className={inputCls} style={inputStyle} value={fields.brand} onChange={(e) => set('brand', e.target.value)} />
+            <Field label="Marque" icon={Layers}>
+              <input className={inputCls} value={fields.brand} onChange={(e) => set('brand', e.target.value)} placeholder="Panini" />
             </Field>
-            <Field label="Set">
-              <input className={inputCls} style={inputStyle} value={fields.set_name} onChange={(e) => set('set_name', e.target.value)} />
+            <Field label="Set" icon={Layers}>
+              <input className={inputCls} value={fields.set_name} onChange={(e) => set('set_name', e.target.value)} placeholder="Prizm" />
             </Field>
-            <Field label="Insert">
-              <input className={inputCls} style={inputStyle} value={fields.insert_name} onChange={(e) => set('insert_name', e.target.value)} />
+            <Field label="Insert" icon={Star}>
+              <input className={inputCls} value={fields.insert_name} onChange={(e) => set('insert_name', e.target.value)} placeholder="Downtown" />
             </Field>
-            <Field label="Parallel">
-              <input className={inputCls} style={inputStyle} value={fields.parallel_name} onChange={(e) => set('parallel_name', e.target.value)} />
+            <Field label="Parallel" icon={Star}>
+              <input className={inputCls} value={fields.parallel_name} onChange={(e) => set('parallel_name', e.target.value)} placeholder="Silver" />
             </Field>
-            <Field label="Type">
-              <select className={inputCls} style={inputStyle} value={fields.card_type} onChange={(e) => set('card_type', e.target.value)}>
+            <Field label="Type" icon={Info}>
+              <select className={inputCls} value={fields.card_type} onChange={(e) => set('card_type', e.target.value)}>
                 <option value="">—</option>
                 {CARD_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </Field>
-            <Field label="N° carte">
-              <input className={inputCls} style={inputStyle} value={fields.card_number} onChange={(e) => set('card_number', e.target.value)} />
+            <Field label="N° Carte" icon={Hash}>
+              <input className={inputCls} value={fields.card_number} onChange={(e) => set('card_number', e.target.value)} placeholder="#23" />
             </Field>
-            <Field label="Tirage">
-              <input className={inputCls} style={inputStyle} value={fields.numbered} onChange={(e) => set('numbered', e.target.value)} />
+            <Field label="Tirage" icon={Hash}>
+              <input className={inputCls} value={fields.numbered} onChange={(e) => set('numbered', e.target.value)} placeholder="/99" />
             </Field>
-            <Field label="Prix achat €">
-              <input className={inputCls} style={inputStyle} value={fields.purchase_price} onChange={(e) => set('purchase_price', e.target.value)} placeholder="0" />
+            <Field label="Achat ($)" icon={Euro}>
+              <input type="number" className={inputCls} value={fields.purchase_price} onChange={(e) => set('purchase_price', e.target.value)} placeholder="0" />
             </Field>
-            <Field label="Prix vente €">
-              <input className={inputCls} style={inputStyle} value={fields.price} onChange={(e) => set('price', e.target.value)} placeholder="0" />
+            <Field label="Estimé ($)" icon={Euro}>
+              <input type="number" className={inputCls} value={fields.price} onChange={(e) => set('price', e.target.value)} placeholder="0" />
             </Field>
-            <Field label="Statut final">
-              <select className={inputCls} style={inputStyle} value={fields.status} onChange={(e) => set('status', e.target.value as Exclude<CardStatus, 'draft'>)}>
+          </div>
+
+          <div className="grid grid-cols-2 gap-6">
+            <Field label="Rookie Status" icon={Star}>
+              <button
+                type="button"
+                className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl border transition-all ${fields.is_rookie
+                    ? 'bg-[var(--accent-dim)] border-[var(--border-accent)] text-[var(--accent)]'
+                    : 'bg-white/5 border-white/10 text-white/40'
+                  }`}
+                onClick={() => set('is_rookie', !fields.is_rookie)}
+              >
+                <span className="text-xs font-bold uppercase tracking-widest">{fields.is_rookie ? 'Rookie CARD' : 'Non RC'}</span>
+                <div className={`w-8 h-4 rounded-full relative ${fields.is_rookie ? 'bg-[var(--accent)]' : 'bg-white/10'}`}>
+                  <div className={`absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-white transition-all ${fields.is_rookie ? 'right-1' : 'right-4.5 opacity-30'}`} />
+                </div>
+              </button>
+            </Field>
+            <Field label="Statut Final" icon={Info}>
+              <select className={inputCls} value={fields.status} onChange={(e) => set('status', e.target.value as Exclude<CardStatus, 'draft'>)}>
                 {STATUS_OPTIONS.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
               </select>
             </Field>
-            <Field label="RC">
-              <button
-                type="button"
-                className="w-full rounded-xl px-3 py-2.5 text-sm font-semibold transition-all"
-                style={fields.is_rookie
-                  ? { background: 'rgba(37,99,235,0.16)', color: '#dbeafe', border: '1px solid rgba(96,165,250,0.45)' }
-                  : inputStyle}
-                onClick={() => set('is_rookie', !fields.is_rookie)}
-              >
-                {fields.is_rookie ? <RookieBadge compact /> : 'Non RC'}
-              </button>
-            </Field>
-            <div className="sm:col-span-2">
-              <Field label="Notes état">
-                <input className={inputCls} style={inputStyle} value={fields.condition_notes} onChange={(e) => set('condition_notes', e.target.value)} />
-              </Field>
-            </div>
           </div>
 
-          <div className="flex items-center justify-between gap-3 mt-6 pt-4" style={{ borderTop: '1px solid var(--border)' }}>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                disabled={index === 0}
-                onClick={() => onNavigate(index - 1)}
-                className="px-3 py-2 rounded-xl text-sm font-medium transition-all"
-                style={{ background: 'var(--bg-card)', color: index === 0 ? 'var(--text-muted)' : 'var(--text-primary)', border: '1px solid var(--border)', opacity: index === 0 ? 0.5 : 1 }}
-              >
-                ← Précédente
-              </button>
-              <button
-                type="button"
-                disabled={index >= total - 1}
-                onClick={() => onNavigate(index + 1)}
-                className="px-3 py-2 rounded-xl text-sm font-medium transition-all"
-                style={{ background: 'var(--bg-card)', color: index >= total - 1 ? 'var(--text-muted)' : 'var(--text-primary)', border: '1px solid var(--border)', opacity: index >= total - 1 ? 0.5 : 1 }}
-              >
-                Suivante →
-              </button>
-            </div>
+          <Field label="Note d'état" icon={Clock}>
+            <input className={inputCls} value={fields.condition_notes} onChange={(e) => set('condition_notes', e.target.value)} placeholder="ex: Near Mint, Perfect Centering..." />
+          </Field>
+        </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleDiscardAndNext}
-                disabled={discarding}
-                className="px-4 py-2 rounded-xl text-sm font-medium transition-all"
-                style={{ border: '1px solid rgba(240,77,77,0.25)', color: 'var(--red)', opacity: discarding ? 0.5 : 1 }}
-              >
-                {discarding ? 'Suppression…' : 'Supprimer'}
-              </button>
-              <button
-                type="button"
-                onClick={handleValidateAndNext}
-                disabled={saving}
-                className="px-4 py-2 rounded-xl text-sm font-semibold transition-all"
-                style={{ background: 'var(--accent)', color: '#0E0E11', opacity: saving ? 0.6 : 1 }}
-              >
-                {saving ? 'Validation…' : index < total - 1 ? 'Valider et suivante' : 'Valider'}
-              </button>
-            </div>
+        {/* Navigation & Actions */}
+        <div className="flex items-center justify-between gap-4 p-4 rounded-3xl bg-white/[0.01] border border-white/5">
+          <div className="flex gap-2">
+            <button
+              onClick={() => onNavigate(index - 1)}
+              disabled={index === 0}
+              className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white/5 border border-white/10 text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90"
+            >
+              <ChevronLeft size={20} />
+            </button>
+            <button
+              onClick={() => onNavigate(index + 1)}
+              disabled={index >= total - 1}
+              className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white/5 border border-white/10 text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90"
+            >
+              <ChevronRight size={20} />
+            </button>
+          </div>
+
+          <div className="flex gap-3 flex-1 justify-end">
+            <button
+              onClick={handleDiscardAndNext}
+              disabled={discarding}
+              className="px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest border border-red-500/20 text-red-500 hover:bg-red-500/10 transition-all active:scale-95 disabled:opacity-50"
+            >
+              {discarding ? '...' : <Trash2 size={18} />}
+            </button>
+            <button
+              onClick={handleValidateAndNext}
+              disabled={saving}
+              className="px-8 py-3 rounded-2xl bg-[var(--accent)] border border-[var(--border-accent)] text-[#09090B] text-xs font-black uppercase tracking-widest flex items-center gap-3 shadow-xl shadow-[var(--accent-glow)] hover:brightness-110 transition-all active:scale-95 disabled:opacity-50"
+            >
+              {saving ? <RefreshCw size={18} className="animate-spin" /> : <CheckCircle2 size={18} />}
+              {saving ? 'Validation…' : index < total - 1 ? 'Suivant' : 'Terminer'}
+            </button>
           </div>
         </div>
       </div>
 
-      {lightbox && <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />}
-    </>
+      <AnimatePresence>
+        {lightbox && <ImageLightbox src={lightbox} onClose={() => setLightbox(null)} />}
+      </AnimatePresence>
+    </motion.div>
   );
 }
 
@@ -322,9 +333,10 @@ export function ReviewView() {
 
   const drafts = useMemo(() => cards.filter((c) => c.status === 'draft'), [cards]);
 
+  // Handle case where drafts are deleted and index becomes invalid
   useEffect(() => {
-    if (currentIndex > Math.max(0, drafts.length - 1)) {
-      setCurrentIndex(Math.max(0, drafts.length - 1));
+    if (drafts.length > 0 && currentIndex >= drafts.length) {
+      setCurrentIndex(drafts.length - 1);
     }
   }, [drafts.length, currentIndex]);
 
@@ -333,13 +345,7 @@ export function ReviewView() {
   }
 
   async function handleDiscard(id: string) {
-    const currentCardIndex = drafts.findIndex((c) => c.id === id);
     await deleteCard.mutateAsync(id);
-    const nextLength = Math.max(0, drafts.length - 1);
-    setCurrentIndex((prev) => {
-      if (currentCardIndex === -1) return Math.min(prev, Math.max(0, nextLength - 1));
-      return Math.min(currentCardIndex, Math.max(0, nextLength - 1));
-    });
   }
 
   async function handleValidateAll() {
@@ -354,30 +360,33 @@ export function ReviewView() {
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <span style={{ color: 'var(--text-muted)' }} className="text-sm">Chargement…</span>
+        <RefreshCw size={40} className="text-[var(--accent)] animate-spin opacity-20" />
       </div>
     );
   }
 
   if (drafts.length === 0) {
     return (
-      <div className="flex-1 overflow-auto">
-        <div className="max-w-4xl mx-auto px-6 py-8">
-          <div className="flex items-center gap-3 mb-6">
-            <button onClick={() => setActiveView('batch')} className="text-sm transition-colors" style={{ color: 'var(--text-secondary)' }}>
-              ← Import
-            </button>
-            <span style={{ color: 'var(--text-muted)' }}>/</span>
-            <h2 className="font-semibold" style={{ color: 'var(--text-primary)' }}>Vérification des brouillons</h2>
+      <div className="flex-1 flex items-center justify-center bg-[radial-gradient(circle_at_50%_-20%,_var(--accent-dim)_0%,_transparent_70%)]">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="text-center space-y-6"
+        >
+          <div className="w-20 h-20 rounded-[32px] bg-[var(--accent-dim)] border border-[var(--border-accent)] flex items-center justify-center mx-auto text-[var(--accent)]">
+            <CheckCircle2 size={40} />
           </div>
-          <div className="flex flex-col items-center justify-center h-48 gap-3">
-            <span className="text-4xl">✓</span>
-            <p style={{ color: 'var(--text-secondary)' }} className="text-sm">Aucun brouillon en attente.</p>
-            <button onClick={() => setActiveView('collection')} className="text-sm" style={{ color: 'var(--accent)' }}>
-              Voir la collection →
-            </button>
+          <div>
+            <h2 className="text-2xl font-black text-white tracking-tight">Vérification Terminée</h2>
+            <p className="text-[var(--text-muted)] font-medium mt-1">Tous vos brouillons ont été traités avec succès.</p>
           </div>
-        </div>
+          <button
+            onClick={() => setActiveView('collection')}
+            className="px-8 py-3 rounded-2xl bg-white/[0.05] border border-white/10 text-white text-xs font-black uppercase tracking-widest hover:bg-white/10 transition-all flex items-center gap-3 mx-auto"
+          >
+            Retourner à la collection <ArrowRight size={16} />
+          </button>
+        </motion.div>
       </div>
     );
   }
@@ -385,53 +394,50 @@ export function ReviewView() {
   const safeIndex = Math.min(currentIndex, Math.max(0, drafts.length - 1));
   const current = drafts[safeIndex];
 
-  if (!current) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <span style={{ color: 'var(--text-muted)' }} className="text-sm">Chargement…</span>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex-1 overflow-auto">
-      <div className="max-w-6xl mx-auto px-6 py-8">
-        <div className="flex items-center justify-between mb-6 gap-4">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setActiveView('batch')} className="text-sm transition-colors" style={{ color: 'var(--text-secondary)' }}>
-              ← Import
+    <div className="flex-1 overflow-auto bg-[radial-gradient(circle_at_50%_-20%,_var(--accent-dim)_0%,_transparent_70%)]">
+      <div className="max-w-7xl mx-auto px-6 py-10">
+        <div className="flex items-center justify-between mb-10">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setActiveView('batch')}
+              className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-[var(--text-muted)] hover:text-white transition-all active:scale-90"
+            >
+              <ChevronLeft size={20} />
             </button>
-            <span style={{ color: 'var(--text-muted)' }}>/</span>
-            <h2 className="font-semibold" style={{ color: 'var(--text-primary)' }}>Vérification des brouillons</h2>
-            <span className="text-xs px-2 py-0.5 rounded-full font-bold" style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}>
-              {drafts.length}
-            </span>
+            <div>
+              <div className="flex items-center gap-3">
+                <h2 className="text-2xl font-black text-white tracking-tight">Vérification Studio</h2>
+                <div className="px-2.5 py-0.5 rounded-lg bg-[var(--accent-dim)] border border-[var(--border-accent)] text-[var(--accent)] text-xs font-black">
+                  {drafts.length}
+                </div>
+              </div>
+              <p className="text-sm text-[var(--text-muted)] font-medium">Validez ou corrigez les données extraites par l'IA</p>
+            </div>
           </div>
 
           <button
             onClick={handleValidateAll}
             disabled={validatingAll}
-            className="px-4 py-2 rounded-xl text-sm font-semibold transition-all"
-            style={{
-              background: 'var(--bg-elevated)',
-              color: validatingAll ? 'var(--text-muted)' : 'var(--text-primary)',
-              border: '1px solid var(--border-strong)',
-              opacity: validatingAll ? 0.6 : 1,
-            }}
+            className="px-6 py-3 rounded-2xl bg-white/5 border border-white/10 text-white text-xs font-black uppercase tracking-widest hover:bg-white/10 disabled:opacity-30 transition-all active:scale-95"
           >
-            {validatingAll ? 'Validation…' : `Tout valider (${drafts.length})`}
+            {validatingAll ? 'TRAITEMENT EN COURS…' : `Tout valider`}
           </button>
         </div>
 
-        <DraftEditor
-          key={current.id}
-          card={current}
-          index={safeIndex}
-          total={drafts.length}
-          onNavigate={setCurrentIndex}
-          onValidate={handleValidate}
-          onDiscard={handleDiscard}
-        />
+        <AnimatePresence mode="wait">
+          {current && (
+            <DraftEditor
+              key={current.id}
+              card={current}
+              index={safeIndex}
+              total={drafts.length}
+              onNavigate={setCurrentIndex}
+              onValidate={handleValidate}
+              onDiscard={handleDiscard}
+            />
+          )}
+        </AnimatePresence>
       </div>
     </div>
   );

@@ -1,4 +1,21 @@
 import { useRef, useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Upload,
+  ChevronLeft,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  FileStack,
+  Settings,
+  ChevronRight,
+  Info,
+  Layers,
+  ArrowRight,
+  X,
+  CreditCard,
+  History
+} from 'lucide-react';
 import { compressImage } from '../../lib/storage';
 import { useCards, useCreateCard, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { useAppStore } from '../../stores/appStore';
@@ -27,23 +44,24 @@ async function fetchQuota(token: string): Promise<QuotaInfo | null> {
 function QuotaBar({ quota }: { quota: QuotaInfo }) {
   const danger = quota.remaining < 50;
   const warn = quota.remaining < 150;
-  const color = danger ? 'var(--red)' : warn ? 'var(--accent)' : 'var(--green)';
+  const color = danger ? '#ef4444' : warn ? 'var(--accent)' : '#10b981';
+
   return (
-    <div
-      className="rounded-xl px-4 py-3 flex items-center gap-4 text-sm"
-      style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}
-    >
-      <div className="flex-1">
-        <div className="flex justify-between text-xs mb-1.5">
-          <span style={{ color: 'var(--text-secondary)' }}>Quota IA aujourd'hui</span>
-          <span style={{ color }}>{quota.remaining} restants / {quota.limit}</span>
+    <div className="panel p-4 rounded-2xl bg-white/[0.02] border border-white/5 space-y-3">
+      <div className="flex justify-between items-center px-1">
+        <div className="flex items-center gap-2 text-[10px] uppercase font-black tracking-widest text-white/30">
+          <History size={12} />
+          <span>Quota Identité IA</span>
         </div>
-        <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-elevated)' }}>
-          <div
-            className="h-full rounded-full transition-all"
-            style={{ width: `${quota.pct}%`, background: color }}
-          />
-        </div>
+        <span className="text-[10px] font-black" style={{ color }}>{quota.remaining} / {quota.limit} RESTANTS</span>
+      </div>
+      <div className="h-1.5 rounded-full overflow-hidden bg-white/5 p-[1px]">
+        <motion.div
+          initial={{ width: 0 }}
+          animate={{ width: `${quota.pct}%` }}
+          className="h-full rounded-full transition-all"
+          style={{ background: color }}
+        />
       </div>
     </div>
   );
@@ -55,12 +73,10 @@ function normalizeName(name: string): string {
 
 type PairMethod = 'sequential' | 'suffix';
 
-// Suffixes reconnus pour recto/verso
 const FRONT_SUFFIXES = ['recto', 'front', 'face', 'r'];
 const BACK_SUFFIXES = ['verso', 'back', 'dos', 'v'];
 
 function pairBySuffix(files: File[]): { pairs: Pair[]; unpaired: string } {
-  // Extrait le suffixe après le dernier " - " ou "_" avant l'extension
   function getSuffix(name: string): { base: string; side: 'front' | 'back' | null } {
     const noExt = name.replace(/\.[^.]+$/, '');
     const match = noExt.match(/^(.*?)[\s_-]+([a-zA-Z]+)$/);
@@ -93,7 +109,7 @@ function pairBySuffix(files: File[]): { pairs: Pair[]; unpaired: string } {
   return { pairs, unpaired: unmatched.join(', ') };
 }
 
-const PAIR_DELAY_MS = 6500; // ~9 req/min to stay under Gemini free tier 10 RPM limit
+const PAIR_DELAY_MS = 6500;
 
 interface Pair {
   front: File;
@@ -112,15 +128,15 @@ interface PairResult {
 function statusMeta(status: PairStatus): { label: string; color: string; bg: string } {
   switch (status) {
     case 'running':
-      return { label: 'En cours', color: 'var(--accent)', bg: 'rgba(245,166,35,0.12)' };
+      return { label: 'ANALYSE…', color: 'var(--accent)', bg: 'var(--accent-dim)' };
     case 'done':
-      return { label: 'OK', color: 'var(--green)', bg: 'rgba(16,185,129,0.12)' };
+      return { label: 'SUCCÈS', color: '#10b981', bg: 'rgba(16,185,129,0.12)' };
     case 'error':
-      return { label: 'Erreur', color: 'var(--red)', bg: 'rgba(248,113,113,0.12)' };
+      return { label: 'ERREUR', color: '#ef4444', bg: 'rgba(239,68,68,0.12)' };
     case 'skipped':
-      return { label: 'Ignoré', color: 'var(--text-secondary)', bg: 'var(--bg-elevated)' };
+      return { label: 'DOUBLON', color: 'var(--text-muted)', bg: 'white/5' };
     default:
-      return { label: 'En attente', color: 'var(--text-muted)', bg: 'var(--bg-elevated)' };
+      return { label: 'ATTENTE', color: 'var(--text-muted)', bg: 'white/5' };
   }
 }
 
@@ -168,7 +184,6 @@ export function BatchView() {
     });
   }, []);
 
-  // Re-parse si on change de méthode après avoir sélectionné des fichiers
   const allFiles = useRef<File[]>([]);
   function reparseFiles(files: File[], m: PairMethod) {
     let newPairs: Pair[] = [];
@@ -220,9 +235,9 @@ export function BatchView() {
     const errors = nextResults.filter((r) => r.status === 'error').length;
 
     return (
-      `${success} carte(s) sauvegardées en brouillon` +
-      (skipped > 0 ? ` — ${skipped} doublon(s) ignoré(s)` : '') +
-      (errors > 0 ? ` — ${errors} échec(s)` : '')
+      `${success} carte(s) traitées` +
+      (skipped > 0 ? ` · ${skipped} doublons` : '') +
+      (errors > 0 ? ` · ${errors} erreurs` : '')
     );
   }
 
@@ -250,13 +265,13 @@ export function BatchView() {
     let failedStep = 'identification';
 
     try {
-      onStep?.('Préparation des images');
+      onStep?.('Optimisation');
       const [front_base64, back_base64] = await Promise.all([
         fileToBase64(pair.front),
         fileToBase64(pair.back),
       ]);
 
-      onStep?.('Identification IA');
+      onStep?.('Analyse IA');
       const identResp = await fetch(`${API_BASE}/api/identify`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -266,7 +281,7 @@ export function BatchView() {
       const ai: AIIdentificationResult = await identResp.json();
 
       failedStep = 'création du brouillon';
-      onStep?.('Création du brouillon');
+      onStep?.('Extraction');
       const newCard = await createCard.mutateAsync({
         player: ai.player || null,
         team: ai.team || null,
@@ -301,14 +316,14 @@ export function BatchView() {
       }
 
       failedStep = 'upload des images';
-      onStep?.('Upload des images');
+      onStep?.('Stockage Cloud');
       const [image_front_url, image_back_url] = await Promise.all([
         upload(pair.front, 'front'),
         upload(pair.back, 'back'),
       ]);
 
-      failedStep = 'enregistrement des URLs d’images';
-      onStep?.('Enregistrement final');
+      failedStep = 'enregistrement final';
+      onStep?.('Finalisation');
       await updateCard.mutateAsync({
         id: newCard.id,
         image_front_url,
@@ -319,15 +334,12 @@ export function BatchView() {
       return { status: 'done' as const, step: undefined };
     } catch (e) {
       const message = (e as Error).message;
-      let error = `Échec pendant ${failedStep}: ${message}`;
+      let error = `${message}`;
 
       if (createdCardId) {
         try {
           await deleteCard.mutateAsync(createdCardId);
-          error = `Échec pendant ${failedStep}: ${message}. Brouillon supprimé pour éviter un enregistrement incomplet.`;
-        } catch {
-          error = `Échec pendant ${failedStep}: ${message}. Le brouillon partiel n'a pas pu être supprimé automatiquement.`;
-        }
+        } catch { }
       }
 
       return { status: 'error' as const, error, step: undefined };
@@ -349,57 +361,35 @@ export function BatchView() {
       return;
     }
 
-    let success = 0;
-    let errors = 0;
-    let skipped = 0;
+    const currentResults = [...results];
 
     for (let i = 0; i < pairs.length; i++) {
-      updateResult(i, { status: 'running', step: 'Préparation…', error: undefined });
+      // Filter out already done ones or those we might want to skip? 
+      // For a standard run we assume we process all.
+      updateResult(i, { status: 'running', step: 'Booting…', error: undefined });
       const result = await processPair(i, token, (step) => updateResult(i, { status: 'running', step, error: undefined }));
       updateResult(i, result);
-      if (result.status === 'done') {
-        success++;
-        setDraftCount((n) => n + 1);
-      } else if (result.status === 'skipped') {
-        skipped++;
-      } else if (result.status === 'error') {
-        errors++;
-      }
+
+      if (result.status === 'done') setDraftCount((n) => n + 1);
 
       if (i + 1 < pairs.length) await sleep(PAIR_DELAY_MS);
     }
 
-    setSummary(buildSummaryFromResults(results.map((r, i) => {
-      if (i < success) return r;
-      return r;
-    })));
-    setSummary(
-      `${success} carte(s) sauvegardées en brouillon` +
-      (skipped > 0 ? ` — ${skipped} doublon(s) ignoré(s)` : '') +
-      (errors > 0 ? ` — ${errors} échec(s)` : ''),
-    );
     setRunning(false);
+    setSummary('Importation terminée');
   }
 
   async function retryPair(index: number) {
     const { data } = await supabase.auth.getSession();
     const token = data.session?.access_token;
-    if (!token) {
-      updateResult(index, { status: 'error', error: 'Non authentifié.' });
-      return;
-    }
+    if (!token) return;
 
     setRetryingIndexes((prev) => [...prev, index]);
-    updateResult(index, { status: 'running', step: 'Préparation…', error: undefined });
+    updateResult(index, { status: 'running', step: 'Retry…', error: undefined });
 
     const result = await processPair(index, token, (step) => updateResult(index, { status: 'running', step, error: undefined }));
-    let nextResults: PairResult[] = [];
-    setResults((prev) => {
-      nextResults = prev.map((r, i) => (i === index ? { ...r, ...result } : r));
-      return nextResults;
-    });
+    updateResult(index, result);
     if (result.status === 'done') setDraftCount((n) => n + 1);
-    setSummary(buildSummaryFromResults(nextResults));
     setRetryingIndexes((prev) => prev.filter((i) => i !== index));
   }
 
@@ -409,238 +399,235 @@ export function BatchView() {
 
     const { data } = await supabase.auth.getSession();
     const token = data.session?.access_token;
-    if (!token) {
-      setSummary('Non authentifié.');
-      return;
-    }
+    if (!token) return;
 
     setRetryingAll(true);
     setRetryingIndexes(failedIndexes);
 
-    let nextResults = [...results];
-
     for (let pos = 0; pos < failedIndexes.length; pos++) {
       const index = failedIndexes[pos];
-      updateResult(index, { status: 'running', step: 'Préparation…', error: undefined });
+      updateResult(index, { status: 'running', step: 'Retry…', error: undefined });
       const result = await processPair(index, token, (step) => updateResult(index, { status: 'running', step, error: undefined }));
-      nextResults = nextResults.map((r, i) => (i === index ? { ...r, ...result } : r));
-      setResults(nextResults);
+      updateResult(index, result);
       if (result.status === 'done') setDraftCount((n) => n + 1);
       setRetryingIndexes((prev) => prev.filter((i) => i !== index));
       if (pos + 1 < failedIndexes.length) await sleep(PAIR_DELAY_MS);
     }
-
-    setSummary(buildSummaryFromResults(nextResults));
     setRetryingAll(false);
   }
 
-  const done = results.filter((r) => r.status === 'done').length;
-  const total = pairs.length;
-  const progress = total > 0 ? Math.round((done / total) * 100) : 0;
-  const isDone = !running && summary !== '' && draftCount > 0;
+  const doneCount = results.filter((r) => r.status === 'done').length;
+  const totalCount = pairs.length;
+  const progress = totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0;
+  const isFinished = !running && results.some(r => r.status === 'done');
   const errorCount = results.filter((r) => r.status === 'error').length;
 
   return (
-    <div className="flex-1 overflow-auto">
-      <div className="max-w-2xl mx-auto px-6 py-8">
-        <div className="flex items-center gap-3 mb-8">
-          <button
-            onClick={() => setActiveView('collection')}
-            className="text-sm transition-colors"
-            style={{ color: 'var(--text-secondary)' }}
-          >
-            ← Retour
-          </button>
-          <span style={{ color: 'var(--text-muted)' }}>/</span>
-          <h2 className="font-semibold" style={{ color: 'var(--text-primary)' }}>
-            Import en lot
-          </h2>
-        </div>
-
-        {/* Instructions */}
-        <div
-          className="rounded-2xl p-5 mb-4 text-sm"
-          style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
-        >
-          Sélectionne plusieurs images triées par nom — elles sont appairées automatiquement :{' '}
-          <span style={{ color: 'var(--text-primary)' }}>image 1 = face, image 2 = dos…</span>
-          <br />Les cartes sont sauvegardées en <strong style={{ color: 'var(--accent)' }}>brouillon</strong> — tu pourras les corriger avant de les valider dans la collection.
-        </div>
-
-        {/* Quota */}
-        {quota && <div className="mb-4"><QuotaBar quota={quota} /></div>}
-
-        {/* Méthode d'appairage */}
-        <div className="rounded-2xl p-4 mb-4" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}>
-          <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: 'var(--text-muted)' }}>Méthode de détection des paires</p>
-          <div className="flex flex-col gap-2">
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input type="radio" name="method" value="sequential" checked={method === 'sequential'} onChange={() => { setMethod('sequential'); if (allFiles.current.length) reparseFiles(allFiles.current, 'sequential'); }} className="mt-0.5 accent-[var(--accent)]" />
-              <div>
-                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Numéros consécutifs</p>
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>img1.jpg, img2.jpg, img3.jpg, img4.jpg → paire 1 + 2, paire 3 + 4…</p>
-              </div>
-            </label>
-            <label className="flex items-start gap-3 cursor-pointer">
-              <input type="radio" name="method" value="suffix" checked={method === 'suffix'} onChange={() => { setMethod('suffix'); if (allFiles.current.length) reparseFiles(allFiles.current, 'suffix'); }} className="mt-0.5 accent-[var(--accent)]" />
-              <div>
-                <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Suffixe Recto / Verso</p>
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  Nom - Recto.jpg + Nom - Verso.jpg<br />
-                  Suffixes reconnus : Recto, Front, Face, R / Verso, Back, Dos, V
-                </p>
-              </div>
-            </label>
-          </div>
-        </div>
-
-        {/* File input */}
-        <div
-          className="rounded-2xl border-2 border-dashed p-8 mb-6 flex flex-col items-center gap-3 cursor-pointer transition-all"
-          style={{
-            borderColor: draggingOver ? 'var(--accent)' : pairs.length > 0 ? 'var(--accent)' : 'var(--border)',
-            background: draggingOver ? 'rgba(245,166,35,0.06)' : 'transparent',
-          }}
-          onClick={() => !running && fileRef.current?.click()}
-          onDragOver={(e) => { e.preventDefault(); if (!running) setDraggingOver(true); }}
-          onDragLeave={() => setDraggingOver(false)}
-          onDrop={handleDrop}
-        >
-          <div className="text-3xl">{draggingOver ? '📥' : '📂'}</div>
-          <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-            {draggingOver ? 'Déposer les images ici' : pairs.length > 0 ? `${pairs.length} paire(s) sélectionnée(s)` : 'Glisser-déposer ou cliquer pour sélectionner'}
-          </p>
-          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            {pairs.length > 0 && !draggingOver ? 'Cliquer ou déposer pour changer la sélection' : 'Sélection multiple — JPG, PNG, HEIC'}
-          </p>
-          <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFiles} />
-        </div>
-
-        {pairs.length > 0 && (
-          <>
-            {/* Header actions */}
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-                <span style={{ color: 'var(--text-primary)' }} className="font-semibold">{pairs.length}</span> paire(s)
-                {unpaired && <span className="ml-3 text-yellow-500">⚠ "{unpaired}" sans paire</span>}
-              </div>
-              <div className="flex items-center gap-2">
-                {!running && errorCount > 0 && (
-                  <button
-                    onClick={retryFailedPairs}
-                    disabled={retryingAll || retryingIndexes.length > 0}
-                    className="px-4 py-2 rounded-xl text-sm font-semibold"
-                    style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
-                  >
-                    {retryingAll ? 'Relance…' : `Réessayer les échecs (${errorCount})`}
-                  </button>
-                )}
-                {!running && !isDone && (
-                  <button
-                    onClick={runBatch}
-                    disabled={retryingAll || retryingIndexes.length > 0}
-                    className="px-5 py-2 rounded-xl text-sm font-semibold"
-                    style={{ background: 'var(--accent)', color: '#0d0c0b', boxShadow: '0 0 20px var(--accent-glow)' }}
-                  >
-                    Lancer l'identification
-                  </button>
-                )}
-              </div>
+    <div className="flex-1 overflow-auto bg-[radial-gradient(circle_at_50%_-20%,_var(--accent-dim)_0%,_transparent_70%)]">
+      <div className="max-w-4xl mx-auto px-6 py-10">
+        <div className="flex items-center justify-between mb-10">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setActiveView('collection')}
+              className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-[var(--text-muted)] hover:text-white transition-all active:scale-90"
+            >
+              <ChevronLeft size={20} />
+            </button>
+            <div>
+              <h2 className="text-2xl font-black text-white tracking-tight text-glow">Import Studio</h2>
+              <p className="text-sm text-[var(--text-muted)] font-medium">Capturez et identifiez vos lots de cartes</p>
             </div>
+          </div>
+          {quota && <QuotaBar quota={quota} />}
+        </div>
 
-            {/* Progress */}
-            {(running || isDone) && (
-              <div className="mb-4">
-                <div className="flex justify-between text-xs mb-1.5" style={{ color: 'var(--text-muted)' }}>
-                  <span>{running ? 'Identification en cours…' : 'Terminé'}</span>
-                  <span>{done}/{total}</span>
+        <div className="grid lg:grid-cols-[1fr_300px] gap-8">
+          {/* Dropzone & List */}
+          <div className="space-y-6">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className={`panel border-2 border-dashed rounded-[40px] p-12 transition-all group relative overflow-hidden ${draggingOver ? 'bg-[var(--accent-dim)] border-[var(--accent)]/50' : 'bg-white/[0.01] border-white/10 hover:border-white/20'
+                } ${pairs.length > 0 && !draggingOver ? 'py-8' : ''}`}
+              onDragOver={(e) => { e.preventDefault(); if (!running) setDraggingOver(true); }}
+              onDragLeave={() => setDraggingOver(false)}
+              onDrop={handleDrop}
+              onClick={() => !running && fileRef.current?.click()}
+            >
+              <div className="flex flex-col items-center justify-center text-center gap-4 relative z-10">
+                <div className={`w-16 h-16 rounded-[24px] flex items-center justify-center transition-all ${draggingOver ? 'bg-[var(--accent)] text-[#09090B]' : 'bg-white/5 text-white/20 group-hover:text-white/40 group-hover:bg-white/10'
+                  }`}>
+                  {running ? <RefreshCw size={32} className="animate-spin" /> : <Upload size={32} />}
                 </div>
-                <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-elevated)' }}>
-                  <div
-                    className="h-full rounded-full transition-all duration-500"
-                    style={{ width: `${progress}%`, background: 'var(--accent)' }}
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Summary + CTA review */}
-            {isDone && (
-              <div
-                className="mb-6 px-4 py-4 rounded-xl flex items-center justify-between gap-4"
-                style={{ background: 'rgba(245,166,35,0.08)', border: '1px solid rgba(245,166,35,0.2)' }}
-              >
                 <div>
-                  <p className="text-sm font-semibold" style={{ color: 'var(--accent)' }}>{summary}</p>
-                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-                    Prêtes à être vérifiées et validées.
+                  <p className="text-lg font-black text-white tracking-tight">
+                    {draggingOver ? 'C\'est le moment !' : pairs.length > 0 ? `${pairs.length} Paires Chargées` : 'Glissez vos images'}
+                  </p>
+                  <p className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest mt-1">
+                    JPG, PNG, HEIC · Recto & Verso
                   </p>
                 </div>
-                <button
-                  onClick={() => setActiveView('review')}
-                  className="shrink-0 px-4 py-2 rounded-xl text-sm font-semibold transition-all"
-                  style={{ background: 'var(--accent)', color: '#0d0c0b' }}
-                >
-                  Revoir les cartes →
-                </button>
+                {!pairs.length && (
+                  <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/5 text-[10px] font-black uppercase tracking-[0.2em] text-white/40 mt-2">
+                    <Info size={12} />
+                    Automatisme intelligent
+                  </div>
+                )}
+              </div>
+              <input ref={fileRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFiles} />
+            </motion.div>
+
+            {pairs.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between px-2 mb-4">
+                  <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30">Fichiers à traiter ({pairs.length})</h3>
+                  {!running && errorCount > 0 && (
+                    <button onClick={retryFailedPairs} className="text-[10px] font-black uppercase tracking-widest text-red-400 hover:text-red-300 transition-colors">
+                      Relancer les erreurs ({errorCount})
+                    </button>
+                  )}
+                </div>
+
+                <div className="space-y-px rounded-[32px] overflow-hidden border border-white/5 bg-white/[0.02]">
+                  <AnimatePresence mode="popLayout">
+                    {results.map((r, i) => (
+                      <motion.div
+                        layout
+                        key={i}
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        className={`flex items-center gap-4 px-6 py-4 transition-colors ${i % 2 === 0 ? 'bg-white/[0.02]' : 'bg-transparent'
+                          } ${r.status === 'error' ? 'bg-red-500/5' : ''}`}
+                      >
+                        <div className="w-6 text-[10px] font-black text-white/20 shrink-0">{i + 1}</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <p className="text-xs font-bold text-white truncate max-w-[200px]">{r.pair.front.name}</p>
+                            <ChevronRight size={10} className="text-white/20" />
+                            <p className="text-xs font-bold text-white truncate max-w-[200px]">{r.pair.back.name}</p>
+                          </div>
+                          {r.status === 'running' && r.step && (
+                            <p className="text-[10px] font-black text-[var(--accent)] uppercase tracking-widest">{r.step}...</p>
+                          )}
+                          {r.error && (
+                            <p className="text-[10px] font-bold text-red-500 truncate" title={r.error}>{r.error}</p>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-3 shrink-0">
+                          {r.status === 'error' && !running && (
+                            <button onClick={() => retryPair(i)} className="p-2 rounded-lg bg-white/5 border border-white/10 text-white/60 hover:text-white transition-all">
+                              <RefreshCw size={12} />
+                            </button>
+                          )}
+                          <div className={`px-2 py-1 rounded-md text-[9px] font-black tracking-widest ${r.status === 'done' ? 'bg-green-500/20 text-green-400' :
+                              r.status === 'error' ? 'bg-red-500/20 text-red-400' :
+                                r.status === 'running' ? 'bg-[var(--accent-dim)] text-[var(--accent)] animate-pulse' :
+                                  'bg-white/5 text-white/20'
+                            }`}>
+                            {statusMeta(r.status).label}
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </div>
               </div>
             )}
+          </div>
 
-            {/* Pair list */}
-            <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--border)' }}>
-              {results.map((r, i) => (
-                <div
-                  key={i}
-                  className="flex items-start gap-3 px-4 py-3 text-sm"
-                  style={{
-                    borderBottom: i < results.length - 1 ? '1px solid var(--border)' : 'none',
-                    background: i % 2 === 0 ? 'var(--bg-card)' : 'var(--bg-secondary)',
-                  }}
-                >
-                  <span className="w-6 text-xs font-bold shrink-0 text-right" style={{ color: 'var(--text-muted)' }}>
-                    {i + 1}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <p className="truncate text-xs" style={{ color: 'var(--text-secondary)' }}>
-                      {r.pair.front.name} + {r.pair.back.name}
-                    </p>
-                    {r.status === 'running' && r.step && (
-                      <p className="text-xs mt-1" style={{ color: 'var(--accent)' }}>{r.step}…</p>
-                    )}
-                    {r.error && (
-                      <p className="text-xs mt-1 leading-relaxed break-words" style={{ color: 'var(--red)' }}>{r.error}</p>
-                    )}
-                  </div>
-                  <div className="shrink-0 flex flex-col items-end gap-1">
-                    {r.status === 'error' && !running && (
-                      <button
-                        onClick={() => retryPair(i)}
-                        disabled={retryingAll || retryingIndexes.includes(i)}
-                        className="px-2.5 py-1 rounded-lg text-[11px] font-semibold"
-                        style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
-                      >
-                        {retryingIndexes.includes(i) ? 'Relance…' : 'Réessayer'}
-                      </button>
-                    )}
-                    <span
-                      className="px-2 py-1 rounded-lg text-[11px] font-semibold"
-                      style={{ color: statusMeta(r.status).color, background: statusMeta(r.status).bg }}
+          {/* Settings & Controls */}
+          <div className="space-y-6">
+            <div className="panel p-6 rounded-[32px] bg-white/[0.03] border border-white/10 space-y-6">
+              <div>
+                <h3 className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.2em] text-white/40 mb-4">
+                  <Settings size={12} />
+                  Paramètres d'appairage
+                </h3>
+                <div className="space-y-2">
+                  {[
+                    { id: 'sequential', label: 'Consécutif', desc: '1-2, 3-4, 5-6...', icon: FileStack },
+                    { id: 'suffix', label: 'Suffixe', desc: '_recto / _verso', icon: Layers }
+                  ].map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={() => { setMethod(opt.id as PairMethod); if (allFiles.current.length) reparseFiles(allFiles.current, opt.id as PairMethod); }}
+                      className={`w-full text-left p-3 rounded-2xl border transition-all ${method === opt.id ? 'bg-[var(--accent-dim)] border-[var(--accent)]/30' : 'bg-white/5 border-white/5 hover:border-white/10'
+                        }`}
                     >
-                      {statusMeta(r.status).label}
-                    </span>
-                    <span className="text-base leading-none">
-                      {r.status === 'pending' && <span style={{ color: 'var(--text-muted)' }}>·</span>}
-                      {r.status === 'running' && <span className="animate-spin inline-block" style={{ color: 'var(--accent)' }}>⟳</span>}
-                      {r.status === 'done' && <span style={{ color: 'var(--green)' }}>✓</span>}
-                      {r.status === 'error' && <span style={{ color: 'var(--red)' }}>✕</span>}
-                      {r.status === 'skipped' && <span style={{ color: 'var(--text-muted)' }}>⊘</span>}
-                    </span>
-                  </div>
+                      <div className="flex items-center gap-3">
+                        <opt.icon size={16} className={method === opt.id ? 'text-[var(--accent)]' : 'text-white/20'} />
+                        <div>
+                          <p className={`text-xs font-black uppercase tracking-widest ${method === opt.id ? 'text-[var(--accent)]' : 'text-white'}`}>{opt.label}</p>
+                          <p className="text-[10px] font-medium text-white/30">{opt.desc}</p>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
                 </div>
-              ))}
+              </div>
+
+              {pairs.length > 0 && (
+                <div className="pt-6 border-t border-white/5 space-y-4">
+                  {running && (
+                    <div className="space-y-2 px-1">
+                      <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-white/40">
+                        <span>Progression</span>
+                        <span>{doneCount} / {totalCount}</span>
+                      </div>
+                      <div className="h-1 rounded-full bg-white/5 overflow-hidden">
+                        <motion.div
+                          className="h-full bg-[var(--accent)]"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${progress}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {!running && !isFinished && (
+                    <button
+                      onClick={runBatch}
+                      className="w-full py-4 rounded-2xl bg-[var(--accent)] border border-[var(--border-accent)] text-[#09090B] text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-xl shadow-[var(--accent-glow)] hover:brightness-110 active:scale-[0.98] transition-all"
+                    >
+                      Lancer l'Analyse <ArrowRight size={16} />
+                    </button>
+                  )}
+
+                  {isFinished && (
+                    <button
+                      onClick={() => setActiveView('review')}
+                      className="w-full py-4 rounded-2xl bg-white text-black text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 shadow-xl hover:bg-white/90 active:scale-[0.98] transition-all"
+                    >
+                      Vérifier les Brouillons <ArrowRight size={16} />
+                    </button>
+                  )}
+
+                  {unpaired && (
+                    <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] font-bold leading-relaxed">
+                      <AlertCircle size={12} className="inline mr-2 mb-0.5" />
+                      Certains fichiers sont orphelins : {unpaired}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          </>
-        )}
+
+            {isFinished && (
+              <div className="panel p-6 rounded-[32px] bg-[var(--accent-dim)] border border-[var(--border-accent)]">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-8 h-8 rounded-lg bg-[var(--accent)] flex items-center justify-center text-[#09090B]">
+                    <CheckCircle2 size={16} />
+                  </div>
+                  <h4 className="text-sm font-black text-white uppercase tracking-tight">Analyse Terminée</h4>
+                </div>
+                <p className="text-xs font-bold text-[var(--accent)]/70 leading-relaxed uppercase tracking-wide">
+                  {doneCount} cartes ont été injectées en mode brouillon pour vérification.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

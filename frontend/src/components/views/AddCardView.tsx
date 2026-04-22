@@ -1,11 +1,22 @@
 import { useRef, useState } from 'react';
+import { motion } from 'framer-motion';
+import {
+  Camera,
+  Upload,
+  Search,
+  ChevronLeft,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  Star,
+  ArrowRight
+} from 'lucide-react';
 import { useIdentify } from '../../hooks/useIdentify';
 import { useCreateCard, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { compressImage } from '../../lib/storage';
 import { useAppStore } from '../../stores/appStore';
 import { supabase } from '../../lib/supabase';
 import type { CardType, CardStatus } from '../../types';
-import { RookieBadge } from '../shared/RookieBadge';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
@@ -18,6 +29,8 @@ const CARD_TYPES: { value: CardType; label: string }[] = [
   { value: 'patch', label: 'Patch' },
   { value: 'auto_patch', label: 'Auto/Patch' },
 ];
+
+const inputCls = 'w-full rounded-xl px-3 py-2.5 text-sm outline-none transition-all bg-white/5 border border-white/10 focus:border-[var(--accent)]/50 focus:bg-white/10 placeholder:text-white/20';
 
 function ImageDropzone({
   label,
@@ -35,24 +48,26 @@ function ImageDropzone({
     <button
       type="button"
       onClick={() => ref.current?.click()}
-      className={`relative flex-1 rounded-2xl overflow-hidden border-2 transition-all ${
-        preview
-          ? 'border-white/10 hover:border-[var(--accent)]/50'
-          : 'border-dashed border-white/10 hover:border-[var(--accent)]/50 bg-[var(--bg-secondary)]/50'
-      }`}
-      style={{ aspectRatio: '2/3' }}
+      className={`relative flex-1 rounded-2xl overflow-hidden border transition-all group active:scale-[0.98] ${preview
+        ? 'border-white/10'
+        : 'border-dashed border-white/10 bg-white/[0.02] hover:bg-white/[0.05] hover:border-[var(--accent)]/50'
+        }`}
+      style={{ aspectRatio: '2/3.5' }}
     >
       {preview ? (
         <>
-          <img src={preview} alt={label} className="w-full h-full object-cover" />
-          <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
-            <span className="text-white text-sm font-medium">Changer</span>
+          <img src={preview} alt={label} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2">
+            <Camera size={24} className="text-white" />
+            <span className="text-white text-xs font-bold uppercase tracking-widest">Changer</span>
           </div>
         </>
       ) : (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
-          <div className="w-10 h-10 rounded-full bg-[var(--bg-elevated)] flex items-center justify-center text-xl">📷</div>
-          <span className="text-[var(--text-secondary)] text-sm">{label}</span>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+          <div className="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center text-[var(--accent)] border border-white/5 group-hover:border-[var(--accent)]/30 group-hover:bg-[var(--accent)-dim] transition-all">
+            <Camera size={24} strokeWidth={1.5} />
+          </div>
+          <span className="text-[var(--text-muted)] text-[10px] font-bold uppercase tracking-widest">{label}</span>
         </div>
       )}
       <input
@@ -77,36 +92,9 @@ function Field({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-1">
-      <label className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">{label}</label>
+    <div className="flex flex-col gap-2">
+      <label className="text-[10px] font-black text-[var(--text-muted)] uppercase tracking-[0.15em] ml-1">{label}</label>
       {children}
-    </div>
-  );
-}
-
-const inputClass =
-  'w-full bg-[var(--bg-secondary)] border border-white/5 text-white rounded-xl px-3 py-2.5 text-sm outline-none focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/20 transition-all placeholder:text-[var(--text-muted)]';
-
-function ErrorAlert({ title, message }: { title: string; message: string }) {
-  return (
-    <div
-      className="mt-6 rounded-2xl p-4"
-      style={{ background: 'rgba(127,29,29,0.28)', border: '1px solid rgba(248,113,113,0.35)' }}
-    >
-      <div className="flex items-start gap-3">
-        <div
-          className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 text-sm font-bold"
-          style={{ background: 'rgba(248,113,113,0.16)', color: '#fca5a5' }}
-        >
-          !
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold" style={{ color: '#fecaca' }}>{title}</p>
-          <p className="text-sm mt-1 whitespace-pre-wrap break-words" style={{ color: '#fca5a5' }}>
-            {message}
-          </p>
-        </div>
-      </div>
     </div>
   );
 }
@@ -178,7 +166,7 @@ export function AddCardView() {
   async function handleSave() {
     setError('');
     setSaving(true);
-    setSaveStep('Création de la carte…');
+    setSaveStep('Initialisation…');
     let createdCardId: string | null = null;
     try {
       const { data } = await supabase.auth.getSession();
@@ -210,16 +198,16 @@ export function AddCardView() {
 
       const updates: Record<string, string> = {};
       if (frontFile) {
-        setSaveStep('Upload de la photo avant…');
+        setSaveStep('Photo Recto…');
         updates.image_front_url = await uploadViaBackend(frontFile, 'front');
       }
       if (backFile) {
-        setSaveStep('Upload de la photo arrière…');
+        setSaveStep('Photo Verso…');
         updates.image_back_url = await uploadViaBackend(backFile, 'back');
       }
 
       if (Object.keys(updates).length > 0) {
-        setSaveStep('Enregistrement des photos…');
+        setSaveStep('Finalisation…');
         await updateCard.mutateAsync({
           id: newCard.id,
           ...updates,
@@ -250,161 +238,173 @@ export function AddCardView() {
   const identified = identify.isSuccess;
 
   return (
-    <div className="flex-1 overflow-auto">
-      <div className="max-w-2xl mx-auto px-6 py-8">
-        <div className="flex items-center gap-3 mb-8">
-          <button
-            onClick={() => setActiveView('collection')}
-            className="text-[var(--text-secondary)] hover:text-white transition-colors text-sm"
-          >
-            ← Collection
-          </button>
-          <span className="text-[var(--text-muted)]">/</span>
-          <h2 className="text-white font-semibold">Ajouter une carte</h2>
-        </div>
-
-        {/* Photos */}
-        <div className="mb-8">
-          <p className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider mb-3">Photos</p>
-          <div className="flex gap-4" style={{ height: '280px' }}>
-            <ImageDropzone label="Face" file={frontFile} onChange={setFrontFile} />
-            <ImageDropzone label="Dos" file={backFile} onChange={setBackFile} />
+    <div className="flex-1 overflow-auto bg-[radial-gradient(circle_at_50%_-20%,_var(--accent-dim)_0%,_transparent_70%)]">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="max-w-3xl mx-auto px-6 py-10"
+      >
+        <div className="flex items-center justify-between mb-10">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setActiveView('collection')}
+              className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-[var(--text-muted)] hover:text-white hover:bg-white/10 transition-all active:scale-90"
+            >
+              <ChevronLeft size={20} />
+            </button>
+            <div>
+              <h2 className="text-2xl font-black text-white tracking-tight">Ajouter une carte</h2>
+              <p className="text-sm text-[var(--text-muted)] font-medium">Numérisez vos nouvelles trouvailles</p>
+            </div>
           </div>
         </div>
 
-        {/* Identify button */}
-        <button
-          onClick={handleIdentify}
-          disabled={!canIdentify || identify.isPending}
-          className={`w-full mb-8 py-3 rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 ${
-            !canIdentify
-              ? 'bg-[var(--bg-secondary)] text-[var(--text-muted)] cursor-not-allowed border border-white/5'
-              : identified
-              ? 'bg-green-900/40 border border-green-700/40 text-green-400'
-              : 'bg-[var(--accent)] hover:opacity-90 text-white shadow-lg shadow-orange-500/20'
-          }`}
-        >
-          {identify.isPending ? (
-            <>
-              <span className="animate-spin">⟳</span>
-              Identification en cours…
-            </>
-          ) : identified ? (
-            <>✓ Identifiée — cliquer pour ré-identifier</>
-          ) : (
-            <>🔍 Identifier avec l'IA</>
-          )}
-        </button>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+          {/* Left Column: Photos & AI Actions */}
+          <div className="space-y-8">
+            <div className="panel p-6 rounded-3xl">
+              <div className="flex items-center gap-2 mb-6">
+                <Camera size={16} className="text-[var(--accent)]" />
+                <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Scanner Haute Résolution</span>
+              </div>
+              <div className="flex gap-4">
+                <ImageDropzone label="RECTO" file={frontFile} onChange={setFrontFile} />
+                <ImageDropzone label="VERSO" file={backFile} onChange={setBackFile} />
+              </div>
 
-        {/* Form */}
-        <div className="space-y-6">
-          {/* Joueur / Équipe */}
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Joueur">
-              <input className={inputClass} value={fields.player} onChange={(e) => set('player', e.target.value)} placeholder="LeBron James" />
-            </Field>
-            <Field label="Équipe">
-              <input className={inputClass} value={fields.team} onChange={(e) => set('team', e.target.value)} placeholder="Los Angeles Lakers" />
-            </Field>
-          </div>
+              <div className="mt-8">
+                <button
+                  onClick={handleIdentify}
+                  disabled={!canIdentify || identify.isPending}
+                  className={`w-full py-4 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-3 active:scale-95 border ${!canIdentify
+                    ? 'bg-white/5 text-white/20 border-white/5 cursor-not-allowed opacity-50'
+                    : identified
+                      ? 'bg-green-500/10 border-green-500/20 text-green-400'
+                      : 'bg-[var(--accent)] border-[var(--border-accent)] text-[#09090B] shadow-xl shadow-[var(--accent-glow)] hover:brightness-110'
+                    }`}
+                >
+                  {identify.isPending ? (
+                    <RefreshCw size={18} className="animate-spin" />
+                  ) : identified ? (
+                    <CheckCircle2 size={18} />
+                  ) : (
+                    <Search size={18} />
+                  )}
+                  {identify.isPending ? 'ANALYSE EN COURS…' : identified ? 'RÉ-IDENTIFIER' : 'IDENTIFIER AVEC L’IA'}
+                </button>
+                <p className="text-[10px] text-center mt-3 text-[var(--text-muted)] font-bold uppercase tracking-widest opacity-40">
+                  L'IA remplira automatiquement les champs ci-contre
+                </p>
+              </div>
+            </div>
 
-          {/* Carte */}
-          <div className="grid grid-cols-3 gap-4">
-            <Field label="Année">
-              <input className={inputClass} value={fields.year} onChange={(e) => set('year', e.target.value)} placeholder="2024-25" />
-            </Field>
-            <Field label="Marque">
-              <input className={inputClass} value={fields.brand} onChange={(e) => set('brand', e.target.value)} placeholder="Panini" />
-            </Field>
-            <Field label="Set">
-              <input className={inputClass} value={fields.set_name} onChange={(e) => set('set_name', e.target.value)} placeholder="Prizm" />
-            </Field>
-          </div>
-
-          {/* Insert / Parallel */}
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Insert">
-              <input className={inputClass} value={fields.insert_name} onChange={(e) => set('insert_name', e.target.value)} placeholder="Downtown" />
-            </Field>
-            <Field label="Parallel">
-              <input className={inputClass} value={fields.parallel_name} onChange={(e) => set('parallel_name', e.target.value)} placeholder="Silver Prizm" />
-            </Field>
-          </div>
-
-          {/* Numéro / Tirage / Type / RC */}
-          <div className="grid grid-cols-4 gap-4">
-            <Field label="N° carte">
-              <input className={inputClass} value={fields.card_number} onChange={(e) => set('card_number', e.target.value)} placeholder="#45" />
-            </Field>
-            <Field label="Tirage">
-              <input className={inputClass} value={fields.numbered} onChange={(e) => set('numbered', e.target.value)} placeholder="/99" />
-            </Field>
-            <Field label="Type">
-              <select
-                className={inputClass}
-                value={fields.card_type}
-                onChange={(e) => set('card_type', e.target.value)}
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="p-4 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-start gap-3"
               >
-                <option value="">—</option>
-                {CARD_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
-                ))}
-              </select>
-            </Field>
-            <Field label="RC">
-              <button
-                type="button"
+                <AlertCircle className="text-red-400 shrink-0 mt-0.5" size={18} />
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-red-400">Erreur lors de l'enregistrement</p>
+                  <p className="text-xs text-red-400/80 mt-1">{error}</p>
+                </div>
+              </motion.div>
+            )}
+          </div>
+
+          {/* Right Column: Information Form */}
+          <div className="space-y-6">
+            <div className="panel p-6 rounded-3xl space-y-6">
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Joueur">
+                  <input className={inputCls} value={fields.player} onChange={(e) => set('player', e.target.value)} placeholder="ex: LeBron James" />
+                </Field>
+                <Field label="Équipe">
+                  <input className={inputCls} value={fields.team} onChange={(e) => set('team', e.target.value)} placeholder="ex: Lakers" />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-3 gap-4">
+                <Field label="Année">
+                  <input className={inputCls} value={fields.year} onChange={(e) => set('year', e.target.value)} placeholder="2024-25" />
+                </Field>
+                <Field label="Marque">
+                  <input className={inputCls} value={fields.brand} onChange={(e) => set('brand', e.target.value)} placeholder="Panini" />
+                </Field>
+                <Field label="Set">
+                  <input className={inputCls} value={fields.set_name} onChange={(e) => set('set_name', e.target.value)} placeholder="Prizm" />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Insert">
+                  <input className={inputCls} value={fields.insert_name} onChange={(e) => set('insert_name', e.target.value)} placeholder="Downtown" />
+                </Field>
+                <Field label="Parallel">
+                  <input className={inputCls} value={fields.parallel_name} onChange={(e) => set('parallel_name', e.target.value)} placeholder="Silver" />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="N° Carte">
+                  <input className={inputCls} value={fields.card_number} onChange={(e) => set('card_number', e.target.value)} placeholder="#23" />
+                </Field>
+                <Field label="Numbered">
+                  <input className={inputCls} value={fields.numbered} onChange={(e) => set('numbered', e.target.value)} placeholder="/99" />
+                </Field>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <Field label="Type">
+                  <select className={inputCls} value={fields.card_type} onChange={(e) => set('card_type', e.target.value)}>
+                    <option value="">—</option>
+                    {CARD_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </Field>
+                <Field label="Statut">
+                  <select className={inputCls} value={fields.status} onChange={(e) => set('status', e.target.value)}>
+                    <option value="collection">Collection</option>
+                    <option value="a_vendre">À vendre</option>
+                  </select>
+                </Field>
+              </div>
+
+              <div className="flex items-center justify-between p-4 rounded-2xl bg-white/5 border border-white/5 hover:bg-white/10 transition-all cursor-pointer group"
                 onClick={() => setFields((prev) => ({ ...prev, is_rookie: !prev.is_rookie }))}
-                className="w-full h-[46px] rounded-xl border text-sm font-semibold transition-all flex items-center justify-center"
-                style={fields.is_rookie
-                  ? { background: 'rgba(37,99,235,0.16)', color: '#dbeafe', border: '1px solid rgba(96,165,250,0.45)' }
-                  : { background: 'var(--bg-secondary)', color: 'var(--text-secondary)', border: '1px solid rgba(255,255,255,0.05)' }}
               >
-                {fields.is_rookie ? <RookieBadge compact /> : 'Non RC'}
+                <div className="flex items-center gap-3">
+                  <Star size={16} className={fields.is_rookie ? 'text-[var(--accent)]' : 'text-white/20'} />
+                  <span className="text-xs font-bold uppercase tracking-widest text-[#FFF]">Rookie Card</span>
+                </div>
+                <div className={`w-10 h-5 rounded-full transition-all relative border ${fields.is_rookie ? 'bg-[var(--accent)] border-[var(--border-accent)]' : 'bg-white/10 border-white/10'}`}>
+                  <div className={`absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white transition-all ${fields.is_rookie ? 'right-1' : 'right-6 opacity-30 shadow-none'}`}
+                    style={{ boxShadow: fields.is_rookie ? '0 0 10px rgba(255,255,255,0.5)' : 'none' }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-4 pt-4">
+              <button
+                onClick={() => setActiveView('collection')}
+                className="flex-1 py-4 rounded-2xl text-xs font-bold transition-all border border-white/5 bg-white/5 text-[var(--text-muted)] hover:bg-white/10 active:scale-95"
+              >
+                ANNULER
               </button>
-            </Field>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="flex-[2] py-4 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-3 bg-[var(--accent)] border border-[var(--border-accent)] text-[#09090B] shadow-xl shadow-[var(--accent-glow)] hover:brightness-110 active:scale-95 disabled:opacity-50"
+              >
+                {saving ? <RefreshCw size={18} className="animate-spin" /> : <Upload size={18} />}
+                {saving ? saveStep || 'ENREGISTREMENT…' : 'ENREGISTRER LA CARTE'}
+                {!saving && <ArrowRight size={18} />}
+              </button>
+            </div>
           </div>
-
-          {/* Statut / Prix */}
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Statut">
-              <select className={inputClass} value={fields.status} onChange={(e) => set('status', e.target.value)}>
-                <option value="collection">Collection</option>
-                <option value="a_vendre">À vendre</option>
-                <option value="reserve">Réservé</option>
-                <option value="vendu">Vendu</option>
-              </select>
-            </Field>
-            <Field label="Prix (€)">
-              <input className={inputClass} type="number" value={fields.price} onChange={(e) => set('price', e.target.value)} placeholder="0.00" />
-            </Field>
-          </div>
-
-          {/* État */}
-          <Field label="Notes d'état">
-            <input className={inputClass} value={fields.condition_notes} onChange={(e) => set('condition_notes', e.target.value)} placeholder="Mint — laisser vide si parfait état" />
-          </Field>
         </div>
-
-        {error && <ErrorAlert title="Enregistrement impossible" message={error} />}
-
-        {/* Actions */}
-        <div className="flex gap-3 mt-8">
-          <button
-            onClick={() => setActiveView('collection')}
-            className="flex-1 py-3 rounded-xl text-sm font-medium border border-white/5 text-[var(--text-secondary)] hover:text-white transition-colors"
-          >
-            Annuler
-          </button>
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="flex-1 py-3 rounded-xl text-sm font-semibold bg-[var(--accent)] hover:opacity-90 disabled:opacity-40 text-white shadow-lg shadow-orange-500/20 transition-all"
-          >
-            {saving ? saveStep || 'Enregistrement…' : 'Enregistrer la carte'}
-          </button>
-        </div>
-      </div>
+      </motion.div>
     </div>
   );
 }

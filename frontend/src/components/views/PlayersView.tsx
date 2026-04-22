@@ -1,7 +1,25 @@
 import { useMemo, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Users,
+  ChevronRight,
+  Search,
+  Trophy,
+  Star,
+  Euro,
+  Hash,
+  Layers,
+  ExternalLink,
+  ChevronLeft,
+  X,
+  Clock,
+  TrendingUp,
+  User as UserIcon,
+  Library
+} from 'lucide-react';
 import { useCards } from '../../hooks/useCards';
 import { useAppStore } from '../../stores/appStore';
-import type { Card } from '../../types';
+import type { Card, CardType } from '../../types';
 import { CardDetail } from '../shared/CardDetail';
 
 interface PlayerStats {
@@ -68,121 +86,91 @@ function buildStats(cards: Card[]): PlayerStats[] {
 }
 
 const TYPE_COLORS: Record<string, string> = {
-  base: 'var(--text-muted)',
+  base: '#52525B',
   insert: '#6366f1',
   parallel: '#8b5cf6',
   numbered: 'var(--accent)',
-  auto: 'rgb(16,185,129)',
-  patch: 'rgb(239,68,68)',
-  auto_patch: 'rgb(245,115,35)',
+  auto: '#10b981',
+  patch: '#ef4444',
+  auto_patch: '#f59e0b',
 };
 const TYPE_LABELS: Record<string, string> = {
   base: 'Base', insert: 'Insert', parallel: 'Parallel', numbered: 'Numbered',
   auto: 'Auto', patch: 'Patch', auto_patch: 'Auto/Patch',
 };
 
-function StatPill({ label, value, color }: { label: string; value: string | number; color?: string }) {
+function StatCard({ label, value, icon: Icon, accent }: { label: string; value: string | number; icon: any; accent?: boolean }) {
   return (
-    <div className="flex flex-col items-center px-3 py-2 rounded-xl" style={{ background: 'var(--bg-elevated)' }}>
-      <span className="text-base font-bold" style={{ color: color ?? 'var(--text-primary)' }}>{value}</span>
-      <span className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>{label}</span>
+    <div className="panel p-4 rounded-2xl bg-white/[0.02] border border-white/5 flex flex-col items-center justify-center text-center">
+      <div className={`p-1.5 rounded-lg mb-2 ${accent ? 'bg-[var(--accent-dim)] text-[var(--accent)]' : 'bg-white/5 text-[var(--text-muted)]'}`}>
+        <Icon size={14} />
+      </div>
+      <div className={`text-lg font-black tracking-tight ${accent ? 'text-[var(--accent)]' : 'text-white'}`}>{value}</div>
+      <div className="text-[9px] font-black uppercase tracking-widest text-white/30 mt-0.5">{label}</div>
     </div>
   );
 }
 
-function PlayerCard({ stats, onClick }: { stats: PlayerStats; onClick: () => void }) {
+function PlayerRow({ stats, onClick }: { stats: PlayerStats; onClick: () => void }) {
   const maxType = Object.entries(stats.byType).sort((a, b) => b[1] - a[1])[0];
 
   return (
-    <button
+    <motion.button
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
       onClick={onClick}
-      className="w-full rounded-2xl p-4 text-left transition-all hover:scale-[1.01]"
-      style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}
+      className="w-full panel p-4 rounded-3xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.05] hover:border-white/10 transition-all flex items-center gap-5 group active:scale-[0.99]"
     >
-      <div className="flex items-start gap-4">
-        {/* Avatar / top card image */}
-        <div className="shrink-0">
-          {stats.topCard?.image_front_url ? (
-            <img src={stats.topCard.image_front_url} alt="" className="h-16 w-auto rounded-lg object-contain" />
-          ) : (
-            <div className="h-16 w-12 rounded-lg flex items-center justify-center text-xl" style={{ background: 'var(--bg-elevated)' }}>🃏</div>
+      <div className="w-16 h-20 rounded-2xl bg-white/5 border border-white/5 overflow-hidden shrink-0 relative">
+        {stats.topCard?.image_front_url ? (
+          <img src={stats.topCard.image_front_url} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center opacity-20"><UserIcon size={24} /></div>
+        )}
+      </div>
+
+      <div className="flex-1 min-w-0 py-1">
+        <div className="flex items-center gap-3 mb-2">
+          <h3 className="text-base font-black text-white tracking-tight truncate">{stats.player}</h3>
+          <div className="px-2 py-0.5 rounded-lg bg-white/5 border border-white/5 text-[10px] font-black text-white/40 uppercase tracking-widest">
+            {stats.total} Card{stats.total > 1 ? 's' : ''}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 mb-4">
+          {stats.autos > 0 && (
+            <div className="px-1.5 py-0.5 rounded bg-green-500/10 border border-green-500/20 text-green-400 text-[9px] font-black uppercase tracking-widest">
+              {stats.autos} Auto
+            </div>
+          )}
+          {stats.numbered > 0 && (
+            <div className="px-1.5 py-0.5 rounded bg-[var(--accent-dim)] border border-[var(--border-accent)] text-[var(--accent)] text-[9px] font-black uppercase tracking-widest">
+              {stats.numbered} #
+            </div>
           )}
         </div>
 
-        {/* Info */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-2">
-            <h3 className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>{stats.player}</h3>
-            <span className="text-xs px-2 py-0.5 rounded-full font-bold shrink-0"
-              style={{ background: 'var(--accent-dim)', color: 'var(--accent)' }}>
-              {stats.total} carte{stats.total !== 1 ? 's' : ''}
-            </span>
-          </div>
-
-          {/* Stats pills */}
-          <div className="flex flex-wrap gap-2 mb-3">
-            {stats.autos > 0 && (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                style={{ background: 'rgba(16,185,129,0.12)', color: 'rgb(16,185,129)', border: '1px solid rgba(16,185,129,0.2)' }}>
-                {stats.autos} AUTO{stats.autos > 1 ? 'S' : ''}
-              </span>
-            )}
-            {stats.patches > 0 && (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                style={{ background: 'rgba(239,68,68,0.12)', color: 'rgb(239,68,68)', border: '1px solid rgba(239,68,68,0.2)' }}>
-                {stats.patches} PATCH{stats.patches > 1 ? 'ES' : ''}
-              </span>
-            )}
-            {stats.numbered > 0 && (
-              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
-                style={{ background: 'rgba(245,166,35,0.12)', color: 'var(--accent)', border: '1px solid rgba(245,166,35,0.2)' }}>
-                {stats.numbered} NUMÉROTÉE{stats.numbered > 1 ? 'S' : ''}
-              </span>
-            )}
-          </div>
-
-          {/* Type breakdown bar */}
-          <div className="flex h-1.5 rounded-full overflow-hidden gap-px mb-3" style={{ background: 'var(--bg-elevated)' }}>
-            {Object.entries(stats.byType)
-              .sort((a, b) => b[1] - a[1])
-              .map(([type, count]) => (
-                <div
-                  key={type}
-                  style={{
-                    width: `${(count / stats.total) * 100}%`,
-                    background: TYPE_COLORS[type] ?? 'var(--text-muted)',
-                  }}
-                  title={`${TYPE_LABELS[type] ?? type}: ${count}`}
-                />
-              ))}
-          </div>
-
-          {/* Financials */}
-          <div className="flex gap-3 text-xs">
-            {stats.totalPurchase > 0 && (
-              <span style={{ color: 'var(--text-muted)' }}>
-                Achat : <span style={{ color: 'var(--text-secondary)' }}>{stats.totalPurchase.toFixed(0)} €</span>
-              </span>
-            )}
-            {stats.totalSaleEstimate > 0 && (
-              <span style={{ color: 'var(--text-muted)' }}>
-                Valeur : <span style={{ color: stats.profit >= 0 ? 'rgb(16,185,129)' : 'var(--red)' }}>{stats.totalSaleEstimate.toFixed(0)} €</span>
-              </span>
-            )}
-            {stats.totalPurchase > 0 && stats.totalSaleEstimate > 0 && (
-              <span style={{ color: stats.profit >= 0 ? 'rgb(16,185,129)' : 'var(--red)' }}>
-                {stats.profit >= 0 ? '+' : ''}{stats.profit.toFixed(0)} €
-              </span>
-            )}
-            {maxType && (
-              <span className="ml-auto" style={{ color: 'var(--text-muted)' }}>
-                Majorité <span style={{ color: TYPE_COLORS[maxType[0]] ?? 'var(--text-primary)' }}>{TYPE_LABELS[maxType[0]] ?? maxType[0]}</span>
-              </span>
-            )}
-          </div>
+        <div className="flex h-1 rounded-full overflow-hidden bg-white/5 gap-0.5">
+          {Object.entries(stats.byType).sort((a, b) => b[1] - a[1]).map(([type, count]) => (
+            <div
+              key={type}
+              className="h-full"
+              style={{ width: `${(count / stats.total) * 100}%`, background: TYPE_COLORS[type] || '#52525B' }}
+            />
+          ))}
         </div>
       </div>
-    </button>
+
+      <div className="flex items-center gap-6 shrink-0">
+        <div className="text-right">
+          <div className={`text-xl font-black tracking-tighter ${stats.profit >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            {stats.totalSaleEstimate.toFixed(0)}€
+          </div>
+          <div className="text-[9px] font-black text-white/20 uppercase tracking-widest">Valeur Estimée</div>
+        </div>
+        <ChevronRight size={20} className="text-white/10 group-hover:text-white/40 group-hover:translate-x-1 transition-all" />
+      </div>
+    </motion.button>
   );
 }
 
@@ -198,93 +186,77 @@ function PlayerModal({ stats, onClose }: { stats: PlayerStats; onClose: () => vo
   }
 
   return (
-    <>
-      <div
-        className="fixed inset-0 z-40 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
-        onClick={onClose}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xl" onClick={onClose}>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="panel w-full max-w-2xl rounded-[40px] overflow-hidden flex flex-col max-h-[85vh]"
+        onClick={(e) => e.stopPropagation()}
       >
-        <div
-          className="rounded-t-3xl sm:rounded-3xl w-full sm:max-w-2xl max-h-[85vh] flex flex-col overflow-hidden"
-          style={{ background: 'var(--bg-primary)', border: '1px solid rgba(255,255,255,0.1)' }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between p-5 border-b shrink-0" style={{ borderColor: 'var(--border)' }}>
-            <div>
-              <h2 className="font-bold text-lg" style={{ color: 'var(--text-primary)' }}>{stats.player}</h2>
-              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{stats.total} carte{stats.total !== 1 ? 's' : ''} dans la collection</p>
+        <div className="p-8 border-b border-white/5 shrink-0">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-[var(--accent-dim)] border border-[var(--border-accent)] flex items-center justify-center text-[var(--accent)]">
+                <UserIcon size={24} />
+              </div>
+              <h3 className="text-2xl font-black text-white">{stats.player}</h3>
             </div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={openInCollection}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium"
-                style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
-              >
-                Voir dans la collection →
-              </button>
-              <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-lg" style={{ color: 'var(--text-muted)' }}>✕</button>
-            </div>
+            <button onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/5 text-white/40 hover:text-white"><X size={24} /></button>
           </div>
-
-          {/* Stats summary */}
-          <div className="px-5 py-4 border-b shrink-0 grid grid-cols-4 gap-3" style={{ borderColor: 'var(--border)' }}>
-            <StatPill label="Cartes" value={stats.total} />
-            <StatPill label="Autos" value={stats.autos} color="rgb(16,185,129)" />
-            <StatPill label="Numérotées" value={stats.numbered} color="var(--accent)" />
-            <StatPill label="Valeur" value={stats.totalSaleEstimate > 0 ? `${stats.totalSaleEstimate.toFixed(0)} €` : '—'} color="var(--text-primary)" />
-          </div>
-
-          {/* Type breakdown */}
-          <div className="px-5 py-3 border-b shrink-0" style={{ borderColor: 'var(--border)' }}>
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(stats.byType)
-                .sort((a, b) => b[1] - a[1])
-                .map(([type, count]) => (
-                  <span key={type} className="flex items-center gap-1.5 text-xs px-2 py-1 rounded-lg"
-                    style={{ background: 'var(--bg-elevated)' }}>
-                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: TYPE_COLORS[type] ?? 'var(--text-muted)' }} />
-                    <span style={{ color: 'var(--text-secondary)' }}>{TYPE_LABELS[type] ?? type}</span>
-                    <span className="font-bold" style={{ color: 'var(--text-primary)' }}>{count}</span>
-                  </span>
-                ))}
+          <div className="flex items-center gap-4 mt-6">
+            <button
+              onClick={openInCollection}
+              className="px-5 py-2.5 rounded-2xl bg-white/5 border border-white/10 text-white text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all flex items-center gap-2"
+            >
+              Voir la Collection <Library size={12} />
+            </button>
+            <div className="px-3 py-1 rounded-full bg-[var(--accent-dim)] text-[var(--accent)] text-[10px] font-black uppercase tracking-widest">
+              {stats.total} Cartes
             </div>
           </div>
+        </div>
 
-          {/* Card list */}
-          <div className="overflow-y-auto flex-1 p-4 grid grid-cols-3 sm:grid-cols-4 gap-3">
-            {stats.cards.map((card) => (
-              <button
-                key={card.id}
-                onClick={() => setSelectedCard(card)}
-                className="rounded-xl overflow-hidden text-left transition-all hover:scale-[1.03] hover:border-[var(--accent)]/60"
-                style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }}
-              >
-                <div className="aspect-[3/4] relative overflow-hidden" style={{ background: 'var(--bg-elevated)' }}>
+        <div className="p-8 overflow-y-auto flex-1 space-y-10">
+          <div className="grid grid-cols-4 gap-4">
+            <StatCard label="Autos" value={stats.autos} icon={Star} />
+            <StatCard label="Memorabilia" value={stats.patches} icon={Layers} />
+            <StatCard label="Tirages" value={stats.numbered} icon={Hash} />
+            <StatCard label="Estimation" value={`${stats.totalSaleEstimate.toFixed(0)}€`} icon={Euro} accent />
+          </div>
+
+          <div className="space-y-4">
+            <h4 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 ml-2">Toute la collection</h4>
+            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3">
+              {stats.cards.map((card) => (
+                <button
+                  key={card.id}
+                  onClick={() => setSelectedCard(card)}
+                  className="group relative aspect-[3/4] rounded-2xl overflow-hidden bg-white/5 border border-white/5 hover:border-white/20 transition-all"
+                >
                   {card.image_front_url ? (
-                    <img src={card.image_front_url} alt="" className="w-full h-full object-cover" />
+                    <img src={card.image_front_url} alt="" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" />
                   ) : (
-                    <div className="w-full h-full flex items-center justify-center text-2xl">🃏</div>
+                    <div className="w-full h-full flex items-center justify-center opacity-10"><Library size={24} /></div>
                   )}
                   {card.numbered && (
-                    <div className="absolute top-1 right-1 text-[9px] font-black px-1 rounded"
-                      style={{ background: 'rgba(245,166,35,0.9)', color: '#000' }}>
+                    <div className="absolute top-2 right-2 px-1.5 py-0.5 rounded bg-black/60 backdrop-blur-md border border-white/10 text-[9px] font-black text-[var(--accent)]">
                       {card.numbered}
                     </div>
                   )}
-                </div>
-                <div className="px-2 py-1.5">
-                  <p className="text-[10px] truncate" style={{ color: 'var(--text-muted)' }}>{card.year} · {card.set_name}</p>
-                  {card.price != null && (
-                    <p className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>{card.price} €</p>
-                  )}
-                </div>
-              </button>
-            ))}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-3">
+                    <p className="text-[10px] font-black text-white truncate uppercase">{card.set_name}</p>
+                    <p className="text-[9px] font-medium text-white/60">{card.year}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
-      {selectedCard && <CardDetail card={selectedCard} onClose={() => setSelectedCard(null)} />}
-    </>
+      </motion.div>
+      <AnimatePresence>
+        {selectedCard && <CardDetail card={selectedCard} onClose={() => setSelectedCard(null)} />}
+      </AnimatePresence>
+    </div>
   );
 }
 
@@ -307,7 +279,6 @@ export function PlayersView() {
     return list;
   }, [allStats, search, sortBy]);
 
-  // Totaux globaux
   const totals = useMemo(() => ({
     cards: allStats.reduce((s, p) => s + p.total, 0),
     players: allStats.length,
@@ -320,54 +291,49 @@ export function PlayersView() {
   if (isLoading) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <span className="text-sm" style={{ color: 'var(--text-muted)' }}>Chargement…</span>
+        <RefreshCw size={40} className="text-[var(--accent)] animate-spin opacity-20" />
       </div>
     );
   }
 
   return (
-    <div className="flex-1 overflow-auto">
-      <div className="max-w-3xl mx-auto px-6 py-8">
-
-        {/* Header */}
-        <h2 className="font-bold text-xl mb-6" style={{ color: 'var(--text-primary)' }}>Stats par joueur</h2>
-
-        {/* Global summary */}
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mb-6">
-          <StatPill label="Joueurs" value={totals.players} />
-          <StatPill label="Cartes" value={totals.cards} />
-          <StatPill label="Autos" value={totals.autos} color="rgb(16,185,129)" />
-          <StatPill label="Numérotées" value={totals.numbered} color="var(--accent)" />
-          <StatPill label="Investi" value={totals.purchase > 0 ? `${totals.purchase.toFixed(0)} €` : '—'} />
-          <StatPill
-            label="Valeur estimée"
-            value={totals.value > 0 ? `${totals.value.toFixed(0)} €` : '—'}
-            color={totals.value >= totals.purchase ? 'rgb(16,185,129)' : 'var(--red)'}
-          />
+    <div className="flex-1 overflow-auto bg-[radial-gradient(circle_at_50%_-20%,_var(--accent-dim)_0%,_transparent_70%)]">
+      <div className="max-w-5xl mx-auto px-6 py-10">
+        <div className="flex items-center justify-between mb-10">
+          <div>
+            <h2 className="text-2xl font-black text-white tracking-tight">Player Index</h2>
+            <p className="text-sm text-[var(--text-muted)] font-medium">Analyse détaillée par athlète</p>
+          </div>
+          <div className="flex gap-4">
+            <div className="panel px-5 py-3 rounded-2xl bg-white/[0.02] border border-white/5 flex flex-col items-center">
+              <div className="text-[9px] font-black text-white/20 uppercase tracking-widest mb-1">Athlètes</div>
+              <div className="text-lg font-black text-white tracking-tighter">{totals.players}</div>
+            </div>
+            <div className="panel px-5 py-3 rounded-2xl bg-white/[0.02] border border-white/5 flex flex-col items-center">
+              <div className="text-[9px] font-black text-white/20 uppercase tracking-widest mb-1">Valeur Totale</div>
+              <div className="text-lg font-black text-[var(--accent)] tracking-tighter">{totals.value.toFixed(0)}€</div>
+            </div>
+          </div>
         </div>
 
-        {/* Toolbar */}
-        <div className="flex items-center gap-3 mb-4 flex-wrap">
-          <div className="relative flex-1 min-w-[160px]">
+        <div className="flex items-center gap-4 mb-8">
+          <div className="relative flex-1">
+            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" />
             <input
               type="text"
-              placeholder="Rechercher un joueur…"
+              placeholder="Rechercher un athlète…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-xl pl-7 pr-3 py-1.5 text-xs outline-none"
-              style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+              className="w-full rounded-2xl pl-12 pr-4 py-3 bg-white/5 border border-white/10 text-sm font-medium outline-none focus:bg-white/10 focus:border-[var(--accent)]/30 transition-all placeholder:text-white/20"
             />
-            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px]" style={{ color: 'var(--text-muted)' }}>🔍</span>
           </div>
-          <div className="flex rounded-xl overflow-hidden shrink-0" style={{ border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
-            {([['count', 'Nb cartes'], ['value', 'Valeur'], ['autos', 'Autos']] as const).map(([key, label]) => (
+          <div className="flex p-1 rounded-2xl bg-white/5 border border-white/10">
+            {([['count', 'Volume'], ['value', 'Valeur'], ['autos', 'Autos']] as const).map(([key, label]) => (
               <button
                 key={key}
                 onClick={() => setSortBy(key)}
-                className="px-3 py-1.5 text-xs transition-all"
-                style={sortBy === key
-                  ? { background: 'var(--accent)', color: '#0E0E11', fontWeight: 600 }
-                  : { color: 'var(--text-secondary)' }}
+                className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${sortBy === key ? 'bg-white/10 text-white shadow-sm' : 'text-white/40 hover:text-white/60'
+                  }`}
               >
                 {label}
               </button>
@@ -375,24 +341,34 @@ export function PlayersView() {
           </div>
         </div>
 
-        {/* Player list */}
         {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 gap-2">
-            <span className="text-4xl">🏀</span>
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Aucun joueur trouvé.</p>
+          <div className="panel p-20 rounded-[40px] bg-white/[0.02] border border-white/5 flex flex-col items-center text-center">
+            <div className="w-16 h-16 rounded-[24px] bg-white/5 border border-white/10 flex items-center justify-center text-white/20 mb-6">
+              <Users size={32} />
+            </div>
+            <h3 className="text-xl font-black text-white">Aucun résultat</h3>
+            <p className="text-sm text-[var(--text-muted)] mt-2">Ajustez votre recherche pour trouver un athlète.</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {filtered.map((stats) => (
-              <PlayerCard key={stats.player} stats={stats} onClick={() => setSelectedPlayer(stats)} />
-            ))}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <AnimatePresence mode="popLayout">
+              {filtered.map((stats) => (
+                <PlayerRow key={stats.player} stats={stats} onClick={() => setSelectedPlayer(stats)} />
+              ))}
+            </AnimatePresence>
           </div>
         )}
       </div>
 
-      {selectedPlayer && (
-        <PlayerModal stats={selectedPlayer} onClose={() => setSelectedPlayer(null)} />
-      )}
+      <AnimatePresence>
+        {selectedPlayer && (
+          <PlayerModal stats={selectedPlayer} onClose={() => setSelectedPlayer(null)} />
+        )}
+      </AnimatePresence>
     </div>
   );
+}
+
+function RefreshCw({ size, className }: { size?: number, className?: string }) {
+  return <Clock size={size} className={className} />; // Shim if not imported properly
 }

@@ -1,6 +1,27 @@
 import { useState, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  X,
+  Trash2,
+  Edit2,
+  Save,
+  Camera,
+  RefreshCw,
+  ExternalLink,
+  Search,
+  ChevronDown,
+  ChevronUp,
+  Image as ImageIcon,
+  AlertCircle,
+  Clock,
+  Euro,
+  Hash,
+  Tag,
+  Star,
+  Layers,
+  Trophy
+} from 'lucide-react';
 import type { Card, CardType, GradingCompany, GradingStatus } from '../../types';
-import { CardBadge } from './CardBadge';
 import { GradingBadge } from './GradingBadge';
 import { StatusBadge } from './StatusBadge';
 import { useDeleteCard, useUpdateCard } from '../../hooks/useCards';
@@ -9,6 +30,8 @@ import { EbaySoldItems } from './EbaySoldItems';
 import { supabase } from '../../lib/supabase';
 import { compressImage } from '../../lib/storage';
 import { RookieBadge } from './RookieBadge';
+
+const inputCls = 'w-full rounded-xl px-3 py-2 text-sm outline-none transition-all bg-white/5 border border-white/10 focus:border-[var(--accent)]/50 focus:bg-white/10';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
@@ -20,93 +43,6 @@ const GRADING_STATUS_LABELS: Record<GradingStatus, string> = {
   returned: 'Retournée',
 };
 
-function GradingPanel({ card, onSave }: { card: Card; onSave: (data: Partial<Card>) => Promise<void> }) {
-  const [form, setForm] = useState({
-    grading_company: card.grading_company ?? '',
-    grading_status: card.grading_status ?? 'submitted',
-    grading_submitted_at: card.grading_submitted_at?.slice(0, 10) ?? '',
-    grading_returned_at: card.grading_returned_at?.slice(0, 10) ?? '',
-    grading_grade: card.grading_grade ?? '',
-    grading_cert: card.grading_cert ?? '',
-    grading_cost: card.grading_cost?.toString() ?? '',
-  });
-  const [saving, setSaving] = useState(false);
-
-  function set(key: keyof typeof form, value: string) {
-    setForm((prev) => ({ ...prev, [key]: value }));
-  }
-
-  async function handleSave() {
-    setSaving(true);
-    await onSave({
-      grading_company: (form.grading_company || null) as GradingCompany | null,
-      grading_status: (form.grading_status || null) as GradingStatus | null,
-      grading_submitted_at: form.grading_submitted_at || null,
-      grading_returned_at: form.grading_returned_at || null,
-      grading_grade: form.grading_grade || null,
-      grading_cert: form.grading_cert || null,
-      grading_cost: form.grading_cost ? parseFloat(form.grading_cost) : null,
-    });
-    setSaving(false);
-  }
-
-  const inputCls = 'w-full rounded-lg px-2.5 py-1.5 text-sm outline-none transition-all';
-  const inputStyle = { background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' };
-
-  return (
-    <div className="rounded-2xl overflow-hidden mt-4" style={{ border: '1px solid var(--border)' }}>
-      <div className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider" style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)' }}>
-        Grading
-      </div>
-      <div className="p-4 grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-[10px] uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Société</label>
-          <select className={inputCls} style={inputStyle} value={form.grading_company} onChange={(e) => set('grading_company', e.target.value)}>
-            <option value="">—</option>
-            {GRADING_COMPANIES.map((c) => <option key={c} value={c}>{c}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-[10px] uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Statut</label>
-          <select className={inputCls} style={inputStyle} value={form.grading_status} onChange={(e) => set('grading_status', e.target.value)}>
-            {(Object.entries(GRADING_STATUS_LABELS) as [GradingStatus, string][]).map(([k, v]) => (
-              <option key={k} value={k}>{v}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-[10px] uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Date d'envoi</label>
-          <input type="date" className={inputCls} style={inputStyle} value={form.grading_submitted_at} onChange={(e) => set('grading_submitted_at', e.target.value)} />
-        </div>
-        <div>
-          <label className="block text-[10px] uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Date de retour</label>
-          <input type="date" className={inputCls} style={inputStyle} value={form.grading_returned_at} onChange={(e) => set('grading_returned_at', e.target.value)} />
-        </div>
-        <div>
-          <label className="block text-[10px] uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Note</label>
-          <input className={inputCls} style={inputStyle} placeholder="ex: 9.5" value={form.grading_grade} onChange={(e) => set('grading_grade', e.target.value)} />
-        </div>
-        <div>
-          <label className="block text-[10px] uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>N° certificat</label>
-          <input className={inputCls} style={inputStyle} placeholder="ex: 12345678" value={form.grading_cert} onChange={(e) => set('grading_cert', e.target.value)} />
-        </div>
-        <div className="col-span-2">
-          <label className="block text-[10px] uppercase tracking-wider font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Coût du grading (€)</label>
-          <input type="number" className={inputCls} style={inputStyle} placeholder="0" value={form.grading_cost} onChange={(e) => set('grading_cost', e.target.value)} />
-        </div>
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="col-span-2 py-2 rounded-xl text-sm font-semibold transition-all"
-          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-strong)', color: saving ? 'var(--text-muted)' : 'var(--text-primary)', opacity: saving ? 0.6 : 1 }}
-        >
-          {saving ? 'Enregistrement…' : 'Enregistrer le grading'}
-        </button>
-      </div>
-    </div>
-  );
-}
-
 const CARD_TYPES: { value: CardType; label: string }[] = [
   { value: 'base', label: 'Base' },
   { value: 'insert', label: 'Insert' },
@@ -116,14 +52,6 @@ const CARD_TYPES: { value: CardType; label: string }[] = [
   { value: 'patch', label: 'Patch' },
   { value: 'auto_patch', label: 'Auto/Patch' },
 ];
-
-const inputClass =
-  'w-full rounded-lg px-2 py-1.5 text-sm outline-none transition-all placeholder:text-[var(--text-muted)]';
-const inputStyle = {
-  background: 'var(--bg-primary)',
-  border: '1px solid var(--border)',
-  color: 'var(--text-primary)',
-};
 
 function buildPriceSearchText(card: Card): string {
   return [card.player, card.team, card.year, card.set_name || card.brand, card.insert_name, card.parallel_name, card.numbered]
@@ -149,7 +77,6 @@ export function CardDetail({ card, onClose }: Props) {
   const [dragOver, setDragOver] = useState<'front' | 'back' | null>(null);
   const [uploadingImage, setUploadingImage] = useState<'front' | 'back' | null>(null);
   const [showGrading, setShowGrading] = useState(false);
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const frontInputRef = useRef<HTMLInputElement>(null);
   const backInputRef = useRef<HTMLInputElement>(null);
   const [fields, setFields] = useState({
@@ -331,418 +258,416 @@ export function CardDetail({ card, onClose }: Props) {
       else backInputRef.current?.click();
       return;
     }
-    setLightboxUrl(url);
+    // TODO: Add lightbox if needed, for now we just show the detail
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <div
-        className="rounded-t-3xl sm:rounded-3xl w-full sm:max-w-3xl overflow-hidden max-h-[90vh] flex flex-col min-h-0"
-        style={{ background: 'var(--bg-primary)', border: '1px solid rgba(255,255,255,0.1)' }}
-        onClick={(e) => e.stopPropagation()}
+    <AnimatePresence>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-4 sm:p-6"
+        onClick={onClose}
       >
-        {/* Header images */}
-        <div className="flex gap-3 p-5 border-b shrink-0" style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border)' }}>
-          {/* Front image — drag & drop zone */}
-          <div
-            className="relative shrink-0 rounded-xl overflow-hidden cursor-pointer transition-all"
-            style={{
-              outline: dragOver === 'front' ? '2px solid var(--accent)' : '2px solid transparent',
-              background: dragOver === 'front' ? 'rgba(245,166,35,0.1)' : 'transparent',
-            }}
-            onDragOver={(e) => { if (!editing) return; e.preventDefault(); setDragOver('front'); }}
-            onDragLeave={() => { if (editing) setDragOver(null); }}
-            onDrop={(e) => { if (!editing) return; e.preventDefault(); setDragOver(null); const f = e.dataTransfer.files[0]; if (f) handleImageUpload(f, 'front'); }}
-            onClick={() => handleImageClick('front')}
-            title={editing ? 'Cliquer ou déposer une image pour remplacer' : 'Cliquer pour agrandir'}
-          >
-            {card.image_front_url ? (
-              <img
-                src={card.image_front_url}
-                alt="Face"
-                className={`h-32 w-auto rounded-xl object-contain ${editing ? '' : 'cursor-zoom-in hover:opacity-85'}`}
-              />
-            ) : (
-              <div className="h-32 w-20 rounded-xl flex items-center justify-center text-2xl" style={{ background: 'var(--bg-elevated)' }}>🃏</div>
-            )}
-            {editing && (uploadingImage === 'front' || dragOver === 'front') && (
-              <div className="absolute inset-0 rounded-xl flex items-center justify-center"
-                style={{ background: 'rgba(0,0,0,0.5)' }}>
-                <span className="text-white text-xs font-medium">
-                  {uploadingImage === 'front' ? '⟳' : '📥'}
-                </span>
-              </div>
-            )}
-            <input ref={frontInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageUpload(f, 'front'); e.target.value = ''; }} />
-          </div>
-
-          {/* Back image — drag & drop zone */}
-          <div
-            className="relative shrink-0 rounded-xl overflow-hidden cursor-pointer transition-all"
-            style={{
-              outline: dragOver === 'back' ? '2px solid var(--accent)' : '2px solid transparent',
-              background: dragOver === 'back' ? 'rgba(245,166,35,0.1)' : 'transparent',
-            }}
-            onDragOver={(e) => { if (!editing) return; e.preventDefault(); setDragOver('back'); }}
-            onDragLeave={() => { if (editing) setDragOver(null); }}
-            onDrop={(e) => { if (!editing) return; e.preventDefault(); setDragOver(null); const f = e.dataTransfer.files[0]; if (f) handleImageUpload(f, 'back'); }}
-            onClick={() => handleImageClick('back')}
-            title={editing ? 'Cliquer ou déposer une image pour remplacer' : 'Cliquer pour agrandir'}
-          >
-            {card.image_back_url ? (
-              <img
-                src={card.image_back_url}
-                alt="Dos"
-                className={`h-32 w-auto rounded-xl object-contain opacity-60 ${editing ? '' : 'cursor-zoom-in hover:opacity-75'}`}
-              />
-            ) : (
-              <div className="h-32 w-20 rounded-xl flex items-center justify-center text-2xl opacity-40" style={{ background: 'var(--bg-elevated)' }}>🃏</div>
-            )}
-            {editing && (uploadingImage === 'back' || dragOver === 'back') && (
-              <div className="absolute inset-0 rounded-xl flex items-center justify-center"
-                style={{ background: 'rgba(0,0,0,0.5)' }}>
-                <span className="text-white text-xs font-medium">
-                  {uploadingImage === 'back' ? '⟳' : '📥'}
-                </span>
-              </div>
-            )}
-            <input ref={backInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageUpload(f, 'back'); e.target.value = ''; }} />
-          </div>
-          <div className="flex-1 flex flex-col justify-between min-w-0">
-            <div>
-              <h2 className="text-lg font-bold leading-tight truncate" style={{ color: 'var(--text-primary)' }}>
-                {card.player ?? '—'}
-              </h2>
-              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{card.team}</p>
-            </div>
-            <div className="flex flex-wrap gap-1.5">
-              <CardBadge type={card.card_type} />
-              <StatusBadge status={card.status} />
-              {card.is_rookie && <RookieBadge compact />}
-              {card.grading_company && <GradingBadge card={card} />}
-              {card.numbered && (
-                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md" style={{ background: 'rgba(245,166,35,0.12)', color: 'var(--accent)', border: '1px solid rgba(245,166,35,0.2)' }}>
-                  {card.numbered}
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="flex flex-col items-end gap-2 shrink-0">
-            <button
-              onClick={onClose}
-              className="w-7 h-7 flex items-center justify-center rounded-lg transition-colors"
-              style={{ color: 'var(--text-muted)' }}
-            >✕</button>
-            <button
-              onClick={() => setEditing((v) => !v)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
-              style={editing
-                ? { background: 'var(--accent)', color: '#0E0E11' }
-                : { background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)' }
-              }
-            >
-              {editing ? '✕ Annuler' : '✏ Modifier'}
-            </button>
-          </div>
-        </div>
-
-        {/* Body */}
-        <div className="overflow-y-auto flex-1 min-h-0 p-5">
-          {!editing ? (
-            /* View mode */
-            <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm mb-5">
-              {[
-                ['Année', card.year],
-                ['Marque', card.brand],
-                ['Set', card.set_name],
-                ['Insert', card.insert_name],
-                ['Parallel', card.parallel_name],
-                ['RC', card.is_rookie ? 'Oui' : null],
-                ['Grading', card.grading_company ? `${card.grading_company}${card.grading_status ? ` - ${GRADING_STATUS_LABELS[card.grading_status]}` : ''}${card.grading_grade ? ` - ${card.grading_grade}` : ''}` : null],
-                ['N° carte', card.card_number],
-                ['État', card.condition_notes || 'Mint'],
-                ['Prix achat', card.purchase_price != null ? `${card.purchase_price} €` : null],
-                ['Prix vente', card.price != null ? `${card.price} €` : null],
-              ]
-                .filter(([, v]) => v)
-                .map(([label, value]) => (
-                  <div key={label as string}>
-                    <dt className="text-xs mb-0.5" style={{ color: 'var(--text-muted)' }}>{label}</dt>
-                    <dd className="font-medium" style={{ color: 'var(--text-primary)' }}>{value}</dd>
-                  </div>
-                ))}
-            </div>
-          ) : (
-            /* Edit mode */
-            <div className="mb-5">
+        <motion.div
+          initial={{ scale: 0.95, y: 20, opacity: 0 }}
+          animate={{ scale: 1, y: 0, opacity: 1 }}
+          exit={{ scale: 0.95, y: 20, opacity: 0 }}
+          className="rounded-3xl w-full sm:max-w-3xl overflow-hidden max-h-[95vh] flex flex-col min-h-0 glass border border-white/10 shadow-2xl shadow-black/60"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header images */}
+          <div className="flex flex-col sm:flex-row gap-6 p-6 border-b border-white/5 bg-white/5 relative">
+            <div className="flex gap-4">
+              {/* Front image — drag & drop zone */}
               <div
-                className="rounded-2xl p-3 mb-3"
-                style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)' }}
+                className="relative shrink-0 rounded-2xl overflow-hidden group cursor-pointer transition-all aspect-[2.5/3.5] h-40"
+                style={{
+                  outline: dragOver === 'front' ? '2px solid var(--accent)' : '1px solid white/10',
+                  background: dragOver === 'front' ? 'var(--accent-dim)' : 'var(--bg-card)',
+                }}
+                onDragOver={(e) => { if (!editing) return; e.preventDefault(); setDragOver('front'); }}
+                onDragLeave={() => { if (editing) setDragOver(null); }}
+                onDrop={(e) => { if (!editing) return; e.preventDefault(); setDragOver(null); const f = e.dataTransfer.files[0]; if (f) handleImageUpload(f, 'front'); }}
+                onClick={() => handleImageClick('front')}
               >
-                <div className="flex items-center justify-between gap-3 mb-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
-                      Grading
-                    </p>
-                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-                      PSA visible ici, sans scroll.
-                    </p>
+                {card.image_front_url ? (
+                  <img
+                    src={card.image_front_url}
+                    alt="Face"
+                    className={`h-full w-full object-cover transition-transform duration-500 ${editing ? 'group-hover:scale-105 opacity-80' : 'group-hover:scale-110'}`}
+                  />
+                ) : (
+                  <div className="h-full w-full flex flex-col items-center justify-center gap-2 opacity-30 text-[var(--text-muted)]">
+                    <ImageIcon size={32} strokeWidth={1} />
+                    <span className="text-[10px] uppercase font-bold tracking-widest">Face</span>
                   </div>
-                  <button
-                    onClick={() => setShowGrading((v) => !v)}
-                    className="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
-                    style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
-                  >
-                    {showGrading ? 'Masquer détails' : 'Plus d’options'}
-                  </button>
+                )}
+
+                {editing && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Camera size={20} className="text-white" />
+                  </div>
+                )}
+
+                {uploadingImage === 'front' && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+                    <RefreshCw size={24} className="text-[var(--accent)] animate-spin" />
+                  </div>
+                )}
+                <input ref={frontInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageUpload(f, 'front'); e.target.value = ''; }} />
+              </div>
+
+              {/* Back image — drag & drop zone */}
+              <div
+                className="relative shrink-0 rounded-2xl overflow-hidden group cursor-pointer transition-all aspect-[2.5/3.5] h-40"
+                style={{
+                  outline: dragOver === 'back' ? '2px solid var(--accent)' : '1px solid white/10',
+                  background: dragOver === 'back' ? 'var(--accent-dim)' : 'var(--bg-card)',
+                }}
+                onDragOver={(e) => { if (!editing) return; e.preventDefault(); setDragOver('back'); }}
+                onDragLeave={() => { if (editing) setDragOver(null); }}
+                onDrop={(e) => { if (!editing) return; e.preventDefault(); setDragOver(null); const f = e.dataTransfer.files[0]; if (f) handleImageUpload(f, 'back'); }}
+                onClick={() => handleImageClick('back')}
+              >
+                {card.image_back_url ? (
+                  <img
+                    src={card.image_back_url}
+                    alt="Dos"
+                    className={`h-full w-full object-cover transition-transform duration-500 ${editing ? 'group-hover:scale-105 opacity-50' : 'opacity-40 group-hover:scale-110 group-hover:opacity-60'}`}
+                  />
+                ) : (
+                  <div className="h-full w-full flex flex-col items-center justify-center gap-2 opacity-20 text-[var(--text-muted)]">
+                    <ImageIcon size={32} strokeWidth={1} />
+                    <span className="text-[10px] uppercase font-bold tracking-widest">Dos</span>
+                  </div>
+                )}
+
+                {editing && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Camera size={20} className="text-white" />
+                  </div>
+                )}
+
+                {uploadingImage === 'back' && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+                    <RefreshCw size={24} className="text-[var(--accent)] animate-spin" />
+                  </div>
+                )}
+                <input ref={backInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageUpload(f, 'back'); e.target.value = ''; }} />
+              </div>
+            </div>
+
+            <div className="flex-1 flex flex-col justify-center min-w-0">
+              <div className="mb-4">
+                <h2 className="text-2xl font-black leading-tight tracking-tight text-white mb-1 truncate">
+                  {card.player ?? 'Carte Inconnue'}
+                </h2>
+                <div className="flex items-center gap-2 text-[var(--text-secondary)] font-medium text-sm">
+                  <span>{card.team}</span>
+                  {card.year && (
+                    <>
+                      <div className="w-1 h-1 rounded-full bg-white/20" />
+                      <span>{card.year}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <StatusBadge status={card.status} />
+                {card.is_rookie && <RookieBadge compact />}
+                {card.grading_company && <GradingBadge card={card} />}
+                {card.numbered && (
+                  <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--accent-dim)] text-[var(--accent)] text-[10px] font-black border border-[var(--border-accent)]">
+                    <Hash size={10} />
+                    {card.numbered}
+                  </span>
+                )}
+                <span className="px-3 py-1 rounded-full bg-white/5 text-[var(--text-muted)] text-[10px] font-black border border-white/10 uppercase tracking-widest">
+                  {card.card_type}
+                </span>
+              </div>
+            </div>
+
+            <div className="absolute top-6 right-6 flex items-center gap-2">
+              <button
+                onClick={() => setEditing((v) => !v)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border group active:scale-95 ${editing
+                  ? 'bg-white/10 border-white/20 text-white hover:bg-white/20'
+                  : 'bg-[var(--accent)] border-[var(--border-accent)] text-[#09090B] shadow-lg shadow-[var(--accent-glow)]'
+                  }`}
+              >
+                {editing ? <X size={14} /> : <Edit2 size={14} className="group-hover:rotate-12 transition-transform" />}
+                {editing ? 'Annuler' : 'Modifier'}
+              </button>
+
+              <button
+                onClick={onClose}
+                className="w-9 h-9 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 text-[var(--text-muted)] hover:text-white hover:bg-white/10 transition-all active:scale-90"
+              >
+                <X size={18} />
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-y-auto flex-1 min-h-0 p-6 custom-scrollbar">
+            {!editing ? (
+              /* View mode */
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="space-y-8"
+              >
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
+                  {[
+                    { label: 'Année', value: card.year, icon: Clock },
+                    { label: 'Marque', value: card.brand, icon: Tag },
+                    { label: 'Set', value: card.set_name, icon: Hash },
+                    { label: 'Insert', value: card.insert_name, icon: Star },
+                    { label: 'Parallel', value: card.parallel_name, icon: Layers },
+                    { label: 'RC', value: card.is_rookie ? 'Rookie Card' : null, icon: Trophy },
+                    { label: 'N° carte', value: card.card_number, icon: Hash },
+                    { label: 'État', value: card.condition_notes || 'Mint / Near Mint', icon: Search },
+                    { label: 'Achat', value: card.purchase_price != null ? `${card.purchase_price} €` : null, icon: Euro },
+                    { label: 'Vente', value: card.price != null ? `${card.price} €` : null, icon: Tag },
+                  ]
+                    .filter((item) => item.value)
+                    .map((item) => (
+                      <div key={item.label} className="flex flex-col gap-1.5 p-3 rounded-2xl bg-white/[0.03] border border-white/5">
+                        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
+                          <item.icon size={12} className="opacity-50" />
+                          {item.label}
+                        </div>
+                        <div className="text-sm font-bold text-white truncate">{item.value}</div>
+                      </div>
+                    ))}
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Société</label>
-                    <select className={inputClass} style={inputStyle} value={fields.grading_company} onChange={(e) => set('grading_company', e.target.value)}>
-                      <option value="">—</option>
-                      {GRADING_COMPANIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Statut</label>
-                    <select className={inputClass} style={inputStyle} value={fields.grading_status} onChange={(e) => set('grading_status', e.target.value)}>
-                      {(Object.entries(GRADING_STATUS_LABELS) as [GradingStatus, string][]).map(([k, v]) => (
-                        <option key={k} value={k}>{v}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Note</label>
-                    <input className={inputClass} style={inputStyle} value={fields.grading_grade} onChange={(e) => set('grading_grade', e.target.value)} placeholder="ex: 10" />
-                  </div>
-                </div>
-
-                <div className="mt-3">
-                  <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Rookie Card</label>
-                  <button
-                    type="button"
-                    onClick={() => set('is_rookie', !fields.is_rookie)}
-                    className="rounded-lg px-3 py-2 text-sm font-semibold transition-all"
-                    style={fields.is_rookie
-                      ? { background: 'rgba(37,99,235,0.16)', color: '#dbeafe', border: '1px solid rgba(96,165,250,0.45)' }
-                      : { background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
-                  >
-                    {fields.is_rookie ? <RookieBadge compact /> : 'Non RC'}
-                  </button>
-                </div>
-
-                {showGrading && (
-                  <div className="grid grid-cols-2 gap-3 mt-3">
-                    <div>
-                      <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>N° certificat</label>
-                      <input className={inputClass} style={inputStyle} value={fields.grading_cert} onChange={(e) => set('grading_cert', e.target.value)} placeholder="ex: 12345678" />
+                {card.grading_company && (
+                  <div className="p-4 rounded-3xl bg-white/[0.03] border border-white/5 space-y-3">
+                    <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
+                      <Trophy size={14} className="text-[var(--accent)]" />
+                      Certification {card.grading_company}
                     </div>
-                    <div>
-                      <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Coût grading (€)</label>
-                      <input type="number" className={inputClass} style={inputStyle} value={fields.grading_cost} onChange={(e) => set('grading_cost', e.target.value)} placeholder="0" />
-                    </div>
-                    <div>
-                      <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Date d'envoi</label>
-                      <input type="date" className={inputClass} style={inputStyle} value={fields.grading_submitted_at} onChange={(e) => set('grading_submitted_at', e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Date de retour</label>
-                      <input type="date" className={inputClass} style={inputStyle} value={fields.grading_returned_at} onChange={(e) => set('grading_returned_at', e.target.value)} />
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <div className="text-[10px] opacity-40 uppercase font-black mb-1">Grade</div>
+                        <div className="text-xl font-black text-[var(--accent)]">{card.grading_grade || 'Pending'}</div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] opacity-40 uppercase font-black mb-1">Status</div>
+                        <div className="text-sm font-bold text-white">{card.grading_status ? GRADING_STATUS_LABELS[card.grading_status] : '—'}</div>
+                      </div>
                     </div>
                   </div>
                 )}
-              </div>
 
-              <div className="grid grid-cols-2 gap-3">
-              {([
-                ['player', 'Joueur'],
-                ['team', 'Équipe'],
-                ['year', 'Année'],
-                ['brand', 'Marque'],
-                ['set_name', 'Set'],
-                ['insert_name', 'Insert'],
-                ['parallel_name', 'Parallel'],
-                ['card_number', 'N° carte'],
-                ['numbered', 'Tirage'],
-                ['purchase_price', 'Prix achat (€)'],
-                ['price', 'Prix vente (€)'],
-                ['vinted_url', 'Lien Vinted'],
-              ] as [
-                'player' | 'team' | 'year' | 'brand' | 'set_name' | 'insert_name' | 'parallel_name' | 'card_number' | 'numbered' | 'purchase_price' | 'price' | 'vinted_url',
-                string
-              ][]).map(([key, label]) => (
-                <div key={key}>
-                  <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>{label}</label>
-                  <input className={inputClass} style={inputStyle} value={fields[key]} onChange={(e) => set(key, e.target.value)} />
+                {!editing && (
+                  <div className="flex flex-col gap-3 pt-4">
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(buildPriceSearchText(card));
+                          window.open(`https://130point.com/sales/?q=${encodeURIComponent(buildPriceSearchText(card))}`, '_blank');
+                        }}
+                        className="flex-1 py-3.5 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 bg-white/5 border border-white/10 hover:bg-white/10 text-[var(--text-secondary)] active:scale-95"
+                      >
+                        <ExternalLink size={14} />
+                        130 Point ↗
+                      </button>
+
+                      <button
+                        onClick={openEbaySold}
+                        className="flex-1 py-3.5 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 bg-white/5 border border-white/10 hover:bg-white/10 text-[var(--text-secondary)] active:scale-95"
+                      >
+                        <ExternalLink size={14} />
+                        eBay Sold ↗
+                      </button>
+                    </div>
+
+                    <EbaySoldItems query={buildPriceSearchText(card)} />
+
+                    <div className="flex gap-3">
+                      {card.vinted_url ? (
+                        <a
+                          href={card.vinted_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-[4] py-4 rounded-2xl text-sm font-black text-center transition-all flex items-center justify-center gap-2 bg-[var(--accent)] text-[#09090B] shadow-xl shadow-[var(--accent-glow)] hover:brightness-110 active:scale-95"
+                        >
+                          VOIR SUR VINTED
+                          <ExternalLink size={16} strokeWidth={3} />
+                        </a>
+                      ) : (
+                        <button
+                          onClick={publishToVinted}
+                          className="flex-[4] py-4 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-2 bg-[var(--accent)] text-[#09090B] shadow-xl shadow-[var(--accent-glow)] hover:brightness-110 active:scale-95"
+                        >
+                          PUBLIER SUR VINTED
+                          <ImageIcon size={16} strokeWidth={3} />
+                        </button>
+                      )}
+                      <button
+                        onClick={handleDelete}
+                        disabled={deleteCard.isPending}
+                        className="flex-1 py-4 rounded-2xl text-sm transition-all flex items-center justify-center bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 active:scale-95"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            ) : (
+              /* Edit mode */
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="space-y-6"
+              >
+                <div
+                  className="rounded-3xl p-5 bg-white/5 border border-white/10"
+                >
+                  <div className="flex items-center justify-between gap-3 mb-5">
+                    <div className="flex items-center gap-2">
+                      <Trophy size={16} className="text-[var(--accent)]" />
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Grading Settings</span>
+                    </div>
+                    <button
+                      onClick={() => setShowGrading((v) => !v)}
+                      className="px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all border border-white/10 bg-white/5 text-[var(--text-secondary)] flex items-center gap-2"
+                    >
+                      {showGrading ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                      {showGrading ? 'MOINS' : 'PLUS D’OPTIONS'}
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-4">
+                    <div>
+                      <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Société</label>
+                      <select className={inputCls} value={fields.grading_company} onChange={(e) => set('grading_company', e.target.value)}>
+                        <option value="">—</option>
+                        {GRADING_COMPANIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Statut</label>
+                      <select className={inputCls} value={fields.grading_status} onChange={(e) => set('grading_status', e.target.value)}>
+                        {(Object.entries(GRADING_STATUS_LABELS) as [GradingStatus, string][]).map(([k, v]) => (
+                          <option key={k} value={k}>{v}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Note</label>
+                      <input className={inputCls} value={fields.grading_grade} onChange={(e) => set('grading_grade', e.target.value)} placeholder="10 / 9 / 8.5" />
+                    </div>
+                  </div>
+
+                  {showGrading && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-white/5"
+                    >
+                      <div className="col-span-1">
+                        <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Certificat #</label>
+                        <input className={inputCls} value={fields.grading_cert} onChange={(e) => set('grading_cert', e.target.value)} placeholder="00000000" />
+                      </div>
+                      <div className="col-span-1">
+                        <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Coût Grading (€)</label>
+                        <input type="number" className={inputCls} value={fields.grading_cost} onChange={(e) => set('grading_cost', e.target.value)} placeholder="0" />
+                      </div>
+                      <div className="col-span-1">
+                        <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Envoyé le</label>
+                        <input type="date" className={inputCls} value={fields.grading_submitted_at} onChange={(e) => set('grading_submitted_at', e.target.value)} />
+                      </div>
+                      <div className="col-span-1">
+                        <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Reçu le</label>
+                        <input type="date" className={inputCls} value={fields.grading_returned_at} onChange={(e) => set('grading_returned_at', e.target.value)} />
+                      </div>
+                    </motion.div>
+                  )}
                 </div>
-              ))}
-              <div>
-                <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Type</label>
-                <select className={inputClass} style={inputStyle} value={fields.card_type} onChange={(e) => set('card_type', e.target.value)}>
-                  <option value="">—</option>
-                  {CARD_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Statut</label>
-                <select className={inputClass} style={inputStyle} value={fields.status} onChange={(e) => set('status', e.target.value)}>
-                  <option value="collection">Collection</option>
-                  <option value="a_vendre">À vendre</option>
-                  <option value="reserve">Réservé</option>
-                  <option value="vendu">Vendu</option>
-                </select>
-              </div>
-              <div className="col-span-2">
-                <label className="block text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Notes d'état</label>
-                <input className={inputClass} style={inputStyle} value={fields.condition_notes} onChange={(e) => set('condition_notes', e.target.value)} />
-              </div>
 
-              <div className="col-span-2 pt-1 flex flex-col gap-2">
-                {card.image_front_url && card.image_back_url && (
+                <div className="grid grid-cols-2 gap-4">
+                  {([
+                    ['player', 'Joueur'],
+                    ['team', 'Équipe'],
+                    ['year', 'Année'],
+                    ['brand', 'Marque'],
+                    ['set_name', 'Set'],
+                    ['insert_name', 'Insert'],
+                    ['parallel_name', 'Parallel'],
+                    ['card_number', 'N° carte'],
+                    ['numbered', 'Tirage'],
+                    ['purchase_price', 'Prix achat (€)'],
+                    ['price', 'Prix vente (€)'],
+                    ['vinted_url', 'Lien Vinted'],
+                  ] as [
+                    'player' | 'team' | 'year' | 'brand' | 'set_name' | 'insert_name' | 'parallel_name' | 'card_number' | 'numbered' | 'purchase_price' | 'price' | 'vinted_url',
+                    string
+                  ][]).map(([key, label]) => (
+                    <div key={key}>
+                      <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">{label}</label>
+                      <input className={inputCls} value={fields[key]} onChange={(e) => set(key, e.target.value)} />
+                    </div>
+                  ))}
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Type</label>
+                    <select className={inputCls} value={fields.card_type} onChange={(e) => set('card_type', e.target.value)}>
+                      <option value="">—</option>
+                      {CARD_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Statut</label>
+                    <select className={inputCls} value={fields.status} onChange={(e) => set('status', e.target.value)}>
+                      <option value="collection">Collection</option>
+                      <option value="a_vendre">À vendre</option>
+                      <option value="reserve">Réservé</option>
+                      <option value="vendu">Vendu</option>
+                    </select>
+                  </div>
+                  <div className="col-span-2">
+                    <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Notes d'état</label>
+                    <input className={inputCls} value={fields.condition_notes} onChange={(e) => set('condition_notes', e.target.value)} />
+                  </div>
+                </div>
+
+                <div className="pt-2 space-y-3">
                   <button
                     onClick={handleReanalyze}
                     disabled={identify.isPending}
-                    className="w-full py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
-                    style={{
-                      background: identify.isSuccess ? 'rgba(16,185,129,0.1)' : 'var(--bg-elevated)',
-                      border: `1px solid ${identify.isSuccess ? 'rgba(16,185,129,0.3)' : 'var(--border)'}`,
-                      color: identify.isSuccess ? 'rgb(16,185,129)' : 'var(--text-secondary)',
-                      opacity: identify.isPending ? 0.6 : 1,
-                    }}
+                    className="w-full py-3.5 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-3 bg-white/5 border border-white/10 hover:bg-white/10 text-[var(--text-secondary)] active:scale-95"
                   >
-                    {identify.isPending ? <><span className="animate-spin inline-block">⟳</span> Analyse en cours…</> : identify.isSuccess ? '✓ IA appliquée — relancer ?' : '🔍 Ré-analyser avec l\'IA'}
+                    {identify.isPending ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
+                    {identify.isPending ? 'ANALYSE EN COURS…' : 'RÉ-ANALYSER AVEC L’IA'}
                   </button>
-                )}
-                {reanalyzeError && (
-                  <p className="text-xs px-1" style={{ color: 'var(--red)' }}>{reanalyzeError}</p>
-                )}
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all"
-                  style={{ background: 'var(--accent)', color: '#0E0E11', opacity: saving ? 0.6 : 1 }}
-                >
-                  {saving ? 'Enregistrement…' : 'Enregistrer'}
-                </button>
-              </div>
-              </div>
-            </div>
-          )}
 
-          {/* Actions */}
-          {!editing && (
-            <div className="flex flex-col gap-2">
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(buildPriceSearchText(card));
-                  window.open(`https://130point.com/sales/?q=${encodeURIComponent(buildPriceSearchText(card))}`, '_blank');
-                }}
-                className="w-full py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
-                style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
-              >
-                <img src="/130point.svg" alt="" className="h-4 w-auto" />
-                Ventes terminées ↗
-              </button>
+                  {reanalyzeError && (
+                    <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold">
+                      <AlertCircle size={14} />
+                      {reanalyzeError}
+                    </div>
+                  )}
 
-              <button
-                onClick={openEbaySold}
-                className="w-full py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
-                style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
-              >
-                <svg viewBox="0 0 100 40" width="40" height="16" aria-label="eBay">
-                  <text x="0" y="32" fontSize="40" fontWeight="bold" fontFamily="Arial, sans-serif">
-                    <tspan fill="#E53238">e</tspan>
-                    <tspan fill="#0064D2">B</tspan>
-                    <tspan fill="#F5AF02">a</tspan>
-                    <tspan fill="#86B817">y</tspan>
-                  </text>
-                </svg>
-                Ventes terminées ↗
-              </button>
-
-              <EbaySoldItems query={buildPriceSearchText(card)} />
-
-              {/* Grading toggle */}
-              <button
-                onClick={() => setShowGrading((v) => !v)}
-                className="w-full py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
-                style={showGrading
-                  ? { background: 'var(--bg-elevated)', border: '1px solid var(--border-strong)', color: 'var(--text-primary)' }
-                  : { background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }
-                }
-              >
-                🏅 {card.grading_status ? `Grading — ${GRADING_STATUS_LABELS[card.grading_status]}${card.grading_grade ? ` · ${card.grading_grade}` : ''}` : 'Grading'}
-                <span style={{ opacity: 0.5 }}>{showGrading ? '▲' : '▼'}</span>
-              </button>
-
-              {showGrading && (
-                <GradingPanel
-                  card={card}
-                  onSave={async (data) => {
-                    await updateCard.mutateAsync({ id: card.id, ...data });
-                  }}
-                />
-              )}
-
-              <div className="flex gap-2">
-                {card.vinted_url ? (
-                  <a
-                    href={card.vinted_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-center transition-all"
-                    style={{ background: 'var(--accent)', color: '#0d0c0b', boxShadow: '0 0 20px var(--accent-glow)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}
-                  >
-                    Voir sur Vinted ↗
-                  </a>
-                ) : (
                   <button
-                    onClick={publishToVinted}
-                    className="flex-1 py-2.5 rounded-xl text-sm font-semibold"
-                    style={{ background: 'var(--accent)', color: '#0d0c0b', boxShadow: '0 0 20px var(--accent-glow)' }}
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="w-full py-4 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-2 bg-[var(--accent)] text-[#09090B] shadow-xl shadow-[var(--accent-glow)] hover:brightness-110 active:scale-95"
                   >
-                    Publier sur Vinted
+                    {saving ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
+                    {saving ? 'ENREGISTREMENT…' : 'ENREGISTRER LES MODIFICATIONS'}
                   </button>
-                )}
-                <button
-                  onClick={handleDelete}
-                  disabled={deleteCard.isPending}
-                  className="px-4 py-2.5 rounded-xl text-sm transition-colors"
-                  style={{ border: '1px solid rgba(232,64,64,0.3)', color: 'var(--red)' }}
-                >
-                  🗑
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {lightboxUrl && (
-        <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/95"
-          onClick={() => setLightboxUrl(null)}
-        >
-          <img
-            src={lightboxUrl}
-            alt=""
-            className="max-h-[90vh] max-w-[90vw] rounded-2xl object-contain"
-            style={{ boxShadow: '0 0 80px rgba(0,0,0,0.9)' }}
-          />
-          <button
-            className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full text-sm"
-            style={{ background: 'rgba(255,255,255,0.1)', color: '#fff' }}
-            onClick={() => setLightboxUrl(null)}
-          >
-            ✕
-          </button>
-        </div>
-      )}
-    </div>
+                </div>
+              </motion.div>
+            )}
+          </div>
+        </motion.div>
+      </motion.div>
+    </AnimatePresence>
   );
 }

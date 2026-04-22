@@ -1,4 +1,16 @@
-import { useMemo, useState, useRef, useEffect } from 'react';
+import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Search,
+  LayoutGrid,
+  List,
+  Download,
+  Pencil,
+  Trash2,
+  Group,
+  X,
+  ChevronDown
+} from 'lucide-react';
 import {
   createColumnHelper,
   flexRender,
@@ -10,7 +22,6 @@ import {
 import { useCards, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { useAppStore } from '../../stores/appStore';
 import type { Card, CardStatus, CardType } from '../../types';
-import { CardBadge } from '../shared/CardBadge';
 import { GradingBadge } from '../shared/GradingBadge';
 import { StatusBadge } from '../shared/StatusBadge';
 import { CardDetail } from '../shared/CardDetail';
@@ -18,6 +29,18 @@ import { RookieBadge } from '../shared/RookieBadge';
 
 type FilterTab = 'all' | 'a_vendre' | 'vendu';
 type GroupBy = 'none' | 'player' | 'team' | 'brand' | 'set_name' | 'year';
+
+const TYPE_LABELS: Record<CardType, string> = {
+  base: 'Base',
+  insert: 'Insert',
+  parallel: 'Parallel',
+  numbered: 'Numbered',
+  auto: 'Auto',
+  patch: 'Patch',
+  auto_patch: 'Auto/Patch',
+  memo: 'Memorabilia',
+  auto_memo: 'Auto/Memo',
+} as any;
 
 const CARD_TYPE_OPTIONS: { value: CardType; label: string }[] = [
   { value: 'base', label: 'Base' },
@@ -45,13 +68,14 @@ declare module '@tanstack/react-table' {
 function TableActions({ card, onEdit }: { card: Card; onEdit: () => void }) {
   const deleteCard = useDeleteCard();
   return (
-    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
       <button
         onClick={(e) => { e.stopPropagation(); onEdit(); }}
-        className="px-2.5 py-1 rounded-lg text-xs font-medium transition-colors"
-        style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)' }}
+        className="p-2 rounded-xl transition-all hover:bg-white/10 active:scale-90"
+        title="Modifier"
+        style={{ color: 'var(--text-primary)', border: '1px solid var(--border)' }}
       >
-        ✏ Modifier
+        <Pencil size={14} />
       </button>
       <button
         onClick={async (e) => {
@@ -59,10 +83,11 @@ function TableActions({ card, onEdit }: { card: Card; onEdit: () => void }) {
           if (!confirm(`Supprimer ${card.player ?? 'cette carte'} ?`)) return;
           await deleteCard.mutateAsync(card.id);
         }}
-        className="px-2 py-1 rounded-lg text-xs transition-colors"
-        style={{ color: 'var(--red)', border: '1px solid rgba(240,77,77,0.2)' }}
+        className="p-2 rounded-xl transition-all hover:bg-red-500/10 active:scale-90"
+        title="Supprimer"
+        style={{ color: 'var(--red, #ef4444)', border: '1px solid hsla(0, 84%, 60%, 0.2)' }}
       >
-        🗑
+        <Trash2 size={14} />
       </button>
     </div>
   );
@@ -263,87 +288,79 @@ function buildColumns(onEdit: (card: Card) => void) {
 
 function GridCard({ card, onClick }: { card: Card; onClick: () => void }) {
   return (
-    <button
+    <motion.button
+      whileHover={{ y: -4 }}
       onClick={onClick}
-      className="group relative bg-[var(--bg-secondary)] rounded-2xl overflow-hidden border border-white/5 hover:border-[var(--accent)]/60 transition-all duration-200 hover:scale-[1.02] hover:shadow-xl hover:shadow-black/40 text-left w-full"
+      className="group relative bg-[var(--bg-card)] rounded-3xl overflow-hidden border border-white/5 hover:border-[var(--accent)]/40 transition-all duration-300 hover:shadow-2xl hover:shadow-[var(--accent-glow)] text-left w-full glass"
     >
       <div className="relative aspect-[3/4] bg-[var(--bg-primary)] overflow-hidden">
         {card.image_front_url ? (
           <img
             src={card.image_front_url}
             alt={card.player ?? ''}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
           />
         ) : (
-          <div className="w-full h-full flex items-center justify-center">
-            <span className="text-[var(--text-muted)] text-3xl">🃏</span>
+          <div className="w-full h-full flex flex-col items-center justify-center gap-2">
+            <span className="text-4xl opacity-20">🃏</span>
+            <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Image absente</span>
           </div>
         )}
+
         {/* top-left: auto / patch / numbered badges */}
-        {(card.is_rookie || card.grading_company || card.card_type === 'auto' || card.card_type === 'auto_patch' || card.card_type === 'patch' || card.numbered) && (
-          <div className="absolute top-2 left-2 flex flex-row gap-1 flex-wrap max-w-[80%]">
-            {card.is_rookie && <RookieBadge compact />}
-            {card.grading_company && (
-              <GradingBadge card={card} compact />
-            )}
-            {(card.card_type === 'auto' || card.card_type === 'auto_patch') && (
-              <div
-                className="h-5 px-1.5 rounded flex items-center justify-center text-[10px] font-black"
-                style={{ background: 'rgba(16,185,129,0.9)', color: '#fff', backdropFilter: 'blur(4px)' }}
-                title="Autographe"
-              >
-                AUTO
-              </div>
-            )}
-            {(card.card_type === 'patch' || card.card_type === 'auto_patch') && (
-              <div
-                className="h-5 px-1.5 rounded flex items-center justify-center text-[10px] font-black"
-                style={{ background: 'rgba(239,68,68,0.9)', color: '#fff', backdropFilter: 'blur(4px)' }}
-                title="Patch"
-              >
-                PATCH
-              </div>
-            )}
-            {card.numbered && (
-              <div
-                className="h-5 px-1.5 rounded flex items-center justify-center text-[10px] font-black"
-                style={{ background: 'rgba(245,166,35,0.9)', color: '#000', backdropFilter: 'blur(4px)' }}
-                title="Numérotée"
-              >
-                {card.numbered}
-              </div>
-            )}
-          </div>
-        )}
+        <div className="absolute top-3 left-3 flex flex-row gap-1.5 flex-wrap max-w-[85%] z-10">
+          {card.is_rookie && <RookieBadge compact />}
+          {card.grading_company && <GradingBadge card={card} compact />}
+          {(card.card_type === 'auto' || card.card_type === 'auto_patch') && (
+            <div className="h-5 px-2 rounded-lg flex items-center justify-center text-[9px] font-black bg-[#10B981] text-white shadow-lg shadow-emerald-900/40 border border-emerald-400/20 backdrop-blur-sm">
+              AUTO
+            </div>
+          )}
+          {(card.card_type === 'patch' || card.card_type === 'auto_patch') && (
+            <div className="h-5 px-2 rounded-lg flex items-center justify-center text-[9px] font-black bg-[#EF4444] text-white shadow-lg shadow-red-900/40 border border-red-400/20 backdrop-blur-sm">
+              PATCH
+            </div>
+          )}
+          {card.numbered && (
+            <div className="h-5 px-2 rounded-lg flex items-center justify-center text-[9px] font-black bg-[var(--accent)] text-black shadow-lg shadow-amber-900/40 border border-amber-400/20 backdrop-blur-sm">
+              {card.numbered}
+            </div>
+          )}
+        </div>
+
+        <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-card)] via-transparent to-transparent opacity-60 group-hover:opacity-40 transition-opacity" />
+
         {card.status !== 'collection' && (
-          <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/80 to-transparent pt-6 pb-2 px-2">
+          <div className="absolute bottom-3 left-3 z-10">
             <StatusBadge status={card.status} />
           </div>
         )}
       </div>
-      <div className="p-3 space-y-1">
-        <p className="text-sm font-semibold text-white truncate leading-tight">
-          {card.player ?? '—'}
-        </p>
-        <p className="text-xs text-[var(--text-secondary)] truncate">
-          {[card.year, card.brand, card.set_name].filter(Boolean).join(' · ')}
-        </p>
-        {(card.insert_name || (card.parallel_name && card.parallel_name !== 'Base')) && (
-          <p className="text-xs text-[var(--accent)] truncate">
-            {card.insert_name || card.parallel_name}
+
+      <div className="p-4 space-y-1.5 relative">
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-sm font-bold text-white truncate leading-tight group-hover:text-[var(--accent)] transition-colors">
+            {card.player ?? '—'}
           </p>
-        )}
-        <div className="flex items-center justify-between pt-0.5">
-          <div className="flex items-center gap-1.5">
-            <CardBadge type={card.card_type} />
-            {card.is_rookie && <RookieBadge compact />}
-          </div>
           {card.price != null && (
-            <span className="text-xs font-medium text-white">{card.price} €</span>
+            <span className="text-[11px] font-black text-[var(--accent)] shrink-0">{card.price}€</span>
           )}
         </div>
+
+        <p className="text-[11px] font-medium text-[var(--text-muted)] truncate group-hover:text-[var(--text-secondary)] transition-colors">
+          {[card.year, card.brand, card.set_name].filter(Boolean).join(' · ')}
+        </p>
+
+        {(card.insert_name || (card.parallel_name && card.parallel_name !== 'Base')) && (
+          <div className="flex items-center gap-1.5 mt-1 overflow-hidden">
+            <div className="h-1 w-1 rounded-full bg-[var(--accent)] shrink-0" />
+            <p className="text-[10px] font-bold text-[var(--text-secondary)] truncate uppercase tracking-wider">
+              {card.insert_name || card.parallel_name}
+            </p>
+          </div>
+        )}
       </div>
-    </button>
+    </motion.button>
   );
 }
 
@@ -379,47 +396,50 @@ function FilterDropdown({
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap"
+        className="flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-bold transition-all whitespace-nowrap active:scale-95"
         style={active
-          ? { background: 'var(--accent)', color: '#0E0E11' }
+          ? { background: 'var(--accent)', color: '#09090B' }
           : { background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }
         }
       >
-        {active ? selectedLabel : label}
-        <span style={{ opacity: 0.6 }}>{open ? '▲' : '▼'}</span>
+        <span>{active ? selectedLabel : label}</span>
+        <ChevronDown size={12} className={`transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
       </button>
 
-      {open && (
-        <div
-          className="absolute top-full left-0 mt-1.5 z-30 rounded-2xl overflow-hidden py-1 min-w-[180px] max-h-64 overflow-y-auto"
-          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border-strong)', boxShadow: '0 8px 32px rgba(0,0,0,0.5)' }}
-        >
-          {active && (
-            <button
-              onClick={() => { onSelect(null); setOpen(false); }}
-              className="flex items-center justify-between w-full px-3 py-2 text-xs transition-colors"
-              style={{ color: 'var(--accent)' }}
-            >
-              <span>Effacer</span>
-              <span>✕</span>
-            </button>
-          )}
-          {items.map(({ value, count, label: itemLabel }) => (
-            <button
-              key={value}
-              onClick={() => { onSelect(selected === value ? null : value); setOpen(false); }}
-              className="flex items-center justify-between w-full px-3 py-2 text-sm transition-colors text-left"
-              style={{
-                background: selected === value ? 'rgba(245,175,35,0.1)' : 'transparent',
-                color: selected === value ? 'var(--accent)' : 'var(--text-primary)',
-              }}
-            >
-              <span className="truncate">{itemLabel ?? value}</span>
-              <span className="text-xs ml-3 shrink-0" style={{ color: 'var(--text-muted)' }}>{count}</span>
-            </button>
-          ))}
-        </div>
-      )}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: 8, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.95 }}
+            className="absolute top-full left-0 mt-2 z-30 rounded-2xl overflow-hidden py-1.5 min-w-[200px] max-h-64 overflow-y-auto glass border-strong shadow-2xl p-1"
+          >
+            {active && (
+              <button
+                onClick={() => { onSelect(null); setOpen(false); }}
+                className="flex items-center justify-between w-full px-3 py-2 text-[11px] font-bold transition-colors hover:bg-white/5 rounded-xl mb-1 text-[var(--accent)]"
+              >
+                <span>Effacer le filtre</span>
+                <X size={12} />
+              </button>
+            )}
+            {items.map(({ value, count, label: itemLabel }) => (
+              <button
+                key={value}
+                onClick={() => { onSelect(selected === value ? null : value); setOpen(false); }}
+                className="flex items-center justify-between w-full px-3 py-2.5 text-xs font-medium transition-colors text-left rounded-xl hover:bg-white/5"
+                style={{
+                  background: selected === value ? 'var(--accent-glow)' : 'transparent',
+                  color: selected === value ? 'var(--accent)' : 'var(--text-primary)',
+                }}
+              >
+                <span className="truncate">{itemLabel ?? value}</span>
+                <span className="text-[10px] font-bold ml-3 shrink-0 opacity-40">{count}</span>
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -439,9 +459,8 @@ function TableView({ table, onRowClick }: { table: ReturnType<typeof useReactTab
                   <th
                     key={header.id}
                     onClick={header.column.getToggleSortingHandler()}
-                    className={`px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap ${
-                      header.column.getCanSort() ? 'cursor-pointer' : ''
-                    }`}
+                    className={`px-3 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap ${header.column.getCanSort() ? 'cursor-pointer' : ''
+                      }`}
                     style={{ color: 'var(--text-muted)' }}
                   >
                     {flexRender(header.column.columnDef.header, header.getContext())}
@@ -457,9 +476,8 @@ function TableView({ table, onRowClick }: { table: ReturnType<typeof useReactTab
             <tr
               key={row.id}
               onClick={() => onRowClick(row.original)}
-              className={`group border-b border-white/5 cursor-pointer transition-colors hover:bg-white/[0.04] ${
-                i % 2 === 0 ? '' : 'bg-white/[0.02]'
-              }`}
+              className={`group border-b border-white/5 cursor-pointer transition-colors hover:bg-white/[0.04] ${i % 2 === 0 ? '' : 'bg-white/[0.02]'
+                }`}
             >
               {row.getVisibleCells().map((cell) => {
                 if (isMobile && (cell.column.columnDef.meta as any)?.mobileHide) return null;
@@ -525,8 +543,7 @@ export function CollectionView() {
     });
   }, [cards, statusFilter, playerFilter, teamFilter, brandFilter, setFilter, yearFilter, typeFilter, rookieOnly, search]);
 
-  // Sidebar facets (calculées sur toute la collection, pas sur filtered)
-  function facets(key: keyof Card) {
+  const facets = useCallback((key: keyof Card) => {
     const counts: Record<string, number> = {};
     cards.forEach((c) => {
       const v = c[key] as string | null;
@@ -535,18 +552,22 @@ export function CollectionView() {
     return Object.entries(counts)
       .sort((a, b) => b[1] - a[1])
       .map(([value, count]) => ({ value, count }));
-  }
+  }, [cards]);
 
-  const players = useMemo(() => facets('player'), [cards]);
-  const teams = useMemo(() => facets('team'), [cards]);
-  const brands = useMemo(() => facets('brand'), [cards]);
-  const sets = useMemo(() => facets('set_name'), [cards]);
-  const years = useMemo(() => facets('year'), [cards]);
-  const TYPE_LABELS: Record<string, string> = {
-    base: 'Base', insert: 'Insert', parallel: 'Parallel', numbered: 'Numbered',
-    auto: 'Auto', patch: 'Patch', auto_patch: 'Auto/Patch',
-  };
-  const types = useMemo(() => facets('card_type').map(({ value, count }) => ({ value, count, label: TYPE_LABELS[value] ?? value })), [cards]);
+  const players = useMemo(() => facets('player'), [facets]);
+  const teams = useMemo(() => facets('team'), [facets]);
+  const brands = useMemo(() => facets('brand'), [facets]);
+  const sets = useMemo(() => facets('set_name'), [facets]);
+  const years = useMemo(() => facets('year'), [facets]);
+
+  const types = useMemo(() =>
+    facets('card_type').map(({ value, count }) => ({
+      value,
+      count,
+      label: TYPE_LABELS[value as CardType] ?? value
+    })),
+    [facets]
+  );
 
   // Groupement
   const grouped = useMemo(() => {
@@ -618,159 +639,175 @@ export function CollectionView() {
   ];
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="flex flex-1 flex-col overflow-hidden bg-[radial-gradient(circle_at_50%_-20%,_var(--accent-dim)_0%,_transparent_70%)]">
       {/* Toolbar */}
-      <div className="flex flex-col gap-2 px-3 sm:px-6 py-3 border-b shrink-0" style={{ borderColor: 'var(--border)' }}>
+      <div className="flex flex-col gap-4 px-6 py-5 border-b border-white/5 bg-black/20 backdrop-blur-3xl shrink-0">
         {/* Row 1: status tabs + right controls */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center justify-between gap-4">
           {/* Status tabs */}
-          <div className="flex gap-0.5 p-1 rounded-xl shrink-0" style={{ background: 'var(--bg-secondary)' }}>
+          <div className="flex gap-1 p-1 rounded-2xl bg-white/5 border border-white/5 shrink-0">
             {tabs.map((t) => (
               <button
                 key={t.key}
                 onClick={() => setStatusFilter(t.key)}
-                className="px-2.5 py-1 rounded-lg text-xs font-medium transition-all whitespace-nowrap"
+                className="px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-2 active:scale-95"
                 style={statusFilter === t.key
-                  ? { background: 'var(--accent)', color: '#0E0E11' }
+                  ? { background: 'var(--accent)', color: '#09090B', boxShadow: '0 4px 12px var(--accent-glow)' }
                   : { color: 'var(--text-secondary)' }
                 }
               >
-                {t.label} <span style={{ opacity: 0.65 }}>{statusCounts[t.key]}</span>
+                {t.label}
+                <span className={`px-1.5 py-0.5 rounded-lg text-[9px] font-black ${statusFilter === t.key ? 'bg-black/10' : 'bg-white/10'}`}>
+                  {statusCounts[t.key]}
+                </span>
               </button>
             ))}
           </div>
 
-          <div className="flex-1" />
+          <div className="flex items-center gap-3">
+            {/* View toggle */}
+            <div className="flex p-1 rounded-2xl bg-white/5 border border-white/5 shrink-0">
+              <button
+                onClick={() => setViewMode('grid')}
+                className={`p-2 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-white/10 text-white shadow-lg' : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'}`}
+              >
+                <LayoutGrid size={16} />
+              </button>
+              <button
+                onClick={() => setViewMode('table')}
+                className={`p-2 rounded-xl transition-all ${viewMode === 'table' ? 'bg-white/10 text-white shadow-lg' : 'text-[var(--text-muted)] hover:text-[var(--text-secondary)]'}`}
+              >
+                <List size={16} />
+              </button>
+            </div>
 
-          {/* Grouper par */}
-          <select
-            value={groupBy}
-            onChange={(e) => setGroupBy(e.target.value as GroupBy)}
-            className="rounded-lg px-2 py-1.5 text-xs outline-none hidden sm:block"
-            style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
-          >
-            <option value="none">Grouper…</option>
-            <option value="player">Joueur</option>
-            <option value="team">Équipe</option>
-            <option value="brand">Marque</option>
-            <option value="set_name">Set</option>
-            <option value="year">Année</option>
-          </select>
-
-          {/* View toggle */}
-          <div className="flex rounded-xl overflow-hidden shrink-0" style={{ border: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
-            <button onClick={() => setViewMode('grid')} title="Grille" className="px-2.5 py-2 transition-colors" style={{ background: viewMode === 'grid' ? 'var(--bg-elevated)' : 'transparent', color: viewMode === 'grid' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
-              <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="1" width="6" height="6" rx="1.5"/><rect x="9" y="1" width="6" height="6" rx="1.5"/><rect x="1" y="9" width="6" height="6" rx="1.5"/><rect x="9" y="9" width="6" height="6" rx="1.5"/></svg>
-            </button>
-            <button onClick={() => setViewMode('table')} title="Tableau" className="px-2.5 py-2 transition-colors" style={{ background: viewMode === 'table' ? 'var(--bg-elevated)' : 'transparent', color: viewMode === 'table' ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
-              <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor"><rect x="1" y="2" width="14" height="2" rx="1"/><rect x="1" y="7" width="14" height="2" rx="1"/><rect x="1" y="12" width="14" height="2" rx="1"/></svg>
+            <button
+              onClick={exportCSV}
+              className="p-3 rounded-2xl bg-white/5 border border-white/5 text-[var(--text-secondary)] hover:bg-white/10 hover:text-white transition-all active:scale-95"
+              title="Exporter en CSV"
+            >
+              <Download size={16} />
             </button>
           </div>
         </div>
 
-        {/* Row 2: search + filter chips */}
-        <div className="flex items-center gap-2 flex-wrap">
+        {/* Row 2: search + filters */}
+        <div className="flex items-center gap-3 flex-wrap">
           {/* Search */}
-          <div className="relative shrink-0" style={{ width: '130px' }}>
+          <div className="relative group min-w-[200px]">
+            <Search className="absolute left-3.5 top-1/2 -track-y-1/2 -translate-y-1/2 text-[var(--text-muted)] group-focus-within:text-[var(--accent)] transition-colors" size={14} />
             <input
               type="text"
-              placeholder="Rechercher…"
+              placeholder="Rechercher une pépite…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-xl pl-7 pr-3 py-1.5 text-xs outline-none transition-all placeholder:text-[var(--text-muted)]"
-              style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+              className="w-full bg-white/5 border border-white/5 rounded-2xl pl-10 pr-10 py-2.5 text-xs font-medium outline-none transition-all focus:border-[var(--accent)]/50 focus:bg-white/[0.08] placeholder:text-[var(--text-muted)]"
             />
-            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px]" style={{ color: 'var(--text-muted)' }}>🔍</span>
             {search && (
-              <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px]" style={{ color: 'var(--text-muted)' }}>✕</button>
+              <button
+                onClick={() => setSearch('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-[var(--text-muted)] hover:text-white transition-colors"
+              >
+                <X size={14} />
+              </button>
             )}
           </div>
-          <FilterDropdown label="Joueur" items={players} selected={playerFilter} onSelect={setPlayerFilter} />
-          <FilterDropdown label="Équipe" items={teams} selected={teamFilter} onSelect={setTeamFilter} />
-          <FilterDropdown label="Marque" items={brands} selected={brandFilter} onSelect={setBrandFilter} />
-          <FilterDropdown label="Set" items={sets} selected={setFilter} onSelect={setSetFilter} />
-          <FilterDropdown label="Année" items={years} selected={yearFilter} onSelect={setYearFilter} />
-          <FilterDropdown label="Type" items={types} selected={typeFilter} onSelect={setTypeFilter} />
-          {rookieCount > 0 && (
-            <button
-              onClick={() => setRookieOnly((v) => !v)}
-              className="px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap"
-              style={rookieOnly
-                ? { background: 'linear-gradient(135deg, rgba(14,165,233,0.9), rgba(37,99,235,0.95))', color: '#eff6ff', border: '1px solid rgba(191,219,254,0.35)' }
-                : { background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
-            >
-              RC <span style={{ opacity: 0.7 }}>{rookieCount}</span>
-            </button>
-          )}
-          {activeFiltersCount > 0 && (
-            <button
-              onClick={() => { setPlayerFilter(null); setTeamFilter(null); setBrandFilter(null); setSetFilter(null); setYearFilter(null); setTypeFilter(null); setRookieOnly(false); clearDrillFilter(); }}
-              className="px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all whitespace-nowrap"
-              style={{ color: 'var(--accent)', border: '1px solid rgba(245,175,35,0.2)' }}
-            >
-              ✕ Effacer ({activeFiltersCount})
-            </button>
-          )}
 
-          <div className="flex-1 hidden sm:block" />
+          <div className="h-6 w-px bg-white/10 mx-1 hidden lg:block" />
 
-          <button
-            onClick={exportCSV}
-            title={`Exporter ${filtered.length} carte(s) en CSV`}
-            className="px-2.5 py-1.5 rounded-xl text-xs font-medium transition-all whitespace-nowrap hidden sm:flex items-center gap-1.5 shrink-0"
-            style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
-          >
-            <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d="M8 2v8M5 7l3 3 3-3" strokeLinecap="round" strokeLinejoin="round"/>
-              <path d="M3 12h10" strokeLinecap="round"/>
-            </svg>
-            CSV ({filtered.length})
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <FilterDropdown label="Joueur" items={players} selected={playerFilter} onSelect={setPlayerFilter} />
+            <FilterDropdown label="Équipe" items={teams} selected={teamFilter} onSelect={setTeamFilter} />
+            <FilterDropdown label="Marque" items={brands} selected={brandFilter} onSelect={setBrandFilter} />
+            <FilterDropdown label="Collection" items={sets} selected={setFilter} onSelect={setSetFilter} />
+            <FilterDropdown label="Année" items={years} selected={yearFilter} onSelect={setYearFilter} />
+            <FilterDropdown label="Type" items={types} selected={typeFilter} onSelect={setTypeFilter} />
+
+            {rookieCount > 0 && (
+              <button
+                onClick={() => setRookieOnly((v) => !v)}
+                className="px-4 py-2 rounded-xl text-[11px] font-bold transition-all whitespace-nowrap active:scale-95 border"
+                style={rookieOnly
+                  ? { background: 'var(--accent-glow)', color: 'var(--accent)', borderColor: 'var(--border-accent)' }
+                  : { background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+              >
+                ROOKIE RC
+              </button>
+            )}
+
+            {activeFiltersCount > 0 && (
+              <button
+                onClick={() => { setPlayerFilter(null); setTeamFilter(null); setBrandFilter(null); setSetFilter(null); setYearFilter(null); setTypeFilter(null); setRookieOnly(false); clearDrillFilter(); }}
+                className="flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-bold transition-all text-red-400 hover:bg-red-400/5 active:scale-95"
+              >
+                Effacer ({activeFiltersCount})
+              </button>
+            )}
+          </div>
+
+          <div className="flex-1" />
+
+          <div className="flex items-center gap-2">
+            <Group size={14} className="text-[var(--text-muted)] mr-1" />
+            <select
+              value={groupBy}
+              onChange={(e) => setGroupBy(e.target.value as GroupBy)}
+              className="bg-transparent text-[11px] font-bold outline-none cursor-pointer text-[var(--text-secondary)] hover:text-white transition-colors appearance-none"
+            >
+              <option value="none">AUCUN GROUPEMENT</option>
+              <option value="player">PAR JOUEUR</option>
+              <option value="team">PAR ÉQUIPE</option>
+              <option value="brand">PAR MARQUE</option>
+              <option value="set_name">PAR COLLECTION</option>
+              <option value="year">PAR ANNÉE</option>
+            </select>
+            <ChevronDown size={12} className="text-[var(--text-muted)]" />
+          </div>
         </div>
       </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-auto px-6 py-6">
-          {isLoading ? (
-            <div className="flex items-center justify-center h-48">
-              <div className="text-[var(--text-muted)] text-sm">Chargement…</div>
-            </div>
-          ) : filtered.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-48 gap-3">
-              <span className="text-4xl">🃏</span>
-              <p className="text-[var(--text-muted)] text-sm">Aucune carte ne correspond.</p>
-              {(activeFiltersCount > 0 || search) && (
-                <button
-                  onClick={() => { setPlayerFilter(null); setTeamFilter(null); setBrandFilter(null); setSetFilter(null); setYearFilter(null); setTypeFilter(null); setRookieOnly(false); setSearch(''); }}
-                  className="text-xs text-[var(--accent)] hover:opacity-80"
-                >
-                  Effacer les filtres
-                </button>
-              )}
-            </div>
-          ) : viewMode === 'grid' ? (
-            <div className="space-y-8">
-              {Object.entries(grouped).map(([group, groupCards]) => (
-                <div key={group}>
-                  {groupBy !== 'none' && (
-                    <div className="flex items-center gap-3 mb-4">
-                      <h3 className="text-sm font-semibold text-white">{group}</h3>
-                      <span className="text-xs text-[var(--text-muted)]">{groupCards.length} carte{groupCards.length !== 1 ? 's' : ''}</span>
-                      <div className="flex-1 h-px bg-white/5" />
-                    </div>
-                  )}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-                    {groupCards.map((card) => (
-                      <GridCard key={card.id} card={card} onClick={() => setSelectedCard(card)} />
-                    ))}
+      {/* Content */}
+      <div className="flex-1 overflow-auto px-6 py-6">
+        {isLoading ? (
+          <div className="flex items-center justify-center h-48">
+            <div className="text-[var(--text-muted)] text-sm">Chargement…</div>
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-48 gap-3">
+            <span className="text-4xl">🃏</span>
+            <p className="text-[var(--text-muted)] text-sm">Aucune carte ne correspond.</p>
+            {(activeFiltersCount > 0 || search) && (
+              <button
+                onClick={() => { setPlayerFilter(null); setTeamFilter(null); setBrandFilter(null); setSetFilter(null); setYearFilter(null); setTypeFilter(null); setRookieOnly(false); setSearch(''); }}
+                className="text-xs text-[var(--accent)] hover:opacity-80"
+              >
+                Effacer les filtres
+              </button>
+            )}
+          </div>
+        ) : viewMode === 'grid' ? (
+          <div className="space-y-8">
+            {Object.entries(grouped).map(([group, groupCards]) => (
+              <div key={group}>
+                {groupBy !== 'none' && (
+                  <div className="flex items-center gap-3 mb-4">
+                    <h3 className="text-sm font-semibold text-white">{group}</h3>
+                    <span className="text-xs text-[var(--text-muted)]">{groupCards.length} carte{groupCards.length !== 1 ? 's' : ''}</span>
+                    <div className="flex-1 h-px bg-white/5" />
                   </div>
+                )}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                  {groupCards.map((card) => (
+                    <GridCard key={card.id} card={card} onClick={() => setSelectedCard(card)} />
+                  ))}
                 </div>
-              ))}
-            </div>
-          ) : (
-            <TableView table={table} onRowClick={setSelectedCard} />
-          )}
-        </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <TableView table={table} onRowClick={setSelectedCard} />
+        )}
+      </div>
 
       {selectedCard && (
         <CardDetail card={selectedCard} onClose={() => setSelectedCard(null)} />
