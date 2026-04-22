@@ -1,7 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import {
+  Users,
+  Search,
+  X,
+  Calendar,
+  Building,
+  Target,
+  Globe,
+  Settings2,
+  ExternalLink,
+  LayoutGrid,
+  Maximize2,
+  Layers,
+  Star,
+  Hash,
+  RefreshCw
+} from 'lucide-react';
 import type { Card } from '../../types';
-import { CardBadge } from '../shared/CardBadge';
-import { GradingBadge } from '../shared/GradingBadge';
 import { RookieBadge } from '../shared/RookieBadge';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
@@ -42,12 +58,12 @@ const FILTER_LABELS: Record<string, string> = {
   a_vendre: 'À vendre',
 };
 const GRADE_COLOR: Record<string, string> = {
-  '10': 'rgb(16,185,129)',
-  '9.5': 'rgb(16,185,129)',
+  '10': '#10b981',
+  '9.5': '#10b981',
   '9': '#6366f1',
   '8.5': '#8b5cf6',
-  '8': '#F5AF23',
-  '7.5': '#F5AF23',
+  '8': 'var(--accent)',
+  '7.5': 'var(--accent)',
 };
 const GROUP_LABELS: Record<GroupBy, string> = {
   none: 'Aucun',
@@ -69,7 +85,7 @@ const SORT_LABELS: Record<SortBy, string> = {
   set: 'Set A-Z',
   price_desc: 'Prix décroissant',
   price_asc: 'Prix croissant',
-  numbered: 'Numérotation la plus basse',
+  numbered: 'Numérotation #',
   rookie_first: 'RC en premier',
 };
 
@@ -87,51 +103,32 @@ function parseNumberedValue(numbered: string | null | undefined): number {
 
 function buildGroupKey(card: Card, groupBy: GroupBy): string {
   switch (groupBy) {
-    case 'year':
-      return card.year ?? 'Année inconnue';
-    case 'player':
-      return card.player ?? 'Joueur inconnu';
-    case 'team':
-      return card.team ?? 'Équipe inconnue';
-    case 'brand':
-      return card.brand ?? 'Marque inconnue';
-    case 'set':
-      return card.set_name ?? 'Set inconnu';
-    case 'type':
-      return TYPE_LABELS[card.card_type ?? ''] ?? (card.card_type ?? 'Sans type');
-    case 'rookie':
-      return card.is_rookie ? 'RC' : 'Non RC';
-    case 'graded':
-      return card.grading_company ? 'Gradées' : 'Non gradées';
-    default:
-      return '';
+    case 'year': return card.year ?? 'Année inconnue';
+    case 'player': return card.player ?? 'Joueur inconnu';
+    case 'team': return card.team ?? 'Équipe inconnue';
+    case 'brand': return card.brand ?? 'Marque inconnue';
+    case 'set': return card.set_name ?? 'Set inconnu';
+    case 'type': return TYPE_LABELS[card.card_type ?? ''] ?? (card.card_type ?? 'Sans type');
+    case 'rookie': return card.is_rookie ? 'RC' : 'Non RC';
+    case 'graded': return card.grading_company ? 'Gradées' : 'Non gradées';
+    default: return '';
   }
 }
 
 function sortCards(list: Card[], sortBy: SortBy): Card[] {
   return [...list].sort((a, b) => {
     switch (sortBy) {
-      case 'year_desc':
-        return parseSeasonStart(b.year) - parseSeasonStart(a.year);
-      case 'year_asc':
-        return parseSeasonStart(a.year) - parseSeasonStart(b.year);
-      case 'player':
-        return (a.player ?? '').localeCompare(b.player ?? '');
-      case 'brand':
-        return (a.brand ?? '').localeCompare(b.brand ?? '') || (a.set_name ?? '').localeCompare(b.set_name ?? '');
-      case 'set':
-        return (a.set_name ?? '').localeCompare(b.set_name ?? '') || (a.player ?? '').localeCompare(b.player ?? '');
-      case 'price_desc':
-        return (b.price ?? -1) - (a.price ?? -1);
-      case 'price_asc':
-        return (a.price ?? Number.POSITIVE_INFINITY) - (b.price ?? Number.POSITIVE_INFINITY);
-      case 'numbered':
-        return parseNumberedValue(a.numbered) - parseNumberedValue(b.numbered);
-      case 'rookie_first':
-        return Number(b.is_rookie ?? false) - Number(a.is_rookie ?? false) || (a.player ?? '').localeCompare(b.player ?? '');
+      case 'year_desc': return parseSeasonStart(b.year) - parseSeasonStart(a.year);
+      case 'year_asc': return parseSeasonStart(a.year) - parseSeasonStart(b.year);
+      case 'player': return (a.player ?? '').localeCompare(b.player ?? '');
+      case 'brand': return (a.brand ?? '').localeCompare(b.brand ?? '') || (a.set_name ?? '').localeCompare(b.set_name ?? '');
+      case 'set': return (a.set_name ?? '').localeCompare(b.set_name ?? '') || (a.player ?? '').localeCompare(b.player ?? '');
+      case 'price_desc': return (b.price ?? -1) - (a.price ?? -1);
+      case 'price_asc': return (a.price ?? Number.POSITIVE_INFINITY) - (b.price ?? Number.POSITIVE_INFINITY);
+      case 'numbered': return parseNumberedValue(a.numbered) - parseNumberedValue(b.numbered);
+      case 'rookie_first': return Number(b.is_rookie ?? false) - Number(a.is_rookie ?? false) || (a.player ?? '').localeCompare(b.player ?? '');
       case 'recent':
-      default:
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      default: return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     }
   });
 }
@@ -152,9 +149,7 @@ function FilterDropdown({
 
   useEffect(() => {
     if (!open) return;
-    function handle(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
+    const handle = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
     document.addEventListener('mousedown', handle);
     return () => document.removeEventListener('mousedown', handle);
   }, [open]);
@@ -164,99 +159,47 @@ function FilterDropdown({
   return (
     <div ref={ref} className="relative">
       <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap"
-        style={selected
-          ? { background: '#F5AF23', color: '#0E0E11' }
-          : { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)' }}
+        onClick={() => setOpen(!open)}
+        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all ${selected
+          ? 'bg-[var(--accent)] text-black shadow-lg shadow-[var(--accent-glow)]'
+          : 'bg-white/5 border border-white/5 text-white/40 hover:text-white/60'
+          }`}
       >
         {selected ?? label}
-        <span style={{ opacity: 0.6 }}>{open ? '▲' : '▼'}</span>
+        <span className="opacity-40">{open ? '▲' : '▼'}</span>
       </button>
-      {open && (
-        <div
-          className="absolute top-full left-0 mt-1.5 z-30 rounded-2xl overflow-hidden py-1 min-w-[180px] max-h-64 overflow-y-auto"
-          style={{ background: '#1c1c1f', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' }}
-        >
-          {selected && (
-            <button
-              onClick={() => { onSelect(null); setOpen(false); }}
-              className="flex items-center justify-between w-full px-3 py-2 text-xs"
-              style={{ color: '#F5AF23' }}
-            >
-              <span>Effacer</span>
-              <span>✕</span>
-            </button>
-          )}
-          {items.map((v) => (
-            <button
-              key={v}
-              onClick={() => { onSelect(v); setOpen(false); }}
-              className="w-full px-3 py-2 text-sm text-left transition-colors"
-              style={{ background: selected === v ? 'rgba(245,166,35,0.1)' : 'transparent', color: selected === v ? '#F5AF23' : 'rgba(255,255,255,0.8)' }}
-            >
-              {v}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function OptionDropdown<T extends string>({
-  label,
-  options,
-  selected,
-  onSelect,
-}: {
-  label: string;
-  options: { value: T; label: string }[];
-  selected: T;
-  onSelect: (v: T) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    function handle(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', handle);
-    return () => document.removeEventListener('mousedown', handle);
-  }, [open]);
-
-  const selectedLabel = options.find((o) => o.value === selected)?.label ?? label;
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all whitespace-nowrap"
-        style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.8)' }}
-      >
-        <span style={{ color: 'rgba(255,255,255,0.45)' }}>{label}:</span>
-        <span>{selectedLabel}</span>
-        <span style={{ opacity: 0.6 }}>{open ? '▲' : '▼'}</span>
-      </button>
-      {open && (
-        <div
-          className="absolute top-full left-0 mt-1.5 z-30 rounded-2xl overflow-hidden py-1 min-w-[220px] max-h-72 overflow-y-auto"
-          style={{ background: '#1c1c1f', border: '1px solid rgba(255,255,255,0.1)', boxShadow: '0 8px 32px rgba(0,0,0,0.6)' }}
-        >
-          {options.map((option) => (
-            <button
-              key={option.value}
-              onClick={() => { onSelect(option.value); setOpen(false); }}
-              className="w-full px-3 py-2 text-sm text-left transition-colors"
-              style={{ background: selected === option.value ? 'rgba(245,166,35,0.1)' : 'transparent', color: selected === option.value ? '#F5AF23' : 'rgba(255,255,255,0.8)' }}
-            >
-              {option.label}
-            </button>
-          ))}
-        </div>
-      )}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: 5, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 5, scale: 0.95 }}
+            className="absolute top-full left-0 mt-2 z-50 rounded-2xl bg-[#1c1c1f]/95 backdrop-blur-xl border border-white/10 shadow-2xl py-2 min-w-[180px] max-h-64 overflow-y-auto custom-scrollbar"
+          >
+            {selected && (
+              <button
+                onClick={() => { onSelect(null); setOpen(false); }}
+                className="flex items-center justify-between w-full px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-colors border-b border-white/5 mb-1"
+                style={{ color: 'var(--accent)', background: 'var(--accent-dim)' }}
+              >
+                Effacer ✕
+              </button>
+            )}
+            {items.map((v) => (
+              <button
+                key={v}
+                onClick={() => { onSelect(v); setOpen(false); }}
+                className={`w-full px-4 py-2.5 text-xs text-left transition-colors font-medium border-l-2 ${selected === v
+                  ? 'bg-white/5 border-[var(--accent)] text-white'
+                  : 'border-transparent text-white/60 hover:bg-white/5 hover:text-white'
+                  }`}
+              >
+                {v}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -265,202 +208,171 @@ function CardModal({ card, showPrice, onClose }: { card: Card; showPrice: boolea
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const details = [
-    ['Joueur', card.player],
-    ['Équipe', card.team],
-    ['Année', card.year],
-    ['Marque', card.brand],
-    ['Set', card.set_name],
-    ['Insert', card.insert_name],
-    ['Parallel', card.parallel_name && card.parallel_name !== 'Base' ? card.parallel_name : null],
-    ['RC', card.is_rookie ? 'Oui' : null],
-    ['N° carte', card.card_number],
-    ['Tirage', card.numbered],
-    ['État', card.condition_notes || null],
-    ...(card.grading_grade ? [['Grading', `${card.grading_company ?? ''} ${card.grading_grade}`.trim()]] : []),
-    ...(showPrice && card.price != null ? [['Prix', `${card.price} €`]] : []),
-  ].filter(([, v]) => v) as [string, string][];
+    { label: 'Joueur', value: card.player, icon: Users },
+    { label: 'Équipe', value: card.team, icon: Target },
+    { label: 'Année', value: card.year, icon: Calendar },
+    { label: 'Marque', value: card.brand, icon: Layers },
+    { label: 'Set', value: card.set_name, icon: Layers },
+    { label: 'Insert', value: card.insert_name, icon: Star },
+    { label: 'Parallel', value: (card.parallel_name && card.parallel_name !== 'Base') ? card.parallel_name : null, icon: Star },
+    { label: 'Type', value: card.card_type ? TYPE_LABELS[card.card_type] : null, icon: Target },
+    { label: 'Tirage', value: card.numbered, icon: Hash },
+    { label: 'Grading', value: card.grading_grade ? `${card.grading_company ?? ''} ${card.grading_grade}` : null, icon: Building },
+  ].filter(d => d.value);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm" onClick={onClose}>
-      <div
-        className="rounded-t-3xl sm:rounded-3xl w-full sm:max-w-2xl max-h-[90vh] flex flex-col overflow-hidden"
-        style={{ background: '#18181b', border: '1px solid rgba(255,255,255,0.1)' }}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6" onClick={onClose}>
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/90 backdrop-blur-xl" />
+
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+        className="panel relative w-full max-w-4xl max-h-[90vh] flex flex-col md:flex-row rounded-[40px] overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="relative flex-shrink-0" style={{ background: '#0E0E11' }}>
-          <div className="flex items-center justify-center gap-4 py-6 px-6" style={{ minHeight: '240px' }}>
-            {card.image_front_url ? (
-              <img
-                src={card.image_front_url}
-                alt="Face"
-                className="max-h-52 w-auto rounded-xl object-contain shadow-2xl cursor-zoom-in hover:scale-105 transition-transform"
-                style={{ boxShadow: '0 0 40px rgba(0,0,0,0.8)' }}
-                onClick={(e) => { e.stopPropagation(); setLightboxUrl(card.image_front_url!); }}
-              />
-            ) : (
-              <div className="h-52 w-36 rounded-xl flex items-center justify-center text-4xl opacity-10">🃏</div>
-            )}
-            {card.image_back_url && (
-              <img
-                src={card.image_back_url}
-                alt="Dos"
-                className="max-h-52 w-auto rounded-xl object-contain shadow-2xl cursor-zoom-in hover:scale-105 transition-transform opacity-75 hover:opacity-100"
-                style={{ boxShadow: '0 0 40px rgba(0,0,0,0.8)' }}
-                onClick={(e) => { e.stopPropagation(); setLightboxUrl(card.image_back_url!); }}
-              />
-            )}
-          </div>
-
-          <div className="absolute top-3 left-3 flex flex-col gap-1">
-            {card.is_rookie && <RookieBadge compact />}
-            {(card.card_type === 'auto' || card.card_type === 'auto_patch') && (
-              <span className="text-[9px] font-black px-1.5 py-0.5 rounded" style={{ background: 'rgba(16,185,129,0.9)', color: '#fff' }}>AUTO</span>
-            )}
-            {(card.card_type === 'patch' || card.card_type === 'auto_patch') && (
-              <span className="text-[9px] font-black px-1.5 py-0.5 rounded" style={{ background: 'rgba(239,68,68,0.9)', color: '#fff' }}>PATCH</span>
-            )}
-            {card.numbered && (
-              <span className="text-[9px] font-black px-1.5 py-0.5 rounded" style={{ background: 'rgba(245,166,35,0.9)', color: '#000' }}>{card.numbered}</span>
-            )}
-          </div>
-
-          {card.grading_grade && (
-            <div className="absolute top-3 right-10 text-center">
-              <div className="text-2xl font-black leading-none" style={{ color: GRADE_COLOR[card.grading_grade] ?? 'rgba(255,255,255,0.7)' }}>
-                {card.grading_grade}
-              </div>
-              <div className="text-[9px]" style={{ color: 'rgba(255,255,255,0.3)' }}>{card.grading_company ?? 'GRADE'}</div>
+        <div className="md:w-1/2 bg-black/40 flex flex-col p-8 relative">
+          <div className="flex-1 flex flex-col items-center justify-center gap-6">
+            <div className="relative group perspective">
+              {card.image_front_url ? (
+                <img
+                  src={card.image_front_url}
+                  alt=""
+                  className="max-h-[350px] w-auto rounded-3xl object-contain shadow-2xl cursor-zoom-in transition-transform duration-700 hover:scale-105"
+                  onClick={() => setLightboxUrl(card.image_front_url!)}
+                />
+              ) : (
+                <div className="w-48 h-64 rounded-3xl bg-white/5 border border-white/5 flex flex-col items-center justify-center gap-4 opacity-20">
+                  <Globe size={40} />
+                  <span className="text-[10px] font-black uppercase tracking-widest">No Image</span>
+                </div>
+              )}
             </div>
-          )}
+            {card.image_back_url && (
+              <button
+                onClick={() => setLightboxUrl(card.image_back_url!)}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-[10px] font-black uppercase tracking-widest text-white/40 hover:text-white transition-all"
+              >
+                <Maximize2 size={12} /> Voir le Verso
+              </button>
+            )}
+          </div>
 
-          <button
-            onClick={onClose}
-            className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full text-sm"
-            style={{ background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.6)' }}
-          >
-            ✕
-          </button>
+          <div className="flex gap-2 absolute top-6 left-6">
+            {card.is_rookie && <RookieBadge compact />}
+            {card.numbered && <div className="px-2 py-0.5 rounded-lg bg-[var(--accent-dim)] border border-[var(--border-accent)] text-[var(--accent)] text-[10px] font-black">{card.numbered}</div>}
+          </div>
         </div>
 
-        {lightboxUrl && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/95" onClick={() => setLightboxUrl(null)}>
-            <img
-              src={lightboxUrl}
-              alt=""
-              className="max-h-[90vh] max-w-[90vw] rounded-2xl object-contain"
-              style={{ boxShadow: '0 0 80px rgba(0,0,0,0.9)' }}
-            />
-            <button
-              className="absolute top-4 right-4 w-9 h-9 flex items-center justify-center rounded-full text-sm"
-              style={{ background: 'rgba(255,255,255,0.1)', color: '#fff' }}
-              onClick={() => setLightboxUrl(null)}
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
-        <div className="overflow-y-auto flex-1 p-5">
-          <div className="mb-4">
-            <h2 className="text-xl font-black text-white leading-tight">{card.player ?? '—'}</h2>
-            {card.team && <p className="text-sm mt-0.5" style={{ color: 'rgba(255,255,255,0.45)' }}>{card.team}</p>}
-          </div>
-          <div className="flex flex-wrap gap-1.5 mb-4">
-            <CardBadge type={card.card_type} />
-            {card.is_rookie && <RookieBadge compact />}
-            {card.grading_company && <GradingBadge card={card} />}
-            {card.numbered && (
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-md" style={{ background: 'rgba(245,166,35,0.12)', color: '#F5AF23', border: '1px solid rgba(245,166,35,0.2)' }}>
-                {card.numbered}
-              </span>
+        <div className="flex-1 overflow-y-auto p-10 space-y-10 custom-scrollbar">
+          <div className="flex items-center justify-between">
+            <button onClick={onClose} className="md:hidden w-10 h-10 flex items-center justify-center rounded-xl bg-white/5 text-white/40"><X size={20} /></button>
+            {showPrice && card.price != null && (
+              <div className="px-4 py-2 rounded-2xl bg-[var(--accent-dim)] border border-[var(--border-accent)] text-[var(--accent)] text-lg font-black tracking-tight">
+                {card.price}€
+              </div>
             )}
           </div>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm mb-5">
-            {details.map(([label, value]) => (
-              <div key={label}>
-                <dt className="text-[10px] uppercase tracking-wider mb-0.5" style={{ color: 'rgba(255,255,255,0.3)' }}>{label}</dt>
-                <dd className="font-medium text-white">{value}</dd>
+
+          <div>
+            <h2 className="text-3xl font-black text-white tracking-tight leading-tight mb-2">{card.player || 'Joueur inconnu'}</h2>
+            <p className="text-sm font-bold text-[var(--text-muted)] uppercase tracking-wide">
+              {card.year} · {card.brand} · {card.set_name}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-x-8 gap-y-6">
+            {details.map((d, i) => (
+              <div key={i} className="space-y-1.5">
+                <div className="flex items-center gap-1.5 opacity-20">
+                  <d.icon size={10} />
+                  <span className="text-[9px] font-black uppercase tracking-[0.2em]">{d.label}</span>
+                </div>
+                <div className="text-sm font-bold text-white/80">{d.value}</div>
               </div>
             ))}
           </div>
+
           {card.vinted_url && (
             <a
               href={card.vinted_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full py-3 rounded-xl text-sm font-bold flex items-center justify-center gap-2 transition-all hover:opacity-90"
-              style={{ background: 'rgb(9,182,109)', color: '#fff' }}
+              className="w-full py-4 rounded-2xl bg-[#00BDD3] hover:bg-[#00BDD3]/90 text-white text-xs font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 transition-all shadow-xl shadow-[#00BDD3]/20"
             >
-              Acheter sur Vinted ↗
+              Voir sur Vinted <ExternalLink size={16} />
             </a>
           )}
         </div>
-      </div>
+
+        <button onClick={onClose} className="hidden md:absolute top-8 right-8 w-10 h-10 md:flex items-center justify-center rounded-xl bg-white/5 text-white/40 hover:bg-white/10 transition-all"><X size={20} /></button>
+      </motion.div>
+
+      <AnimatePresence>
+        {lightboxUrl && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/98 p-8"
+            onClick={(e) => { e.stopPropagation(); setLightboxUrl(null); }}
+          >
+            <motion.img
+              initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
+              src={lightboxUrl} alt="" className="max-h-full max-w-full rounded-2xl object-contain shadow-2xl"
+            />
+            <button className="absolute top-8 right-8 w-12 h-12 flex items-center justify-center rounded-full bg-white/10 text-white"><X size={24} /></button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
 function SharedCard({ card, showPrice, onClick }: { card: Card; showPrice: boolean; onClick: () => void }) {
   return (
-    <div
-      className="group rounded-2xl overflow-hidden cursor-pointer transition-all duration-200 hover:scale-[1.02] hover:shadow-2xl hover:shadow-black/60"
-      style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)' }}
+    <motion.div
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="group relative h-full flex flex-col rounded-[2.5rem] bg-white/[0.02] border border-white/5 hover:bg-white/[0.06] hover:border-white/10 transition-all duration-300 cursor-pointer overflow-hidden p-2"
       onClick={onClick}
     >
-      <div className="relative aspect-[3/4] overflow-hidden" style={{ background: 'rgba(0,0,0,0.3)' }}>
+      <div className="relative aspect-[3/4] rounded-[2rem] overflow-hidden bg-black/20">
         {card.image_front_url ? (
-          <img src={card.image_front_url} alt={card.player ?? ''} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+          <img src={card.image_front_url} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-4xl opacity-20">🃏</div>
+          <div className="w-full h-full flex items-center justify-center opacity-10"><Globe size={32} /></div>
         )}
-        <div className="absolute top-2 left-2 flex flex-col gap-1">
+
+        <div className="absolute top-3 left-3 flex flex-col gap-1.5">
           {card.is_rookie && <RookieBadge compact />}
-          {card.grading_company && <GradingBadge card={card} compact />}
-          {(card.card_type === 'auto' || card.card_type === 'auto_patch') && (
-            <span className="text-[9px] font-black px-1.5 py-0.5 rounded" style={{ background: 'rgba(16,185,129,0.9)', color: '#fff' }}>AUTO</span>
-          )}
-          {(card.card_type === 'patch' || card.card_type === 'auto_patch') && (
-            <span className="text-[9px] font-black px-1.5 py-0.5 rounded" style={{ background: 'rgba(239,68,68,0.9)', color: '#fff' }}>PATCH</span>
-          )}
           {card.numbered && (
-            <span className="text-[9px] font-black px-1.5 py-0.5 rounded" style={{ background: 'rgba(245,166,35,0.9)', color: '#000' }}>{card.numbered}</span>
+            <div className="px-2 py-0.5 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 text-[9px] font-black text-[var(--accent)]">
+              {card.numbered}
+            </div>
           )}
           {card.grading_grade && (
-            <span className="text-[9px] font-black px-1.5 py-0.5 rounded" style={{ background: 'rgba(99,102,241,0.9)', color: '#fff' }}>
-              {card.grading_company ?? 'PSA'} {card.grading_grade}
-            </span>
+            <div
+              className="px-2 py-0.5 rounded-lg bg-black text-white text-[9px] font-black"
+              style={{ color: GRADE_COLOR[card.grading_grade] }}
+            >
+              {card.grading_company} {card.grading_grade}
+            </div>
           )}
         </div>
+
         {showPrice && card.price != null && (
-          <div className="absolute top-2 right-2">
-            <span className="text-[10px] font-black px-2 py-1 rounded-lg" style={{ background: 'rgba(0,0,0,0.75)', color: '#fff', backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.15)' }}>
-              {card.price} €
-            </span>
+          <div className="absolute bottom-3 right-3 px-3 py-1.5 rounded-2xl bg-black/60 backdrop-blur-md border border-white/10 text-xs font-black text-white shadow-xl shadow-black/40">
+            {card.price}€
           </div>
         )}
       </div>
-      <div className="p-3">
-        <p className="font-bold text-sm truncate text-white">{card.player ?? '—'}</p>
-        <p className="text-xs truncate mt-0.5" style={{ color: 'rgba(255,255,255,0.45)' }}>
-          {[card.year, card.brand, card.set_name].filter(Boolean).join(' · ')}
+
+      <div className="p-4 pt-5 pb-6 text-center">
+        <h3 className="text-sm font-black text-white tracking-tight truncate leading-none mb-1.5 group-hover:text-[var(--accent)] transition-colors">{card.player || '—'}</h3>
+        <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest truncate opacity-60">
+          {card.year} · {card.brand}
         </p>
-        {(card.insert_name || (card.parallel_name && card.parallel_name !== 'Base')) && (
-          <p className="text-xs truncate mt-0.5" style={{ color: '#F5AF23' }}>
-            {card.insert_name || card.parallel_name}
-          </p>
-        )}
-        <div className="mt-2 flex items-center gap-1.5 flex-wrap">
-          {card.is_rookie && <RookieBadge compact />}
-          <CardBadge type={card.card_type} />
-          {card.grading_company && <GradingBadge card={card} compact />}
-        </div>
-        {card.vinted_url && (
-          <div className="mt-2 w-full py-1 rounded-lg text-[10px] font-semibold text-center" style={{ background: 'rgba(9,182,109,0.12)', color: 'rgb(9,182,109)', border: '1px solid rgba(9,182,109,0.2)' }}>
-            Disponible sur Vinted
-          </div>
-        )}
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -486,24 +398,20 @@ export function ShareView({ token }: { token: string }) {
 
   useEffect(() => {
     fetch(`${API_BASE}/api/share/${token}/view`)
-      .then((r) => {
-        if (!r.ok) throw new Error('Lien introuvable ou expiré');
-        return r.json();
-      })
+      .then((r) => { if (!r.ok) throw new Error('Lien introuvable ou expiré'); return r.json(); })
       .then(setData)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [token]);
 
-  const cards = useMemo(() => data?.cards ?? [], [data]);
+  const cardsList = useMemo(() => data?.cards ?? [], [data]);
 
-  const players = useMemo(() => [...new Set(cards.map((c) => c.player).filter(Boolean) as string[])].sort(), [cards]);
-  const teams = useMemo(() => [...new Set(cards.map((c) => c.team).filter(Boolean) as string[])].sort(), [cards]);
-  const brands = useMemo(() => [...new Set(cards.map((c) => c.brand).filter(Boolean) as string[])].sort(), [cards]);
-  const sets = useMemo(() => [...new Set(cards.map((c) => c.set_name).filter(Boolean) as string[])].sort(), [cards]);
-  const years = useMemo(() => [...new Set(cards.map((c) => c.year).filter(Boolean) as string[])].sort((a, b) => parseSeasonStart(b) - parseSeasonStart(a)), [cards]);
-  const parallels = useMemo(() => [...new Set(cards.map((c) => c.parallel_name).filter((v): v is string => !!v && v !== 'Base'))].sort(), [cards]);
-  const types = useMemo(() => [...new Set(cards.map((c) => c.card_type).filter(Boolean) as string[])], [cards]);
+  const players = useMemo(() => [...new Set(cardsList.map((c) => c.player).filter(Boolean) as string[])].sort(), [cardsList]);
+  const teams = useMemo(() => [...new Set(cardsList.map((c) => c.team).filter(Boolean) as string[])].sort(), [cardsList]);
+  const brands = useMemo(() => [...new Set(cardsList.map((c) => c.brand).filter(Boolean) as string[])].sort(), [cardsList]);
+  const sets = useMemo(() => [...new Set(cardsList.map((c) => c.set_name).filter(Boolean) as string[])].sort(), [cardsList]);
+  const years = useMemo(() => [...new Set(cardsList.map((c) => c.year).filter(Boolean) as string[])].sort((a, b) => parseSeasonStart(b) - parseSeasonStart(a)), [cardsList]);
+  const parallels = useMemo(() => [...new Set(cardsList.map((c) => c.parallel_name).filter((v): v is string => !!v && v !== 'Base'))].sort(), [cardsList]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -521,14 +429,11 @@ export function ShareView({ token }: { token: string }) {
     if (groupBy !== 'none') params.set('group', groupBy);
     if (sortBy !== 'recent') params.set('sort', sortBy);
     const query = params.toString();
-    const nextUrl = `${window.location.pathname}${query ? `?${query}` : ''}`;
-    window.history.replaceState({}, '', nextUrl);
+    window.history.replaceState({}, '', `${window.location.pathname}${query ? `?${query}` : ''}`);
   }, [search, playerFilter, teamFilter, brandFilter, setFilter, yearFilter, typeFilter, parallelFilter, rookieOnly, gradedOnly, groupBy, sortBy]);
 
-  const activeCount = [playerFilter, teamFilter, brandFilter, setFilter, yearFilter, typeFilter, parallelFilter, rookieOnly ? 'rookie' : null, gradedOnly ? 'graded' : null].filter(Boolean).length;
-
   const filtered = useMemo(() => {
-    const result = cards.filter((c) => {
+    const result = cardsList.filter((c) => {
       if (playerFilter && c.player !== playerFilter) return false;
       if (teamFilter && c.team !== teamFilter) return false;
       if (brandFilter && c.brand !== brandFilter) return false;
@@ -540,16 +445,13 @@ export function ShareView({ token }: { token: string }) {
       if (gradedOnly && !c.grading_company) return false;
       if (search) {
         const q = search.toLowerCase();
-        const hay = [c.player, c.team, c.brand, c.set_name, c.insert_name, c.parallel_name, c.year]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
+        const hay = [c.player, c.team, c.brand, c.set_name, c.insert_name, c.parallel_name, c.year].filter(Boolean).join(' ').toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
     });
     return sortCards(result, sortBy);
-  }, [cards, playerFilter, teamFilter, brandFilter, setFilter, yearFilter, typeFilter, parallelFilter, rookieOnly, gradedOnly, search, sortBy]);
+  }, [cardsList, playerFilter, teamFilter, brandFilter, setFilter, yearFilter, typeFilter, parallelFilter, rookieOnly, gradedOnly, search, sortBy]);
 
   const grouped = useMemo(() => {
     if (groupBy === 'none') return [{ key: '', label: '', cards: filtered }];
@@ -564,174 +466,165 @@ export function ShareView({ token }: { token: string }) {
       .map(([label, groupCards]) => ({ key: label, label, cards: groupCards }));
   }, [filtered, groupBy]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: '#0E0E11' }}>
-        <div className="text-center">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg font-black mx-auto mb-4" style={{ background: 'linear-gradient(135deg, #F5AF23 0%, #E8920A 100%)', color: '#0E0E11' }}>N</div>
-          <p className="text-sm" style={{ color: 'rgba(255,255,255,0.3)' }}>Chargement…</p>
+  const stats = useMemo(() => ({
+    autos: cardsList.filter(c => c.card_type === 'auto' || c.card_type === 'auto_patch').length,
+    numbered: cardsList.filter(c => c.numbered).length,
+    graded: cardsList.filter(c => c.grading_grade).length,
+    rookieCount: cardsList.filter(c => c.is_rookie).length,
+    forSale: cardsList.filter(c => c.vinted_url).length,
+  }), [cardsList]);
+
+  if (loading) return (
+    <div className="min-h-screen flex items-center justify-center p-8">
+      <div className="flex flex-col items-center gap-6">
+        <div className="w-16 h-16 rounded-[2rem] bg-[var(--accent-dim)] border border-[var(--border-accent)] flex items-center justify-center text-[var(--accent)] animate-pulse">
+          <Globe size={32} />
+        </div>
+        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20">Initialising Gallery…</p>
+      </div>
+    </div>
+  );
+
+  if (error || !data) return (
+    <div className="min-h-screen flex items-center justify-center p-8">
+      <div className="text-center space-y-6">
+        <div className="w-20 h-20 rounded-[32px] bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto text-red-500">
+          <X size={40} />
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-2xl font-black text-white tracking-tight">Portail Introuvable</h2>
+          <p className="text-sm font-medium text-[var(--text-muted)]">Ce lien n'existe plus ou a expiré.</p>
         </div>
       </div>
-    );
-  }
-
-  if (error || !data) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: '#0E0E11' }}>
-        <div className="text-center space-y-3">
-          <p className="text-5xl">🔗</p>
-          <p className="text-white font-semibold">Lien introuvable</p>
-          <p className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>Ce lien n'existe pas ou a été supprimé.</p>
-        </div>
-      </div>
-    );
-  }
-
-  const autos = cards.filter((c) => c.card_type === 'auto' || c.card_type === 'auto_patch').length;
-  const numbered = cards.filter((c) => c.numbered).length;
-  const graded = cards.filter((c) => c.grading_grade).length;
-  const rookieCount = cards.filter((c) => c.is_rookie).length;
-  const forSale = cards.filter((c) => c.vinted_url).length;
+    </div>
+  );
 
   return (
-    <div className="min-h-screen" style={{ background: '#0E0E11' }}>
-      <div className="relative overflow-hidden">
-        <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] rounded-full opacity-20 blur-3xl" style={{ background: 'radial-gradient(ellipse, #F5AF23 0%, transparent 70%)' }} />
-        </div>
-        <div className="relative max-w-6xl mx-auto px-6 pt-12 pb-10">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center text-sm font-black shrink-0" style={{ background: 'linear-gradient(135deg, #F5AF23 0%, #E8920A 100%)', color: '#0E0E11', boxShadow: '0 0 24px rgba(245,175,35,0.4)' }}>N</div>
-            <span className="text-sm font-semibold" style={{ color: 'rgba(255,255,255,0.5)' }}>NBA Card Studio</span>
-          </div>
-          <h1 className="text-3xl sm:text-4xl font-black text-white mb-3 leading-tight">
-            {data.title || FILTER_LABELS[data.filter] || 'Ma collection'}
-          </h1>
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-sm" style={{ color: 'rgba(255,255,255,0.4)' }}>{data.card_count} carte{data.card_count !== 1 ? 's' : ''}</span>
-            {rookieCount > 0 && <span className="text-xs font-bold px-2 py-1 rounded-lg" style={{ background: 'rgba(59,130,246,0.12)', color: '#60a5fa', border: '1px solid rgba(96,165,250,0.2)' }}>{rookieCount} RC</span>}
-            {autos > 0 && <span className="text-xs font-bold px-2 py-1 rounded-lg" style={{ background: 'rgba(16,185,129,0.12)', color: 'rgb(16,185,129)', border: '1px solid rgba(16,185,129,0.2)' }}>{autos} auto{autos > 1 ? 's' : ''}</span>}
-            {numbered > 0 && <span className="text-xs font-bold px-2 py-1 rounded-lg" style={{ background: 'rgba(245,166,35,0.12)', color: '#F5AF23', border: '1px solid rgba(245,166,35,0.2)' }}>{numbered} numérotée{numbered > 1 ? 's' : ''}</span>}
-            {graded > 0 && <span className="text-xs font-bold px-2 py-1 rounded-lg" style={{ background: 'rgba(99,102,241,0.12)', color: '#6366f1', border: '1px solid rgba(99,102,241,0.2)' }}>{graded} gradée{graded > 1 ? 's' : ''}</span>}
-            {forSale > 0 && <span className="text-xs font-bold px-2 py-1 rounded-lg" style={{ background: 'rgba(9,182,109,0.12)', color: 'rgb(9,182,109)', border: '1px solid rgba(9,182,109,0.2)' }}>{forSale} sur Vinted</span>}
-          </div>
-        </div>
+    <div className="min-h-screen flex flex-col overflow-x-hidden">
+      {/* Background decoration */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-[var(--accent-glow)] blur-[120px] opacity-10" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-[#6366f1] blur-[120px] opacity-10" />
       </div>
 
-      <div className="border-b" style={{ borderColor: 'rgba(255,255,255,0.06)' }} />
+      <header className="sticky top-0 z-40 bg-[var(--bg-primary)]/80 backdrop-blur-xl border-b border-white/5 px-6 py-8">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-8">
+          <div>
+            <div className="flex items-center gap-3 mb-6 opacity-40 hover:opacity-100 transition-opacity">
+              <div className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center text-[var(--accent)] font-black text-xs">N</div>
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white">NBA Card Studio</span>
+            </div>
+            <h1 className="text-3xl font-black text-white tracking-tight mb-3">
+              {data.title || FILTER_LABELS[data.filter] || 'Ma collection'}
+            </h1>
+            <div className="flex flex-wrap gap-2">
+              <div className="px-3 py-1 rounded-xl bg-white/5 border border-white/5 text-[10px] font-black uppercase tracking-widest text-white/40">
+                {data.card_count} Cartes
+              </div>
+              {stats.rookieCount > 0 && <span className="px-3 py-1 rounded-xl bg-blue-500/10 text-blue-400 text-[10px] font-black uppercase tracking-widest border border-blue-500/20">{stats.rookieCount} RC</span>}
+              {stats.autos > 0 && <span className="px-3 py-1 rounded-xl bg-green-500/10 text-green-400 text-[10px] font-black uppercase tracking-widest border border-green-500/20">{stats.autos} Auto</span>}
+              {stats.numbered > 0 && <span className="px-3 py-1 rounded-xl bg-[var(--accent-dim)] text-[var(--accent)] text-[10px] font-black uppercase tracking-widest border border-[var(--border-accent)]">{stats.numbered} Tirages</span>}
+              {stats.graded > 0 && <span className="px-3 py-1 rounded-xl bg-indigo-500/10 text-indigo-400 text-[10px] font-black uppercase tracking-widest border border-indigo-500/20">{stats.graded} Gradées</span>}
+            </div>
+          </div>
 
-      <div className="max-w-6xl mx-auto px-6 py-4 flex flex-wrap items-center gap-2">
-        <div className="relative">
-          <input
-            type="text"
-            placeholder="Rechercher…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="rounded-xl pl-7 pr-3 py-1.5 text-xs outline-none w-36"
-            style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.8)' }}
-          />
-          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-[10px]" style={{ color: 'rgba(255,255,255,0.3)' }}>🔍</span>
-          {search && <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px]" style={{ color: 'rgba(255,255,255,0.3)' }}>✕</button>}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" />
+              <input
+                type="text"
+                placeholder="Rechercher…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="rounded-2xl pl-10 pr-4 py-3 text-xs font-bold outline-none w-full sm:w-48 bg-white/5 border border-white/10 focus:bg-white/10 focus:border-[var(--accent)]/30 transition-all placeholder:text-white/20 text-white"
+              />
+            </div>
+            <button
+              onClick={() => {
+                setPlayerFilter(null); setTeamFilter(null); setBrandFilter(null); setSetFilter(null);
+                setYearFilter(null); setTypeFilter(null); setParallelFilter(null);
+                setRookieOnly(false); setGradedOnly(false); setSearch('');
+              }}
+              className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white/5 border border-white/5 text-white/40 hover:text-[var(--accent)] transition-all active:scale-90"
+              title="Réinitialiser"
+            >
+              <RefreshCw size={18} />
+            </button>
+          </div>
         </div>
+      </header>
 
-        <FilterDropdown label="Joueur" items={players} selected={playerFilter} onSelect={setPlayerFilter} />
-        <FilterDropdown label="Équipe" items={teams} selected={teamFilter} onSelect={setTeamFilter} />
-        <FilterDropdown label="Année" items={years} selected={yearFilter} onSelect={setYearFilter} />
-        <FilterDropdown label="Marque" items={brands} selected={brandFilter} onSelect={setBrandFilter} />
-        <FilterDropdown label="Set" items={sets} selected={setFilter} onSelect={setSetFilter} />
-        <FilterDropdown label="Parallel" items={parallels} selected={parallelFilter} onSelect={setParallelFilter} />
-        <FilterDropdown
-          label="Type"
-          items={types.map((t) => TYPE_LABELS[t] ?? t)}
-          selected={typeFilter ? (TYPE_LABELS[typeFilter] ?? typeFilter) : null}
-          onSelect={(v) => setTypeFilter(v ? (Object.entries(TYPE_LABELS).find(([, l]) => l === v)?.[0] ?? v) : null)}
-        />
+      <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-10">
+        <div className="flex flex-wrap items-center gap-2 mb-12">
+          <FilterDropdown label="Joueur" items={players} selected={playerFilter} onSelect={setPlayerFilter} />
+          <FilterDropdown label="Équipe" items={teams} selected={teamFilter} onSelect={setTeamFilter} />
+          <FilterDropdown label="Année" items={years} selected={yearFilter} onSelect={setYearFilter} />
+          <FilterDropdown label="Marque" items={brands} selected={brandFilter} onSelect={setBrandFilter} />
+          <FilterDropdown label="Set" items={sets} selected={setFilter} onSelect={setSetFilter} />
+          <FilterDropdown label="Parallel" items={parallels} selected={parallelFilter} onSelect={setParallelFilter} />
 
-        <button
-          onClick={() => setRookieOnly((v) => !v)}
-          className="px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all"
-          style={rookieOnly
-            ? { background: 'rgba(59,130,246,0.18)', color: '#93c5fd', border: '1px solid rgba(96,165,250,0.28)' }
-            : { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)' }}
-        >
-          RC
-        </button>
-        <button
-          onClick={() => setGradedOnly((v) => !v)}
-          className="px-2.5 py-1.5 rounded-xl text-xs font-semibold transition-all"
-          style={gradedOnly
-            ? { background: 'rgba(99,102,241,0.18)', color: '#a5b4fc', border: '1px solid rgba(129,140,248,0.28)' }
-            : { background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: 'rgba(255,255,255,0.6)' }}
-        >
-          Gradées
-        </button>
+          <div className="h-4 w-px bg-white/10 mx-2 hidden sm:block" />
 
-        {activeCount > 0 && (
           <button
-            onClick={() => {
-              setPlayerFilter(null);
-              setTeamFilter(null);
-              setBrandFilter(null);
-              setSetFilter(null);
-              setYearFilter(null);
-              setTypeFilter(null);
-              setParallelFilter(null);
-              setRookieOnly(false);
-              setGradedOnly(false);
-              setSearch('');
-            }}
-            className="px-2.5 py-1.5 rounded-xl text-xs font-medium"
-            style={{ color: '#F5AF23', border: '1px solid rgba(245,166,35,0.2)' }}
+            onClick={() => setRookieOnly(!rookieOnly)}
+            className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${rookieOnly ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-white/5 border border-white/5 text-white/40'
+              }`}
           >
-            ✕ Effacer ({activeCount})
+            RC
           </button>
-        )}
+          <button
+            onClick={() => setGradedOnly(!gradedOnly)}
+            className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${gradedOnly ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' : 'bg-white/5 border border-white/5 text-white/40'
+              }`}
+          >
+            Gradées
+          </button>
 
-        <div className="hidden lg:block w-px h-7 mx-1" style={{ background: 'rgba(255,255,255,0.08)' }} />
-
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-semibold uppercase tracking-wider whitespace-nowrap" style={{ color: 'rgba(255,255,255,0.35)' }}>
-            Organisation
-          </span>
-          <OptionDropdown
-            label="Grouper"
-            options={Object.entries(GROUP_LABELS).map(([value, label]) => ({ value: value as GroupBy, label }))}
-            selected={groupBy}
-            onSelect={setGroupBy}
-          />
-          <OptionDropdown
-            label="Trier"
-            options={Object.entries(SORT_LABELS).map(([value, label]) => ({ value: value as SortBy, label }))}
-            selected={sortBy}
-            onSelect={setSortBy}
-          />
+          <div className="ml-auto flex items-center gap-2 bg-white/5 border border-white/5 p-1 rounded-2xl">
+            <div className="flex items-center gap-1 px-3 py-1.5 rounded-xl transition-colors hover:bg-white/5">
+              <LayoutGrid size={12} className="text-white/20" />
+              <select
+                className="bg-transparent text-[10px] font-black uppercase tracking-[0.2em] text-white/40 outline-none cursor-pointer hover:text-white appearance-none"
+                value={groupBy}
+                onChange={(e) => setGroupBy(e.target.value as GroupBy)}
+              >
+                {Object.entries(GROUP_LABELS).map(([v, l]) => <option key={v} value={v} className="bg-[#18181b]">{l.toUpperCase()}</option>)}
+              </select>
+            </div>
+            <div className="h-4 w-px bg-white/10" />
+            <div className="flex items-center gap-1 px-3 py-1.5 rounded-xl transition-colors hover:bg-white/5">
+              <Settings2 size={12} className="text-white/20" />
+              <select
+                className="bg-transparent text-[10px] font-black uppercase tracking-[0.2em] text-white/40 outline-none cursor-pointer hover:text-white appearance-none"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortBy)}
+              >
+                {Object.entries(SORT_LABELS).map(([v, l]) => <option key={v} value={v} className="bg-[#18181b]">{l.toUpperCase()}</option>)}
+              </select>
+            </div>
+          </div>
         </div>
 
-        <span className="ml-auto text-xs" style={{ color: 'rgba(255,255,255,0.25)' }}>
-          {filtered.length} carte{filtered.length !== 1 ? 's' : ''}
-        </span>
-      </div>
-
-      <div className="max-w-6xl mx-auto px-6 pb-8">
         {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-48 gap-3">
-            <span className="text-4xl opacity-20">🃏</span>
-            <p className="text-sm" style={{ color: 'rgba(255,255,255,0.3)' }}>Aucune carte ne correspond.</p>
+          <div className="flex flex-col items-center justify-center py-32 text-center">
+            <div className="w-16 h-16 rounded-[2rem] bg-white/5 border border-white/5 flex items-center justify-center text-white/10 mb-6 font-black italic">!</div>
+            <h3 className="text-xl font-black text-white/40 uppercase tracking-widest">Aucun résultat</h3>
+            <p className="text-sm text-white/20 mt-2">Ajustez les filtres pour explorer plus de cartes.</p>
           </div>
         ) : (
-          <div className="space-y-8">
+          <div className="space-y-16">
             {grouped.map((group) => (
               <div key={group.key || 'all'}>
                 {groupBy !== 'none' && (
-                  <div className="flex items-center gap-3 mb-4">
-                    <h3 className="text-sm font-semibold text-white">{group.label}</h3>
-                    <span className="text-xs" style={{ color: 'rgba(255,255,255,0.35)' }}>
-                      {group.cards.length} carte{group.cards.length !== 1 ? 's' : ''}
-                    </span>
-                    <div className="flex-1 h-px bg-white/5" />
+                  <div className="flex items-center gap-4 mb-8">
+                    <h3 className="text-lg font-black text-white tracking-tight">{group.label}</h3>
+                    <div className="px-2 py-0.5 rounded-lg bg-white/5 border border-white/5 text-[10px] font-black text-white/20">
+                      {group.cards.length}
+                    </div>
+                    <div className="flex-1 h-px bg-gradient-to-r from-white/10 to-transparent" />
                   </div>
                 )}
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-6 sm:gap-8">
                   {group.cards.map((card) => (
                     <SharedCard key={card.id} card={card} showPrice={data.show_prices} onClick={() => setSelected(card)} />
                   ))}
@@ -740,15 +633,24 @@ export function ShareView({ token }: { token: string }) {
             ))}
           </div>
         )}
-      </div>
+      </main>
 
-      <div className="border-t mt-8 py-6 text-center" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-        <p className="text-xs" style={{ color: 'rgba(255,255,255,0.2)' }}>
-          Partagé via <span style={{ color: 'rgba(255,255,255,0.4)' }}>NBA Card Studio</span>
-        </p>
-      </div>
+      <footer className="mt-auto border-t border-white/5 py-12 px-6">
+        <div className="max-w-7xl mx-auto flex flex-col items-center gap-4 text-center">
+          <div className="flex items-center gap-2 opacity-30">
+            <Globe size={14} />
+            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Public Showcase</span>
+          </div>
+          <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest">
+            Powered by <span className="text-white/40">NBA Card Studio</span> v2.0
+          </p>
+        </div>
+      </footer>
 
-      {selected && <CardModal card={selected} showPrice={data.show_prices} onClose={() => setSelected(null)} />}
+      <AnimatePresence>
+        {selected && <CardModal card={selected} showPrice={data.show_prices} onClose={() => setSelected(null)} />}
+      </AnimatePresence>
     </div>
   );
 }
+

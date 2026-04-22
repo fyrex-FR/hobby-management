@@ -150,6 +150,7 @@ function Header({ onShare }: { onShare: () => void }) {
   const { data: cards = [] } = useCards();
   const draftCount = cards.filter((c) => c.status === 'draft').length;
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const mainNav = [
     { id: 'dashboard', label: 'Vue d\'ensemble', icon: LayoutDashboard },
@@ -164,123 +165,168 @@ function Header({ onShare }: { onShare: () => void }) {
     { id: 'compare', label: 'Comparer IA', icon: Database },
   ] as const;
 
+  // Auto-close tools when switching views
+  const handleViewChange = (view: typeof activeView) => {
+    setActiveView(view);
+    setToolsOpen(false);
+    setMobileMenuOpen(false);
+  };
+
   return (
-    <header className="flex items-center justify-between px-6 py-3 sticky top-0 z-50 glass border-strong rounded-b-3xl mx-2 mt-2">
-      <button
-        onClick={() => setActiveView('dashboard')}
-        className="flex items-center gap-3 group transition-transform active:scale-95"
-      >
-        <div
-          className="w-9 h-9 rounded-xl flex items-center justify-center text-base font-black transition-all group-hover:scale-105"
-          style={{
-            background: 'linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%)',
-            color: '#09090B',
-            boxShadow: '0 0 25px var(--accent-glow)',
-          }}
-        >
-          N
-        </div>
-        <div className="hidden md:block text-left">
-          <div className="text-sm font-bold leading-none text-white tracking-tight">
-            NBA Card <span className="text-[var(--accent)]">Studio</span>
-          </div>
-          <div className="text-[10px] mt-1 font-medium text-[var(--text-muted)]">
-            {cards.length} carte{cards.length !== 1 ? 's' : ''}
-          </div>
-        </div>
-      </button>
-
-      <nav className="flex items-center gap-1.5">
-        {mainNav.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setActiveView(item.id)}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium transition-all hover:bg-white/5 relative group"
-            style={{ color: activeView === item.id ? 'var(--text-primary)' : 'var(--text-secondary)' }}
-          >
-            <item.icon size={16} className={activeView === item.id ? 'text-[var(--accent)]' : 'text-current'} />
-            <span className="hidden lg:inline">{item.label}</span>
-            {activeView === item.id && (
-              <motion.div
-                layoutId="nav-active"
-                className="absolute inset-0 bg-white/5 border border-white/10 rounded-xl -z-10 shadow-sm"
-              />
-            )}
-          </button>
-        ))}
-
-        <div className="relative">
-          <button
-            onClick={() => setToolsOpen(!toolsOpen)}
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium transition-all hover:bg-white/5"
-            style={{
-              color: toolNav.some(t => t.id === activeView) ? 'var(--text-primary)' : 'var(--text-secondary)',
-              background: toolNav.some(t => t.id === activeView) ? 'var(--bg-elevated)' : 'transparent'
-            }}
-          >
-            <Plus size={16} />
-            <span className="hidden lg:inline">Outils</span>
-            <ChevronDown size={14} className={`transition-transform duration-200 ${toolsOpen ? 'rotate-180' : ''}`} />
-          </button>
-
-          <AnimatePresence>
-            {toolsOpen && (
-              <motion.div
-                initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                className="absolute top-full left-0 mt-2 w-48 glass border-strong rounded-2xl shadow-2xl p-1.5 z-50 overflow-hidden"
-              >
-                {toolNav.map((tool) => (
-                  <button
-                    key={tool.id}
-                    onClick={() => { setActiveView(tool.id); setToolsOpen(false); }}
-                    className="flex items-center gap-3 w-full px-3.5 py-2.5 text-left text-sm font-medium rounded-xl transition-all hover:bg-white/5"
-                    style={{ color: activeView === tool.id ? 'var(--accent)' : 'var(--text-primary)' }}
-                  >
-                    <tool.icon size={16} />
-                    {tool.label}
-                  </button>
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        {draftCount > 0 && (
-          <button
-            onClick={() => setActiveView('review')}
-            className="relative px-3.5 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 overflow-hidden group"
-            style={{
-              color: 'var(--accent)',
-              background: 'var(--accent-dim)',
-              border: '1px solid var(--border-accent)',
-            }}
-          >
-            <span className="hidden sm:inline">Brouillons</span>
-            <span className="bg-[var(--accent)] text-black text-[10px] h-4 min-w-[16px] px-1 flex items-center justify-center rounded-full">
-              {draftCount}
-            </span>
-          </button>
-        )}
-
-        <div className="w-px h-5 bg-white/10 mx-1 hidden sm:block" />
-
+    <header className="px-4 sm:px-6 py-3 sticky top-0 z-50 glass border-strong rounded-b-[2rem] mx-2 mt-2">
+      <div className="max-w-7xl mx-auto flex items-center justify-between">
         <button
-          onClick={() => setActiveView('add_card')}
-          className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 shadow-lg ml-1"
-          style={
-            activeView === 'add_card'
-              ? { background: 'var(--accent)', color: '#09090B', transform: 'translateY(-1px)' }
-              : { background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)' }
-          }
+          onClick={() => handleViewChange('dashboard')}
+          className="flex items-center gap-3 group transition-transform active:scale-95 shrink-0"
         >
-          <Plus size={18} strokeWidth={3} />
-          <span className="hidden sm:inline">Ajouter</span>
+          <div
+            className="w-9 h-9 rounded-xl flex items-center justify-center text-base font-black transition-all group-hover:scale-105"
+            style={{
+              background: 'linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%)',
+              color: '#09090B',
+              boxShadow: '0 0 25px var(--accent-glow)',
+            }}
+          >
+            N
+          </div>
+          <div className="hidden sm:block text-left">
+            <div className="text-sm font-bold leading-none text-white tracking-tight">
+              NBA Card <span className="text-[var(--accent)]">Studio</span>
+            </div>
+            <div className="text-[10px] mt-1 font-medium text-[var(--text-muted)]">
+              {cards.length} carte{cards.length !== 1 ? 's' : ''}
+            </div>
+          </div>
         </button>
 
-        <UserMenu onShare={onShare} />
-      </nav>
+        {/* Desktop Nav */}
+        <nav className="desktop-only flex items-center gap-1.5 overflow-hidden">
+          {mainNav.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => handleViewChange(item.id)}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium transition-all hover:bg-white/5 relative group"
+              style={{ color: activeView === item.id ? 'var(--text-primary)' : 'var(--text-secondary)' }}
+            >
+              <item.icon size={16} className={activeView === item.id ? 'text-[var(--accent)]' : 'text-current'} />
+              <span>{item.label}</span>
+              {activeView === item.id && (
+                <motion.div
+                  layoutId="nav-active"
+                  className="absolute inset-0 bg-white/5 border border-white/10 rounded-xl -z-10 shadow-sm"
+                />
+              )}
+            </button>
+          ))}
+
+          <div className="relative">
+            <button
+              onClick={() => { setToolsOpen(!toolsOpen); setMobileMenuOpen(false); }}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium transition-all hover:bg-white/5"
+              style={{
+                color: toolNav.some(t => t.id === activeView) ? 'var(--text-primary)' : 'var(--text-secondary)',
+                background: toolsOpen || toolNav.some(t => t.id === activeView) ? 'var(--bg-elevated)' : 'transparent'
+              }}
+            >
+              <Plus size={16} />
+              <span>Outils</span>
+              <ChevronDown size={14} className={`transition-transform duration-200 ${toolsOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            <AnimatePresence>
+              {toolsOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                  className="absolute top-full left-0 mt-2 w-48 glass border-strong rounded-2xl shadow-2xl p-1.5 z-50 overflow-hidden"
+                >
+                  {toolNav.map((tool) => (
+                    <button
+                      key={tool.id}
+                      onClick={() => handleViewChange(tool.id)}
+                      className="flex items-center gap-3 w-full px-3.5 py-2.5 text-left text-sm font-medium rounded-xl transition-all hover:bg-white/5"
+                      style={{ color: activeView === tool.id ? 'var(--accent)' : 'var(--text-primary)' }}
+                    >
+                      <tool.icon size={16} />
+                      {tool.label}
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </nav>
+
+        <div className="flex items-center gap-2">
+          {draftCount > 0 && (
+            <button
+              onClick={() => handleViewChange('review')}
+              className="relative px-3 sm:px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 bg-[var(--accent-dim)] border border-[var(--border-accent)] text-[var(--accent)] active:scale-95"
+            >
+              <span className="hidden sm:inline">Brouillons</span>
+              <span className="bg-[var(--accent)] text-black text-[10px] h-4 min-w-[16px] px-1 flex items-center justify-center rounded-full">
+                {draftCount}
+              </span>
+            </button>
+          )}
+
+          <button
+            onClick={() => handleViewChange('add_card')}
+            className="flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 shadow-lg"
+            style={
+              activeView === 'add_card'
+                ? { background: 'var(--accent)', color: '#09090B' }
+                : { background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)' }
+            }
+          >
+            <Plus size={18} strokeWidth={3} />
+            <span className="hidden sm:inline">Ajouter</span>
+          </button>
+
+          <UserMenu onShare={onShare} />
+
+          {/* Mobile Menu Toggle */}
+          <button
+            onClick={() => { setMobileMenuOpen(!mobileMenuOpen); setToolsOpen(false); }}
+            className="mobile-only w-10 h-10 flex flex-col items-center justify-center gap-1 rounded-xl bg-white/5 border border-white/5"
+          >
+            <div className={`w-5 h-0.5 bg-white transition-all ${mobileMenuOpen ? 'rotate-45 translate-y-1.5' : ''}`} />
+            <div className={`w-5 h-0.5 bg-white transition-all ${mobileMenuOpen ? 'opacity-0' : ''}`} />
+            <div className={`w-5 h-0.5 bg-white transition-all ${mobileMenuOpen ? '-rotate-45 -translate-y-1.5' : ''}`} />
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile Nav Overlay */}
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="lg:hidden mt-4 pt-4 border-t border-white/5 overflow-hidden"
+          >
+            <div className="grid grid-cols-2 gap-2 pb-2">
+              {[...mainNav, ...toolNav].map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => handleViewChange(item.id)}
+                  className="flex items-center gap-3 p-3 rounded-2xl text-sm font-semibold transition-all"
+                  style={{
+                    background: activeView === item.id ? 'var(--accent-dim)' : 'bg-white/5',
+                    color: activeView === item.id ? 'var(--accent)' : 'var(--text-secondary)',
+                    border: activeView === item.id ? '1px solid var(--border-accent)' : '1px solid transparent'
+                  }}
+                >
+                  <item.icon size={18} />
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </header>
   );
 }

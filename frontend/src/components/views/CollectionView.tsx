@@ -695,7 +695,7 @@ export function CollectionView() {
         <div className="flex items-center gap-3 flex-wrap">
           {/* Search */}
           <div className="relative group min-w-[200px]">
-            <Search className="absolute left-3.5 top-1/2 -track-y-1/2 -translate-y-1/2 text-[var(--text-muted)] group-focus-within:text-[var(--accent)] transition-colors" size={14} />
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] group-focus-within:text-[var(--accent)] transition-colors" size={14} />
             <input
               type="text"
               placeholder="Rechercher une pépite…"
@@ -738,7 +738,8 @@ export function CollectionView() {
             {activeFiltersCount > 0 && (
               <button
                 onClick={() => { setPlayerFilter(null); setTeamFilter(null); setBrandFilter(null); setSetFilter(null); setYearFilter(null); setTypeFilter(null); setRookieOnly(false); clearDrillFilter(); }}
-                className="flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-bold transition-all text-red-400 hover:bg-red-400/5 active:scale-95"
+                className="flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all active:scale-95"
+                style={{ color: 'var(--accent)', background: 'var(--accent-dim)', border: '1px solid var(--border-accent)' }}
               >
                 Effacer ({activeFiltersCount})
               </button>
@@ -747,21 +748,22 @@ export function CollectionView() {
 
           <div className="flex-1" />
 
-          <div className="flex items-center gap-2">
-            <Group size={14} className="text-[var(--text-muted)] mr-1" />
-            <select
-              value={groupBy}
-              onChange={(e) => setGroupBy(e.target.value as GroupBy)}
-              className="bg-transparent text-[11px] font-bold outline-none cursor-pointer text-[var(--text-secondary)] hover:text-white transition-colors appearance-none"
-            >
-              <option value="none">AUCUN GROUPEMENT</option>
-              <option value="player">PAR JOUEUR</option>
-              <option value="team">PAR ÉQUIPE</option>
-              <option value="brand">PAR MARQUE</option>
-              <option value="set_name">PAR COLLECTION</option>
-              <option value="year">PAR ANNÉE</option>
-            </select>
-            <ChevronDown size={12} className="text-[var(--text-muted)]" />
+          <div className="flex items-center gap-3 bg-white/5 border border-white/5 px-3 py-1.5 rounded-2xl">
+            <div className="flex items-center gap-2">
+              <Group size={12} className="text-white/20" />
+              <select
+                value={groupBy}
+                onChange={(e) => setGroupBy(e.target.value as GroupBy)}
+                className="bg-transparent text-[10px] font-black uppercase tracking-[0.2em] outline-none cursor-pointer text-white/40 hover:text-white transition-colors appearance-none"
+              >
+                <option value="none" className="bg-[#18181b]">ORGANISATION</option>
+                <option value="player" className="bg-[#18181b]">PAR JOUEUR</option>
+                <option value="team" className="bg-[#18181b]">PAR ÉQUIPE</option>
+                <option value="brand" className="bg-[#18181b]">PAR MARQUE</option>
+                <option value="set_name" className="bg-[#18181b]">PAR COLLECTION</option>
+                <option value="year" className="bg-[#18181b]">PAR ANNÉE</option>
+              </select>
+            </div>
           </div>
         </div>
       </div>
