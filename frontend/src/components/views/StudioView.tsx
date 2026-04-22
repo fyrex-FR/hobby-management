@@ -22,6 +22,27 @@ const API_BASE = import.meta.env.VITE_API_URL ?? '';
 type CaptureSide = 'front' | 'back';
 type StudioStep = 'front' | 'back' | 'ready' | 'saving';
 
+type ImageCaptureLike = {
+  takePhoto: () => Promise<Blob>;
+};
+
+type WindowWithImageCapture = Window & {
+  ImageCapture?: new (track: MediaStreamTrack) => ImageCaptureLike;
+};
+
+async function mediaTrackToFile(track: MediaStreamTrack, side: CaptureSide): Promise<File | null> {
+  const ImageCaptureCtor = (window as WindowWithImageCapture).ImageCapture;
+  if (!ImageCaptureCtor) return null;
+
+  try {
+    const imageCapture = new ImageCaptureCtor(track);
+    const blob = await imageCapture.takePhoto();
+    return new File([blob], `${side}-${Date.now()}.jpg`, { type: blob.type || 'image/jpeg' });
+  } catch {
+    return null;
+  }
+}
+
 async function canvasToFile(video: HTMLVideoElement, side: CaptureSide): Promise<File> {
   const width = video.videoWidth;
   const height = video.videoHeight;
@@ -98,6 +119,8 @@ export function StudioView() {
   const [step, setStep] = useState<StudioStep>('front');
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState('');
+  const [cameraAspectRatio, setCameraAspectRatio] = useState('4 / 3');
+  const [cameraResolution, setCameraResolution] = useState('');
   const [saveError, setSaveError] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
@@ -119,8 +142,9 @@ export function StudioView() {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: {
             facingMode,
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
+            width: { ideal: 4096 },
+            height: { ideal: 3072 },
+            aspectRatio: { ideal: 4 / 3 },
           },
           audio: false,
         });
@@ -134,6 +158,12 @@ export function StudioView() {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           await videoRef.current.play();
+          const width = videoRef.current.videoWidth;
+          const height = videoRef.current.videoHeight;
+          if (width && height) {
+            setCameraAspectRatio(`${width} / ${height}`);
+            setCameraResolution(`${width} × ${height}`);
+          }
         }
         setCameraReady(true);
       } catch (error) {
@@ -164,7 +194,10 @@ export function StudioView() {
 
     try {
       const side: CaptureSide = step === 'back' ? 'back' : 'front';
-      const file = await canvasToFile(videoRef.current, side);
+      const track = streamRef.current?.getVideoTracks()[0] ?? null;
+      const file =
+        (track ? await mediaTrackToFile(track, side) : null) ??
+        await canvasToFile(videoRef.current, side);
 
       if (side === 'front') {
         setFrontFile(file);
@@ -345,20 +378,32 @@ export function StudioView() {
                 </div>
               ) : (
                 <>
-                  <video ref={videoRef} className="h-full w-full object-cover" autoPlay muted playsInline />
                   <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(0,0,0,0.30),transparent_20%,transparent_80%,rgba(0,0,0,0.35))]" />
-                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
-                    <div className="relative aspect-[2/3] h-[78%] max-h-[640px] rounded-[2rem] border border-white/60 shadow-[0_0_0_9999px_rgba(0,0,0,0.28)]">
-                      <div className="absolute left-4 top-4 rounded-full bg-black/55 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white/80 backdrop-blur-xl">
-                        Zone recommandée
+                  <div className="absolute inset-0 flex items-center justify-center p-5">
+                    <div
+                      className="relative max-h-full max-w-full overflow-hidden rounded-[1.75rem] border border-white/10 bg-black shadow-2xl"
+                      style={{ aspectRatio: cameraAspectRatio, width: '100%', height: '100%' }}
+                    >
+                      <video ref={videoRef} className="h-full w-full object-cover" autoPlay muted playsInline />
+                      <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-[6%]">
+                        <div className="relative aspect-[2/3] h-full max-h-full rounded-[2rem] border border-white/70 shadow-[0_0_0_9999px_rgba(0,0,0,0.30)]">
+                          <div className="absolute left-4 top-4 rounded-full bg-black/55 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white/80 backdrop-blur-xl">
+                            Cadre réel
+                          </div>
+                          <div className="absolute inset-3 rounded-[1.6rem] border border-dashed border-white/25" />
+                        </div>
                       </div>
-                      <div className="absolute inset-3 rounded-[1.6rem] border border-dashed border-white/25" />
                     </div>
                   </div>
                   <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 flex-col items-center gap-2">
                     <div className="rounded-full border border-white/10 bg-black/55 px-4 py-2 text-xs font-semibold text-white/80 backdrop-blur-xl">
-                      Centre la carte, garde un peu d’air autour, évite les reflets.
+                      Ce cadre correspond maintenant au rendu capturé.
                     </div>
+                    {cameraResolution && (
+                      <div className="rounded-full border border-white/10 bg-black/55 px-4 py-2 text-xs font-semibold text-white/60 backdrop-blur-xl">
+                        Flux caméra: {cameraResolution}
+                      </div>
+                    )}
                     {!cameraReady && (
                       <div className="rounded-full border border-white/10 bg-black/55 px-4 py-2 text-xs font-semibold text-white/60 backdrop-blur-xl">
                         Initialisation caméra…
