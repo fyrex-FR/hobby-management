@@ -1,0 +1,472 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
+import {
+  Camera,
+  CameraOff,
+  CheckCircle2,
+  ChevronLeft,
+  ImagePlus,
+  RefreshCw,
+  RotateCcw,
+  Upload,
+} from 'lucide-react';
+import { compressImage } from '../../lib/storage';
+import { useCreateCard, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
+import { useIdentify } from '../../hooks/useIdentify';
+import { useAppStore } from '../../stores/appStore';
+import { supabase } from '../../lib/supabase';
+import type { CardType } from '../../types';
+
+const API_BASE = import.meta.env.VITE_API_URL ?? '';
+
+type CaptureSide = 'front' | 'back';
+type StudioStep = 'front' | 'back' | 'ready' | 'saving';
+
+async function canvasToFile(video: HTMLVideoElement, side: CaptureSide): Promise<File> {
+  const width = video.videoWidth;
+  const height = video.videoHeight;
+  if (!width || !height) throw new Error('Flux caméra indisponible');
+
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas context indisponible');
+  ctx.drawImage(video, 0, 0, width, height);
+
+  const blob = await new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob(
+      (value) => (value ? resolve(value) : reject(new Error('Capture impossible'))),
+      'image/jpeg',
+      0.95,
+    ),
+  );
+
+  return new File([blob], `${side}-${Date.now()}.jpg`, { type: 'image/jpeg' });
+}
+
+function PreviewCard({
+  label,
+  file,
+  active,
+}: {
+  label: string;
+  file: File | null;
+  active?: boolean;
+}) {
+  const previewUrl = useMemo(() => (file ? URL.createObjectURL(file) : null), [file]);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  return (
+    <div
+      className={`relative overflow-hidden rounded-2xl border ${active ? 'border-[var(--accent)]/60 bg-[var(--accent-dim)]' : 'border-white/10 bg-white/[0.03]'}`}
+      style={{ aspectRatio: '2/3' }}
+    >
+      {previewUrl ? (
+        <img src={previewUrl} alt={label} className="h-full w-full object-cover" />
+      ) : (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center px-4">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-[var(--accent)]">
+            <ImagePlus size={22} />
+          </div>
+          <div>
+            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[var(--text-muted)]">{label}</div>
+            <div className="mt-1 text-xs text-white/40">{active ? 'Prochaine capture' : 'En attente'}</div>
+          </div>
+        </div>
+      )}
+
+      <div className="absolute left-3 top-3 rounded-full border border-white/10 bg-black/50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white/80 backdrop-blur-xl">
+        {label}
+      </div>
+    </div>
+  );
+}
+
+export function StudioView() {
+  const setActiveView = useAppStore((s) => s.setActiveView);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  const [frontFile, setFrontFile] = useState<File | null>(null);
+  const [backFile, setBackFile] = useState<File | null>(null);
+  const [step, setStep] = useState<StudioStep>('front');
+  const [cameraReady, setCameraReady] = useState(false);
+  const [cameraError, setCameraError] = useState('');
+  const [saveError, setSaveError] = useState('');
+  const [saveMessage, setSaveMessage] = useState('');
+  const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
+
+  const identify = useIdentify();
+  const createCard = useCreateCard();
+  const updateCard = useUpdateCard();
+  const deleteCard = useDeleteCard();
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function startCamera() {
+      setCameraError('');
+      setCameraReady(false);
+
+      try {
+        streamRef.current?.getTracks().forEach((track) => track.stop());
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode,
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
+          audio: false,
+        });
+
+        if (cancelled) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+        }
+        setCameraReady(true);
+      } catch (error) {
+        setCameraError((error as Error).message || 'Impossible d’accéder à la caméra');
+      }
+    }
+
+    startCamera();
+
+    return () => {
+      cancelled = true;
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+    };
+  }, [facingMode]);
+
+  function resetSession() {
+    setFrontFile(null);
+    setBackFile(null);
+    setStep('front');
+    setSaveError('');
+    setSaveMessage('');
+  }
+
+  async function handleCapture() {
+    if (!videoRef.current) return;
+    setSaveError('');
+    setSaveMessage('');
+
+    try {
+      const side: CaptureSide = step === 'back' ? 'back' : 'front';
+      const file = await canvasToFile(videoRef.current, side);
+
+      if (side === 'front') {
+        setFrontFile(file);
+        setStep('back');
+      } else {
+        setBackFile(file);
+        setStep('ready');
+      }
+    } catch (error) {
+      setSaveError((error as Error).message);
+    }
+  }
+
+  function recapture(side: CaptureSide) {
+    if (side === 'front') {
+      setFrontFile(null);
+      setStep('front');
+      return;
+    }
+    setBackFile(null);
+    setStep('back');
+  }
+
+  async function uploadViaBackend(file: File, cardId: string, token: string, side: CaptureSide): Promise<string> {
+    const blob = await compressImage(file);
+    const form = new FormData();
+    form.append('file', new File([blob], `${side}.jpg`, { type: 'image/jpeg' }));
+    form.append('card_id', cardId);
+    form.append('side', side);
+    const response = await fetch(`${API_BASE}/api/upload`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: form,
+    });
+    if (!response.ok) throw new Error(`Upload ${side}: ${await response.text()}`);
+    return (await response.json()).url;
+  }
+
+  async function handleCreateDraft(continueAfterSave: boolean) {
+    if (!frontFile || !backFile) return;
+
+    setStep('saving');
+    setSaveError('');
+    setSaveMessage('Analyse IA…');
+    let createdCardId: string | null = null;
+
+    try {
+      const identifyResult = await identify.mutateAsync({ frontFile, backFile });
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) throw new Error('Non authentifié');
+
+      setSaveMessage('Création du brouillon…');
+      const newCard = await createCard.mutateAsync({
+        player: identifyResult.player || null,
+        team: identifyResult.team || null,
+        year: identifyResult.year || null,
+        brand: identifyResult.brand || null,
+        set_name: identifyResult.set || null,
+        card_type: (identifyResult.card_type || null) as CardType | null,
+        insert_name: identifyResult.insert || null,
+        parallel_name: identifyResult.parallel || null,
+        parallel_confidence: identifyResult.parallel_confidence ?? null,
+        card_number: identifyResult.card_number || null,
+        numbered: identifyResult.numbered || null,
+        is_rookie: identifyResult.is_rookie ?? null,
+        condition_notes: identifyResult.condition_notes || null,
+        status: 'draft',
+      });
+      createdCardId = newCard.id;
+
+      setSaveMessage('Upload des photos…');
+      const [image_front_url, image_back_url] = await Promise.all([
+        uploadViaBackend(frontFile, newCard.id, token, 'front'),
+        uploadViaBackend(backFile, newCard.id, token, 'back'),
+      ]);
+
+      setSaveMessage('Finalisation…');
+      await updateCard.mutateAsync({
+        id: newCard.id,
+        image_front_url,
+        image_back_url,
+      });
+
+      if (continueAfterSave) {
+        resetSession();
+        setSaveMessage('Brouillon créé. Carte suivante.');
+      } else {
+        setActiveView('review');
+      }
+    } catch (error) {
+      const message = (error as Error).message;
+      if (createdCardId) {
+        try {
+          await deleteCard.mutateAsync(createdCardId);
+        } catch {
+          setSaveError(`Échec pendant le studio photo. La carte a peut-être été créée partiellement. Détail: ${message}`);
+          setStep('ready');
+          return;
+        }
+      }
+      setSaveError(message);
+      setStep('ready');
+    }
+  }
+
+  const isBusy =
+    step === 'saving' ||
+    identify.isPending ||
+    createCard.isPending ||
+    updateCard.isPending ||
+    deleteCard.isPending;
+
+  const stepLabel =
+    step === 'front'
+      ? '1/2 • Place le recto puis capture'
+      : step === 'back'
+        ? '2/2 • Retourne la carte puis capture'
+        : step === 'ready'
+          ? 'Paire prête • crée le brouillon ou reprends une photo'
+          : 'Enregistrement en cours…';
+
+  return (
+    <div className="flex-1 overflow-auto bg-[radial-gradient(circle_at_50%_-20%,_var(--accent-dim)_0%,_transparent_70%)]">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="mx-auto max-w-7xl px-6 py-10"
+      >
+        <div className="mb-8 flex items-center justify-between gap-6">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setActiveView('collection')}
+              className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-[var(--text-muted)] transition-all hover:bg-white/10 hover:text-white active:scale-90"
+            >
+              <ChevronLeft size={20} />
+            </button>
+            <div>
+              <h2 className="text-2xl font-black tracking-tight text-white">Studio photo</h2>
+              <p className="text-sm font-medium text-[var(--text-muted)]">
+                Photos propres pour la vente, puis brouillon IA sans quitter l’app.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setFacingMode((value) => (value === 'environment' ? 'user' : 'environment'))}
+            className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-white/10"
+            disabled={isBusy}
+          >
+            <RefreshCw size={16} />
+            Changer caméra
+          </button>
+        </div>
+
+        <div className="mb-6 grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_380px]">
+          <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-black/30 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-white/5 px-5 py-4">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Capture</div>
+                <div className="mt-1 text-sm font-semibold text-white">{stepLabel}</div>
+              </div>
+              <div className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-bold text-white/70">
+                {facingMode === 'environment' ? 'Caméra arrière' : 'Caméra avant'}
+              </div>
+            </div>
+
+            <div className="relative aspect-[4/3] bg-[#0b0c10]">
+              {cameraError ? (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-8 text-center">
+                  <div className="flex h-16 w-16 items-center justify-center rounded-3xl border border-red-500/20 bg-red-500/10 text-red-400">
+                    <CameraOff size={28} />
+                  </div>
+                  <div>
+                    <div className="text-base font-bold text-white">Caméra indisponible</div>
+                    <div className="mt-2 text-sm text-white/55">{cameraError}</div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <video ref={videoRef} className="h-full w-full object-cover" autoPlay muted playsInline />
+                  <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(0,0,0,0.30),transparent_20%,transparent_80%,rgba(0,0,0,0.35))]" />
+                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-6">
+                    <div className="relative aspect-[2/3] h-[78%] max-h-[640px] rounded-[2rem] border border-white/60 shadow-[0_0_0_9999px_rgba(0,0,0,0.28)]">
+                      <div className="absolute left-4 top-4 rounded-full bg-black/55 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white/80 backdrop-blur-xl">
+                        Zone recommandée
+                      </div>
+                      <div className="absolute inset-3 rounded-[1.6rem] border border-dashed border-white/25" />
+                    </div>
+                  </div>
+                  <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 flex-col items-center gap-2">
+                    <div className="rounded-full border border-white/10 bg-black/55 px-4 py-2 text-xs font-semibold text-white/80 backdrop-blur-xl">
+                      Centre la carte, garde un peu d’air autour, évite les reflets.
+                    </div>
+                    {!cameraReady && (
+                      <div className="rounded-full border border-white/10 bg-black/55 px-4 py-2 text-xs font-semibold text-white/60 backdrop-blur-xl">
+                        Initialisation caméra…
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          </section>
+
+          <aside className="space-y-5">
+            <div className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Paire</div>
+                  <div className="mt-1 text-sm font-semibold text-white">Recto / Verso</div>
+                </div>
+                {(frontFile || backFile) && (
+                  <button
+                    onClick={resetSession}
+                    disabled={isBusy}
+                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white/75 transition-all hover:bg-white/10"
+                  >
+                    <RotateCcw size={14} />
+                    Repartir de zéro
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <PreviewCard label="Recto" file={frontFile} active={step === 'front'} />
+                <PreviewCard label="Verso" file={backFile} active={step === 'back'} />
+              </div>
+
+              <div className="mt-4 flex gap-3">
+                {frontFile && (
+                  <button
+                    onClick={() => recapture('front')}
+                    disabled={isBusy}
+                    className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm font-semibold text-white/80 transition-all hover:bg-white/10"
+                  >
+                    Reprendre recto
+                  </button>
+                )}
+                {backFile && (
+                  <button
+                    onClick={() => recapture('back')}
+                    disabled={isBusy}
+                    className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm font-semibold text-white/80 transition-all hover:bg-white/10"
+                  >
+                    Reprendre verso
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-5 space-y-4">
+              <div>
+                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Actions</div>
+                <div className="mt-1 text-sm font-semibold text-white">Flux pensé pour la vente puis l’IA</div>
+              </div>
+
+              <button
+                onClick={handleCapture}
+                disabled={!!cameraError || !cameraReady || isBusy || step === 'ready'}
+                className="flex w-full items-center justify-center gap-3 rounded-2xl px-4 py-4 text-base font-black text-[#0d0c0b] transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                style={{ background: 'var(--accent)' }}
+              >
+                {isBusy && step === 'saving' ? <RefreshCw size={18} className="animate-spin" /> : <Camera size={18} />}
+                {step === 'front' ? 'Capturer le recto' : step === 'back' ? 'Capturer le verso' : 'Paire capturée'}
+              </button>
+
+              <button
+                onClick={() => handleCreateDraft(true)}
+                disabled={step !== 'ready' || isBusy}
+                className="flex w-full items-center justify-center gap-3 rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent-dim)] px-4 py-3.5 text-sm font-bold text-[var(--accent)] transition-all disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {isBusy && step === 'saving' ? <RefreshCw size={16} className="animate-spin" /> : <Upload size={16} />}
+                Créer le brouillon et continuer
+              </button>
+
+              <button
+                onClick={() => handleCreateDraft(false)}
+                disabled={step !== 'ready' || isBusy}
+                className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3.5 text-sm font-bold text-white transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                Créer le brouillon et ouvrir la revue
+              </button>
+
+              {saveMessage && (
+                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-300">
+                  <div className="flex items-center gap-2 font-semibold">
+                    <CheckCircle2 size={16} />
+                    {saveMessage}
+                  </div>
+                </div>
+              )}
+
+              {saveError && (
+                <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                  {saveError}
+                </div>
+              )}
+            </div>
+          </aside>
+        </div>
+      </motion.div>
+    </div>
+  );
+}

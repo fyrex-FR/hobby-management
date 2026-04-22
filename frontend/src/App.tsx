@@ -7,6 +7,7 @@ import {
   TrendingUp,
   Users,
   GraduationCap,
+  ScanLine,
   Upload,
   Database,
   Plus,
@@ -23,6 +24,7 @@ import { LoginView } from './components/views/LoginView';
 import { DashboardView } from './components/views/DashboardView';
 import { CollectionView } from './components/views/CollectionView';
 import { AddCardView } from './components/views/AddCardView';
+import { StudioView } from './components/views/StudioView';
 import { BatchView } from './components/views/BatchView';
 import { ReviewView } from './components/views/ReviewView';
 import { SalesView } from './components/views/SalesView';
@@ -161,6 +163,7 @@ function Header({ onShare }: { onShare: () => void }) {
   const toolNav = [
     { id: 'players', label: 'Joueurs', icon: Users },
     { id: 'grading', label: 'Grading', icon: GraduationCap },
+    { id: 'studio', label: 'Studio photo', icon: ScanLine },
     { id: 'batch', label: 'Import lot', icon: Upload },
     { id: 'compare', label: 'Comparer IA', icon: Database },
   ] as const;
@@ -380,6 +383,7 @@ function AppShell() {
             {activeView === 'dashboard' && <DashboardView />}
             {activeView === 'collection' && <CollectionView />}
             {activeView === 'add_card' && <AddCardView />}
+            {activeView === 'studio' && <StudioView />}
             {activeView === 'batch' && <BatchView />}
             {activeView === 'review' && <ReviewView />}
             {activeView === 'sales' && <SalesView />}
