@@ -211,7 +211,7 @@ function PlayerModal({ stats, onClose }: { stats: PlayerStats; onClose: () => vo
           <div className="grid grid-cols-4 gap-4">
             <StatCard label="Autos" value={stats.autos} icon={Star} />
             <StatCard label="Memorabilia" value={stats.patches} icon={Layers} />
-            <StatCard label="Tirages" value={stats.numbered} icon={Hash} />
+            <StatCard label="Numérotés" value={stats.numbered} icon={Hash} />
             <StatCard label="Estimation" value={`${stats.totalSaleEstimate.toFixed(0)}€`} icon={Euro} accent />
           </div>
 
