@@ -176,7 +176,7 @@ function Header({ onShare }: { onShare: () => void }) {
   };
 
   return (
-    <header className="px-4 sm:px-6 py-3 sticky top-0 z-50 glass border-strong rounded-b-[2rem] mx-2 mt-2">
+    <header className="px-4 sm:px-6 py-3 sticky top-0 z-50 glass border-strong rounded-b-[2rem] mx-2 mt-2 overflow-visible">
       <div className="max-w-7xl mx-auto flex items-center justify-between">
         <button
           onClick={() => handleViewChange('dashboard')}
@@ -203,7 +203,7 @@ function Header({ onShare }: { onShare: () => void }) {
         </button>
 
         {/* Desktop Nav */}
-        <nav className="desktop-only flex items-center gap-1.5 overflow-hidden">
+        <nav className="desktop-only flex items-center gap-1.5">
           {mainNav.map((item) => (
             <button
               key={item.id}
