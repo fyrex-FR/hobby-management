@@ -111,35 +111,26 @@ function PlayerRow({ stats, onClick }: { stats: PlayerStats; onClick: () => void
       </div>
 
       {/* Infos */}
-      <div className="flex-1 min-w-0">
-        <span className="text-sm font-black text-white truncate block mb-2">{stats.player}</span>
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="flex items-center gap-1 text-[10px] font-bold text-white/50">
-            <Library size={10} />
-            {stats.total}
-          </span>
+      <div className="flex-1 min-w-0 flex items-center gap-6">
+        <span className="text-sm font-black text-white w-40 shrink-0 truncate">{stats.player}</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-bold text-white/70 tabular-nums w-16">{stats.total} cartes</span>
           {stats.autos > 0 && (
-            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-green-500/10 border border-green-500/20 text-green-400 text-[9px] font-black uppercase tracking-wider">
-              <Star size={8} />{stats.autos} Auto
+            <span className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400 text-xs font-bold">
+              <Star size={10} />{stats.autos} Auto
             </span>
           )}
           {stats.patches > 0 && (
-            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-purple-500/10 border border-purple-500/20 text-purple-400 text-[9px] font-black uppercase tracking-wider">
-              <Layers size={8} />{stats.patches} Mémo
+            <span className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-bold">
+              <Layers size={10} />{stats.patches} Mémo
             </span>
           )}
           {stats.numbered > 0 && (
-            <span className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-[var(--accent-dim)] border border-[var(--border-accent)] text-[var(--accent)] text-[9px] font-black uppercase tracking-wider">
-              <Hash size={8} />{stats.numbered} #
+            <span className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[var(--accent-dim)] border border-[var(--border-accent)] text-[var(--accent)] text-xs font-bold">
+              <Hash size={10} />{stats.numbered} #
             </span>
           )}
         </div>
-      </div>
-
-      {/* Nb cartes — mis en avant */}
-      <div className="shrink-0 text-right">
-        <div className="text-2xl font-black text-white tracking-tighter leading-none">{stats.total}</div>
-        <div className="text-[9px] font-black text-white/25 uppercase tracking-widest mt-0.5">carte{stats.total > 1 ? 's' : ''}</div>
       </div>
 
       <ChevronRight size={16} className="text-white/10 group-hover:text-white/40 transition-colors shrink-0" />
@@ -268,7 +259,7 @@ export function PlayersView() {
 
   return (
     <div className="flex-1 overflow-auto">
-      <div className="max-w-3xl mx-auto px-6 py-10">
+      <div className="max-w-5xl mx-auto px-6 py-10">
 
         {/* Header */}
         <div className="flex items-end justify-between mb-8">
