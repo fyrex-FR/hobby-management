@@ -15,8 +15,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "https://hobby-management.pages.dev",
-        "https://*.hobby-management.pages.dev",
-        "https://hobby-management.onrender.com",
+        "https://collection.cardvaults.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
