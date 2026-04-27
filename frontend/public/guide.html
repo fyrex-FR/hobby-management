@@ -1,0 +1,730 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Guide — NBA Card Studio</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --accent: #F5A623;
+      --bg: #09090B;
+      --bg-card: #111113;
+      --bg-elevated: #18181B;
+      --border: rgba(255,255,255,0.08);
+      --text: #FAFAFA;
+      --text-muted: #71717A;
+      --green: #10B981;
+      --purple: #8B5CF6;
+      --blue: #3B82F6;
+      --red: #EF4444;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.6;
+    }
+
+    /* NAV */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(9,9,11,0.85);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 60px;
+    }
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 900;
+      font-size: 1rem;
+      letter-spacing: -0.02em;
+    }
+    .nav-logo-icon {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, var(--accent) 0%, #ffcd6b 100%);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 900; font-size: 14px; color: #09090B;
+    }
+    .nav-links {
+      display: flex; gap: 0.25rem;
+      list-style: none;
+    }
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 8px;
+      transition: all 0.15s;
+    }
+    .nav-links a:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+
+    /* HERO */
+    .hero {
+      text-align: center;
+      padding: 80px 2rem 60px;
+      background: radial-gradient(ellipse at top, rgba(245,166,35,0.08) 0%, transparent 60%);
+      border-bottom: 1px solid var(--border);
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 14px;
+      border-radius: 20px;
+      background: rgba(245,166,35,0.1);
+      border: 1px solid rgba(245,166,35,0.2);
+      color: var(--accent);
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 24px;
+    }
+    .hero h1 {
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      line-height: 1.1;
+      margin-bottom: 16px;
+    }
+    .hero h1 span { color: var(--accent); }
+    .hero p {
+      color: var(--text-muted);
+      font-size: 1.1rem;
+      max-width: 540px;
+      margin: 0 auto 32px;
+    }
+    .hero-link {
+      display: inline-block;
+      background: var(--accent);
+      color: #09090B;
+      font-weight: 800;
+      font-size: 0.9rem;
+      padding: 12px 28px;
+      border-radius: 14px;
+      text-decoration: none;
+      transition: all 0.15s;
+      box-shadow: 0 0 30px rgba(245,166,35,0.25);
+    }
+    .hero-link:hover { filter: brightness(1.1); transform: translateY(-1px); }
+
+    /* LAYOUT */
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 0 2rem;
+    }
+
+    /* SECTIONS */
+    section {
+      padding: 64px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    section:last-child { border-bottom: none; }
+
+    .section-header {
+      margin-bottom: 40px;
+    }
+    .section-label {
+      font-size: 0.7rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      color: var(--accent);
+      margin-bottom: 8px;
+    }
+    .section-title {
+      font-size: 1.8rem;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+    }
+    .section-desc {
+      color: var(--text-muted);
+      margin-top: 8px;
+      font-size: 0.95rem;
+    }
+
+    /* CARDS */
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 24px;
+      transition: border-color 0.2s;
+    }
+    .card:hover { border-color: rgba(255,255,255,0.12); }
+
+    .grid-2 { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 16px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+
+    .card-icon {
+      width: 40px; height: 40px;
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.2rem;
+      margin-bottom: 14px;
+    }
+    .card h3 {
+      font-size: 1rem;
+      font-weight: 800;
+      margin-bottom: 6px;
+      letter-spacing: -0.02em;
+    }
+    .card p {
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      line-height: 1.6;
+    }
+
+    /* STEPS */
+    .steps { display: flex; flex-direction: column; gap: 16px; }
+    .step {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+    .step-num {
+      width: 28px; height: 28px;
+      background: var(--accent);
+      color: #09090B;
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 900;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .step-content h4 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+    .step-content p {
+      color: var(--text-muted);
+      font-size: 0.875rem;
+    }
+
+    /* BADGE */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 10px;
+      border-radius: 6px;
+      font-size: 0.7rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .badge-green { background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.2); color: var(--green); }
+    .badge-yellow { background: rgba(245,166,35,0.12); border: 1px solid rgba(245,166,35,0.2); color: var(--accent); }
+    .badge-purple { background: rgba(139,92,246,0.12); border: 1px solid rgba(139,92,246,0.2); color: var(--purple); }
+    .badge-blue { background: rgba(59,130,246,0.12); border: 1px solid rgba(59,130,246,0.2); color: var(--blue); }
+    .badge-red { background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.2); color: var(--red); }
+
+    /* TABLE */
+    .table-wrap { overflow-x: auto; border-radius: 16px; border: 1px solid var(--border); }
+    table { width: 100%; border-collapse: collapse; }
+    thead tr { background: rgba(255,255,255,0.03); }
+    th {
+      padding: 12px 16px;
+      text-align: left;
+      font-size: 0.7rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+    }
+    td {
+      padding: 12px 16px;
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+    td:first-child { color: var(--text); font-weight: 600; }
+    tr:last-child td { border-bottom: none; }
+
+    /* TIP */
+    .tip {
+      background: rgba(245,166,35,0.06);
+      border: 1px solid rgba(245,166,35,0.15);
+      border-radius: 14px;
+      padding: 16px 20px;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      margin-top: 24px;
+    }
+    .tip-icon { font-size: 1.1rem; flex-shrink: 0; margin-top: 1px; }
+    .tip p { font-size: 0.875rem; color: rgba(255,255,255,0.7); }
+    .tip strong { color: var(--accent); }
+
+    /* STATUS PILLS */
+    .status-grid { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 16px; }
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+    .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+    /* FOOTER */
+    footer {
+      padding: 40px 2rem;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      border-top: 1px solid var(--border);
+    }
+    footer a { color: var(--accent); text-decoration: none; }
+
+    /* RESPONSIVE */
+    @media (max-width: 600px) {
+      .grid-2, .grid-3 { grid-template-columns: 1fr; }
+      .nav-links { display: none; }
+      .hero { padding: 48px 1.5rem 40px; }
+      section { padding: 48px 0; }
+    }
+
+    /* PRINT */
+    @media print {
+      nav, .hero-link { display: none; }
+      body { background: white; color: black; }
+      .card { border: 1px solid #ddd; }
+      section { page-break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-logo">
+    <div class="nav-logo-icon">N</div>
+    NBA Card <span style="color:var(--accent)">Studio</span>
+  </div>
+  <ul class="nav-links">
+    <li><a href="#collection">Collection</a></li>
+    <li><a href="#ajouter">Ajouter</a></li>
+    <li><a href="#outils">Outils</a></li>
+    <li><a href="#partage">Partage</a></li>
+    <li><a href="#ventes">Ventes</a></li>
+  </ul>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-badge">📖 Guide utilisateur</div>
+  <h1>NBA Card <span>Studio</span></h1>
+  <p>Gérez, analysez et partagez votre collection de cartes NBA en un seul endroit.</p>
+  <a href="https://collection.cardvaults.app" class="hero-link" target="_blank">Ouvrir l'application →</a>
+</div>
+
+<!-- VUE D'ENSEMBLE -->
+<div class="container">
+<section id="overview">
+  <div class="section-header">
+    <div class="section-label">01 — Navigation</div>
+    <h2 class="section-title">Vue d'ensemble</h2>
+    <p class="section-desc">L'application est organisée en 5 grandes zones accessibles depuis la barre de navigation.</p>
+  </div>
+
+  <div class="grid-3">
+    <div class="card">
+      <div class="card-icon" style="background:rgba(245,166,35,0.1)">📊</div>
+      <h3>Vue d'ensemble</h3>
+      <p>Tableau de bord avec vos stats clés, les raretés, les dernières acquisitions et les tops joueurs / équipes / collections.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon" style="background:rgba(99,102,241,0.1)">🃏</div>
+      <h3>Collection</h3>
+      <p>Toutes vos cartes en grille ou en tableau, avec filtres avancés, recherche et export CSV.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon" style="background:rgba(16,185,129,0.1)">📈</div>
+      <h3>Ventes</h3>
+      <p>Suivi de vos cartes vendues, chiffre d'affaires et marges réalisées.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon" style="background:rgba(139,92,246,0.1)">🔧</div>
+      <h3>Outils</h3>
+      <p>Studio photo, import en lot, suivi par joueur, grading, et partage de collection.</p>
+    </div>
+    <div class="card">
+      <div class="card-icon" style="background:rgba(59,130,246,0.1)">➕</div>
+      <h3>Ajouter</h3>
+      <p>Ajout rapide d'une carte avec identification automatique par IA depuis une photo.</p>
+    </div>
+  </div>
+</section>
+
+<!-- COLLECTION -->
+<section id="collection">
+  <div class="section-header">
+    <div class="section-label">02 — Collection</div>
+    <h2 class="section-title">Gérer sa collection</h2>
+    <p class="section-desc">Votre bibliothèque complète avec filtres, recherche et édition rapide.</p>
+  </div>
+
+  <div class="grid-2" style="margin-bottom:24px">
+    <div class="card">
+      <h3>🔍 Filtres & recherche</h3>
+      <p>Filtrez par joueur, équipe, marque, collection, année, type de carte ou statut. Combinez plusieurs filtres simultanément. La barre de recherche fonctionne sur tous les champs texte.</p>
+    </div>
+    <div class="card">
+      <h3>📋 Vue grille / tableau</h3>
+      <p>Basculez entre la vue grille (photos) et le tableau (édition rapide du type, statut, parallel et prix directement dans la ligne).</p>
+    </div>
+    <div class="card">
+      <h3>⬇️ Export CSV</h3>
+      <p>Exportez votre collection filtrée en CSV compatible Excel. Le bouton est dans la barre d'outils en haut à droite.</p>
+    </div>
+    <div class="card">
+      <h3>📁 Regroupement</h3>
+      <p>Regroupez vos cartes par joueur, équipe, marque, collection ou année via le sélecteur "Organisation" en haut à droite.</p>
+    </div>
+  </div>
+
+  <div style="margin-bottom:16px"><strong style="font-size:0.85rem">Statuts disponibles</strong></div>
+  <div class="status-grid">
+    <div class="status-pill"><div class="dot" style="background:#71717A"></div>Collection</div>
+    <div class="status-pill"><div class="dot" style="background:var(--accent)"></div>À vendre</div>
+    <div class="status-pill"><div class="dot" style="background:var(--blue)"></div>Réservé</div>
+    <div class="status-pill"><div class="dot" style="background:var(--green)"></div>Vendu</div>
+  </div>
+
+  <div class="tip">
+    <div class="tip-icon">💡</div>
+    <p>En vue tableau, vous pouvez modifier le statut, le type et le parallel <strong>directement dans la liste</strong> sans ouvrir la fiche.</p>
+  </div>
+</section>
+
+<!-- FICHE CARTE -->
+<section id="fiche">
+  <div class="section-header">
+    <div class="section-label">03 — Fiche carte</div>
+    <h2 class="section-title">Détail d'une carte</h2>
+    <p class="section-desc">Cliquez sur n'importe quelle carte pour ouvrir sa fiche complète.</p>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h3>🖼️ Photos</h3>
+      <p>Cliquez sur une photo pour l'agrandir en lightbox. Naviguez entre face et dos avec les flèches ou les touches ← →. En mode édition, glissez-déposez une image directement sur la zone.</p>
+    </div>
+    <div class="card">
+      <h3>✏️ Édition</h3>
+      <p>Tous les champs sont modifiables : joueur, équipe, année, marque, set, type, numérotation, prix d'achat, prix de vente, URL Vinted…</p>
+    </div>
+    <div class="card">
+      <h3>🏆 Grading</h3>
+      <p>Ajoutez les infos de grading (société, statut, grade, certificat, date d'envoi/retour, coût) depuis la fiche. La carte apparaît ensuite dans le suivi Grading.</p>
+    </div>
+    <div class="card">
+      <h3>🔁 Ré-analyser</h3>
+      <p>Relancez l'identification IA sur la photo de face pour mettre à jour automatiquement les métadonnées de la carte.</p>
+    </div>
+  </div>
+</section>
+
+<!-- AJOUTER -->
+<section id="ajouter">
+  <div class="section-header">
+    <div class="section-label">04 — Ajout</div>
+    <h2 class="section-title">Ajouter une carte</h2>
+    <p class="section-desc">Deux méthodes pour enrichir votre collection.</p>
+  </div>
+
+  <div class="grid-2" style="margin-bottom:32px">
+    <div class="card">
+      <div class="card-icon" style="background:rgba(245,166,35,0.1)">🤖</div>
+      <h3>Ajout avec IA</h3>
+      <div class="steps" style="margin-top:12px">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <h4>Prenez une photo</h4>
+            <p>Uploadez la face de la carte (jpg, png, webp).</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <h4>L'IA identifie la carte</h4>
+            <p>Joueur, année, set, type et parallel sont détectés automatiquement.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <h4>Vérifiez et validez</h4>
+            <p>Corrigez si besoin puis enregistrez dans votre collection.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-icon" style="background:rgba(99,102,241,0.1)">📦</div>
+      <h3>Import en lot</h3>
+      <div class="steps" style="margin-top:12px">
+        <div class="step">
+          <div class="step-num">1</div>
+          <div class="step-content">
+            <h4>Glissez vos photos</h4>
+            <p>Déposez plusieurs images en une fois dans la zone d'import.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">2</div>
+          <div class="step-content">
+            <h4>Identification automatique</h4>
+            <p>Chaque carte est analysée par l'IA et enregistrée en brouillon.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <h4>Revue des brouillons</h4>
+            <p>Validez ou corrigez chaque carte depuis la vue Brouillons.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tip">
+    <div class="tip-icon">💡</div>
+    <p>Le bouton <strong>Brouillons</strong> apparaît dans la barre de navigation dès qu'il y a des cartes en attente de validation.</p>
+  </div>
+</section>
+
+<!-- OUTILS -->
+<section id="outils">
+  <div class="section-header">
+    <div class="section-label">05 — Outils</div>
+    <h2 class="section-title">Outils avancés</h2>
+    <p class="section-desc">Accessibles depuis le menu "Outils" dans la navigation.</p>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <span style="font-size:1.1rem">👤</span>
+        <h3 style="margin:0">Joueurs</h3>
+      </div>
+      <p>Vue par joueur avec le nombre de cartes, autos, mémos et numérotés. Cliquez sur un joueur pour voir toutes ses cartes et accéder à sa mini-collection.</p>
+    </div>
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <span style="font-size:1.1rem">🏆</span>
+        <h3 style="margin:0">Grading</h3>
+      </div>
+      <p>Suivi de vos soumissions de grading (PSA, BGS, SGC…). Statuts : Envoyée → Reçue → Notée → Retournée. Suivi des coûts et de la note moyenne.</p>
+    </div>
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <span style="font-size:1.1rem">📸</span>
+        <h3 style="margin:0">Studio photo</h3>
+      </div>
+      <p>Session de prise de vue organisée pour photographier plusieurs cartes à la suite et les associer automatiquement à votre collection.</p>
+    </div>
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <span style="font-size:1.1rem">🔗</span>
+        <h3 style="margin:0">Partager ma collection</h3>
+      </div>
+      <p>Générez un lien public pour partager tout ou partie de votre collection. Choisissez les filtres (joueur, type…), si les prix sont visibles, et un titre personnalisé.</p>
+    </div>
+  </div>
+</section>
+
+<!-- PARTAGE -->
+<section id="partage">
+  <div class="section-header">
+    <div class="section-label">06 — Partage</div>
+    <h2 class="section-title">Partager sa collection</h2>
+    <p class="section-desc">Créez des liens publics pour présenter votre collection sans compte requis.</p>
+  </div>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">1</div>
+      <div class="step-content">
+        <h4>Ouvrir le module partage</h4>
+        <p>Cliquez sur "Outils" dans la navigation puis "Partager ma collection".</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <div class="step-content">
+        <h4>Configurer le lien</h4>
+        <p>Donnez un titre, choisissez si les prix sont affichés, et appliquez des filtres (joueur, équipe, type de carte…).</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <div class="step-content">
+        <h4>Copier et partager</h4>
+        <p>Le lien généré est accessible publiquement, sans connexion. Vous pouvez créer plusieurs liens avec des filtres différents.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <div class="step-content">
+        <h4>Révoquer un lien</h4>
+        <p>Supprimez un lien à tout moment depuis le même panneau. Il devient immédiatement inaccessible.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="tip">
+    <div class="tip-icon">💡</div>
+    <p>La page partagée permet aux visiteurs de <strong>filtrer par joueur, équipe, set et type</strong> sans avoir accès à votre compte.</p>
+  </div>
+</section>
+
+<!-- VENTES -->
+<section id="ventes">
+  <div class="section-header">
+    <div class="section-label">07 — Ventes</div>
+    <h2 class="section-title">Suivi des ventes</h2>
+    <p class="section-desc">Suivez vos performances de vente et calculez vos marges.</p>
+  </div>
+
+  <div class="grid-3">
+    <div class="card">
+      <h3>Marquer vendu</h3>
+      <p>Changez le statut d'une carte en "Vendu" depuis sa fiche ou directement en vue tableau.</p>
+    </div>
+    <div class="card">
+      <h3>Prix d'achat / vente</h3>
+      <p>Renseignez le prix d'achat et le prix de vente sur chaque carte pour calculer automatiquement la marge.</p>
+    </div>
+    <div class="card">
+      <h3>Historique</h3>
+      <p>La vue Ventes liste toutes vos cartes vendues avec le récapitulatif financier global.</p>
+    </div>
+  </div>
+</section>
+
+<!-- TYPES DE CARTES -->
+<section id="types">
+  <div class="section-header">
+    <div class="section-label">08 — Référence</div>
+    <h2 class="section-title">Types de cartes</h2>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Badge</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Base</td>
+          <td>Carte standard sans spécificité particulière</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td>Insert</td>
+          <td>Carte thématique insérée dans un set</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td>Parallel</td>
+          <td>Variante colorée d'une carte de base</td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td>Numbered</td>
+          <td>Carte avec tirage limité (/10, /25, /99…)</td>
+          <td><span class="badge badge-yellow">#</span></td>
+        </tr>
+        <tr>
+          <td>Auto</td>
+          <td>Carte avec autographe du joueur</td>
+          <td><span class="badge badge-green">AUTO</span></td>
+        </tr>
+        <tr>
+          <td>Patch</td>
+          <td>Carte avec morceau de maillot/équipement</td>
+          <td><span class="badge badge-red">PATCH</span></td>
+        </tr>
+        <tr>
+          <td>Auto/Patch</td>
+          <td>Autographe + patch combinés</td>
+          <td><span class="badge badge-green">AUTO</span> <span class="badge badge-red">PATCH</span></td>
+        </tr>
+        <tr>
+          <td>Memorabilia</td>
+          <td>Autre pièce de collection (chaussure, bandeau…)</td>
+          <td><span class="badge badge-purple">MEMO</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- RACCOURCIS -->
+<section id="shortcuts">
+  <div class="section-header">
+    <div class="section-label">09 — Raccourcis</div>
+    <h2 class="section-title">Astuces & raccourcis</h2>
+  </div>
+
+  <div class="grid-2">
+    <div class="card">
+      <h3>⌨️ Clavier</h3>
+      <ul style="margin-top:10px;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:8px">
+        <li style="display:flex;justify-content:space-between;font-size:0.875rem"><span style="color:var(--text-muted)">Fermer un modal</span><kbd style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:0.75rem">Échap</kbd></li>
+        <li style="display:flex;justify-content:space-between;font-size:0.875rem"><span style="color:var(--text-muted)">Photo précédente (lightbox)</span><kbd style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:0.75rem">←</kbd></li>
+        <li style="display:flex;justify-content:space-between;font-size:0.875rem"><span style="color:var(--text-muted)">Photo suivante (lightbox)</span><kbd style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-size:0.75rem">→</kbd></li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>🖱️ Glisser-déposer</h3>
+      <ul style="margin-top:10px;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:8px;font-size:0.875rem;color:var(--text-muted)">
+        <li>Déposez une image sur la zone photo d'une carte pour la remplacer.</li>
+        <li>Dans l'import en lot, glissez plusieurs fichiers d'un coup sur la zone de dépôt.</li>
+        <li>Fonctionne aussi depuis le navigateur de fichiers ou directement depuis un autre onglet.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+</div><!-- /container -->
+
+<footer>
+  <p>NBA Card Studio — <a href="https://collection.cardvaults.app" target="_blank">collection.cardvaults.app</a></p>
+  <p style="margin-top:6px;font-size:0.75rem">Guide mis à jour en avril 2026</p>
+</footer>
+
+</body>
+</html>
