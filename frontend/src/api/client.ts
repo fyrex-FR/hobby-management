@@ -1,9 +1,13 @@
 import { supabase } from '../lib/supabase';
+import { useImpersonateStore } from '../stores/impersonateStore';
 
 async function getAuthHeaders(): Promise<HeadersInit> {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  const impersonatedUserId = useImpersonateStore.getState().impersonatedUserId;
+  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  if (impersonatedUserId) headers['x-impersonate'] = impersonatedUserId;
+  return headers;
 }
 
 export async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {

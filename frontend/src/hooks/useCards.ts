@@ -1,10 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../api/client';
+import { useImpersonateStore } from '../stores/impersonateStore';
 import type { Card } from '../types';
 
 export function useCards() {
+  const impersonatedUserId = useImpersonateStore((s) => s.impersonatedUserId);
   return useQuery<Card[]>({
-    queryKey: ['cards'],
+    queryKey: ['cards', impersonatedUserId],
     queryFn: () => apiFetch<Card[]>('/cards'),
   });
 }

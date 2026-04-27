@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   LayoutDashboard,
@@ -20,6 +20,8 @@ import {
 import { useAuth } from './hooks/useAuth';
 import { useAppStore } from './stores/appStore';
 import { useCards } from './hooks/useCards';
+import { useImpersonateStore } from './stores/impersonateStore';
+import { apiFetch } from './api/client';
 import { LoginView } from './components/views/LoginView';
 import { DashboardView } from './components/views/DashboardView';
 import { CollectionView } from './components/views/CollectionView';
@@ -344,6 +346,8 @@ function Header({ onShare, isAdmin }: { onShare: () => void; isAdmin: boolean })
 
           <AddDropdown activeView={activeView} onSelect={handleViewChange} />
 
+          {isAdmin && <ImpersonateSelector />}
+
           <UserMenu />
 
           {/* Mobile Menu Toggle */}
@@ -388,6 +392,111 @@ function Header({ onShare, isAdmin }: { onShare: () => void; isAdmin: boolean })
         )}
       </AnimatePresence>
     </header>
+  );
+}
+
+function ImpersonateBanner() {
+  const { impersonatedEmail, clearImpersonate } = useImpersonateStore();
+  const queryClient = useQueryClient();
+  if (!impersonatedEmail) return null;
+
+  function stop() {
+    clearImpersonate();
+    queryClient.invalidateQueries({ queryKey: ['cards'] });
+  }
+
+  return (
+    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-2.5 rounded-2xl shadow-2xl text-sm font-semibold"
+      style={{ background: 'var(--red, #ef4444)', color: '#fff' }}>
+      <span>Mode admin · {impersonatedEmail}</span>
+      <button onClick={stop} className="underline opacity-80 hover:opacity-100">Quitter</button>
+    </div>
+  );
+}
+
+function ImpersonateSelector() {
+  const [users, setUsers] = useState<{ id: string; email: string }[]>([]);
+  const [open, setOpen] = useState(false);
+  const { impersonatedUserId, setImpersonate, clearImpersonate } = useImpersonateStore();
+  const queryClient = useQueryClient();
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    apiFetch<{ id: string; email: string; created_at: string }[]>('/admin/users')
+      .then(setUsers)
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [open]);
+
+  function select(id: string, email: string) {
+    setImpersonate(id, email);
+    queryClient.invalidateQueries({ queryKey: ['cards'] });
+    setOpen(false);
+  }
+
+  function reset() {
+    clearImpersonate();
+    queryClient.invalidateQueries({ queryKey: ['cards'] });
+    setOpen(false);
+  }
+
+  return (
+    <div ref={ref} className="relative ml-2">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:bg-white/10"
+        style={{
+          background: impersonatedUserId ? 'var(--red, #ef4444)' : 'var(--bg-elevated)',
+          color: impersonatedUserId ? '#fff' : 'var(--text-secondary)',
+          border: '1px solid var(--border)',
+        }}
+        title="Impersonnifier un utilisateur"
+      >
+        <User size={13} />
+        <span className="hidden sm:inline">{impersonatedUserId ? '⚠ Admin' : 'Switch user'}</span>
+        <ChevronDown size={11} className={`transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: 8, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.95 }}
+            className="absolute right-0 top-full mt-2 w-64 glass border-strong rounded-2xl shadow-2xl p-1.5 z-50 max-h-72 overflow-y-auto"
+          >
+            {impersonatedUserId && (
+              <>
+                <button onClick={reset} className="w-full px-3.5 py-2.5 text-left text-sm font-semibold rounded-xl hover:bg-white/5"
+                  style={{ color: 'var(--red, #ef4444)' }}>
+                  ✕ Revenir à mon compte
+                </button>
+                <div className="h-px bg-white/5 my-1 mx-2" />
+              </>
+            )}
+            {users.map((u) => (
+              <button
+                key={u.id}
+                onClick={() => select(u.id, u.email)}
+                className="w-full px-3.5 py-2.5 text-left text-sm rounded-xl hover:bg-white/5 flex items-center gap-2"
+                style={{ color: u.id === impersonatedUserId ? 'var(--accent)' : 'var(--text-primary)' }}
+              >
+                <User size={13} className="shrink-0 opacity-40" />
+                <span className="truncate">{u.email}</span>
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   );
 }
 
@@ -453,6 +562,7 @@ function AppShell() {
         </AnimatePresence>
       </main>
       {showShare && <ShareModal onClose={() => setShowShare(false)} />}
+      {isAdmin && <ImpersonateBanner />}
     </div>
   );
 }
