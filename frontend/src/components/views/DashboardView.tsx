@@ -37,11 +37,11 @@ function Pill({ children, accent }: { children: React.ReactNode; accent?: boolea
 
 function KpiStrip({ stats }: { stats: ReturnType<typeof buildStats> }) {
   const kpis = [
-    { label: 'TOTAL', value: stats.total, icon: Trophy, accent: false },
-    { label: 'À VENDRE', value: stats.aVendre, icon: Tag, accent: stats.aVendre > 0 },
-    { label: 'NUMBERED', value: stats.numbered, icon: Hash, accent: stats.numbered > 0 },
-    { label: 'AUTOS', value: stats.autos, icon: PenTool, accent: stats.autos > 0 },
-    { label: 'VALEUR', value: stats.totalValue > 0 ? `${stats.totalValue}€` : '—', icon: Euro, accent: false },
+    { label: 'Cartes', value: stats.total, icon: Trophy, accent: false },
+    { label: 'À vendre', value: stats.aVendre, icon: Tag, accent: stats.aVendre > 0 },
+    { label: 'Numérotés', value: stats.numbered, icon: Hash, accent: stats.numbered > 0 },
+    { label: 'Autos', value: stats.autos, icon: PenTool, accent: stats.autos > 0 },
+    { label: 'Valeur est.', value: stats.totalValue > 0 ? `${stats.totalValue}€` : '—', icon: Euro, accent: false },
   ];
 
   return (
@@ -97,7 +97,7 @@ function StatusBar({ cards }: { cards: Card[] }) {
       <div className="flex items-center justify-between mb-5 relative z-10">
         <div className="flex items-center gap-2">
           <div className="w-1 h-3 rounded-full bg-[var(--accent)]" />
-          <h3 className="text-sm font-bold tracking-tight text-white">Répartition du stock</h3>
+          <h3 className="text-sm font-bold tracking-tight text-white">Répartition</h3>
         </div>
         <span className="text-xs font-medium text-[var(--text-secondary)] bg-white/5 px-2.5 py-1 rounded-full">
           {total} cartes au total
@@ -201,7 +201,7 @@ function CardRow({ card, onClick }: { card: Card; onClick: () => void }) {
 
       <div className="flex-1 min-w-0">
         <p className="text-sm font-bold truncate text-[var(--text-primary)] group-hover:text-white transition-colors">
-          {card.player ?? 'Sans joueur'}
+          {card.player ?? '—'}
         </p>
         <p className="text-[11px] font-medium truncate mt-0.5 text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]">{sub}</p>
       </div>
@@ -310,7 +310,7 @@ export function DashboardView() {
       <div className="flex-1 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
-          <span className="text-xs font-medium text-[var(--text-muted)]">Analyse des données…</span>
+          <span className="text-xs font-medium text-[var(--text-muted)]">Chargement…</span>
         </div>
       </div>
     );
@@ -354,7 +354,7 @@ export function DashboardView() {
             onClick={() => setActiveView('batch')}
             className="px-8 py-3.5 rounded-2xl text-sm font-bold transition-all glass border-strong hover:bg-white/5 active:scale-95"
           >
-            Import en lot (Bulk)
+            Import en lot
           </button>
         </div>
       </motion.div>
@@ -373,16 +373,16 @@ export function DashboardView() {
 
         {/* Top lists */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <TopList title="Légendes & Stars" items={stats.topPlayers} onSelect={drillPlayer} />
-          <TopList title="Franchises" items={stats.topTeams} onSelect={drillTeam} />
-          <TopList title="Collections (Sets)" items={stats.topSets} onSelect={drillSet} />
-          <TopList title="Générations" items={stats.topYears} onSelect={(y) => { setDrillFilter({ year: y }); setActiveView('collection'); }} />
+          <TopList title="Top joueurs" items={stats.topPlayers} onSelect={drillPlayer} />
+          <TopList title="Équipes" items={stats.topTeams} onSelect={drillTeam} />
+          <TopList title="Collections" items={stats.topSets} onSelect={drillSet} />
+          <TopList title="Années" items={stats.topYears} onSelect={(y) => { setDrillFilter({ year: y }); setActiveView('collection'); }} />
         </div>
 
         {/* Rare pieces + Recent additions */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-10">
           {stats.rare.length > 0 && (
-            <Panel title="Pépites & Raretés" badge={stats.rare.length} icon={Star}>
+            <Panel title="Raretés" badge={stats.rare.length} icon={Star}>
               {stats.rare.map((card) => (
                 <CardRow key={card.id} card={card} onClick={() => setActiveView('collection')} />
               ))}

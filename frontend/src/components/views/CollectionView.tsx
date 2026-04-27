@@ -303,9 +303,8 @@ function GridCard({ card, onClick }: { card: Card; onClick: () => void }) {
             className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
           />
         ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-2">
-            <span className="text-4xl opacity-20">🃏</span>
-            <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Image absente</span>
+          <div className="w-full h-full flex items-center justify-center">
+            <span className="text-4xl opacity-10">🃏</span>
           </div>
         )}
 
@@ -362,8 +361,6 @@ function GridCard({ card, onClick }: { card: Card; onClick: () => void }) {
           </div>
         )}
 
-        <div className="mt-3 flex items-center gap-2">
-        </div>
         <div className="mt-2">
           <AlertChips card={card} limit={2} />
         </div>

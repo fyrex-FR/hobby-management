@@ -114,7 +114,7 @@ function GradingRow({
             <div className="text-2xl font-black italic tracking-tighter" style={{ color: gradeColor(card.grading_grade) }}>
               {card.grading_grade}
             </div>
-            <div className="text-[8px] font-black text-white/20 uppercase tracking-widest">NR-MT</div>
+            <div className="text-[8px] font-black text-white/20 uppercase tracking-widest">{card.grading_company}</div>
           </div>
         )}
         <button
@@ -180,7 +180,7 @@ function GradingModal({
       >
         <div className="p-6 border-b border-white/5">
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-lg font-black text-white">Grading Details</h3>
+            <h3 className="text-lg font-black text-white">Détails grading</h3>
             <button onClick={onClose} className="text-white/40 hover:text-white"><X size={20} /></button>
           </div>
           <p className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest truncate">
@@ -287,19 +287,19 @@ export function GradingView() {
       <div className="max-w-4xl mx-auto px-6 py-10">
         <div className="flex items-center justify-between mb-10">
           <div>
-            <h2 className="text-2xl font-black text-white tracking-tight">Grading Studio</h2>
-            <p className="text-sm text-[var(--text-muted)] font-medium">Suivi de vos soumissions et certifications</p>
+            <h2 className="text-2xl font-black text-white tracking-tight">Grading</h2>
+            <p className="text-sm text-white/30 font-medium">Suivi des soumissions et certifications</p>
           </div>
           {gradingCards.length > 0 && (
             <div className="flex gap-3">
               <div className="panel px-4 py-2 rounded-2xl bg-white/[0.02] border border-white/10 text-center">
-                <div className="text-[10px] font-black text-white/30 uppercase tracking-[0.1em] mb-0.5">Note Moyenne</div>
+                <div className="text-[10px] font-black text-white/30 uppercase tracking-[0.1em] mb-0.5">Note moy.</div>
                 <div className="text-sm font-black text-white tracking-tighter" style={{ color: stats.avgGrade ? gradeColor(stats.avgGrade.toFixed(1)) : 'white' }}>
                   {stats.avgGrade ? stats.avgGrade.toFixed(1) : '—'}
                 </div>
               </div>
               <div className="panel px-4 py-2 rounded-2xl bg-white/[0.02] border border-white/10 text-center">
-                <div className="text-[10px] font-black text-white/30 uppercase tracking-[0.1em] mb-0.5">Total Investi</div>
+                <div className="text-[10px] font-black text-white/30 uppercase tracking-[0.1em] mb-0.5">Investi</div>
                 <div className="text-sm font-black text-[var(--accent)] tracking-tighter">
                   {stats.totalCost.toFixed(0)}€
                 </div>
@@ -335,7 +335,7 @@ export function GradingView() {
             <div className="w-16 h-16 rounded-[24px] bg-white/5 border border-white/10 flex items-center justify-center text-white/20 mb-6">
               <Trophy size={32} />
             </div>
-            <h3 className="text-xl font-black text-white mb-2">Aucun Grading en cours</h3>
+            <h3 className="text-xl font-black text-white mb-2">Aucune carte en grading</h3>
             <p className="text-sm text-[var(--text-muted)] max-w-xs mx-auto leading-relaxed">
               Ajoutez des détails de grading à vos cartes depuis leur fiche détaillée pour les suivre ici.
             </p>
