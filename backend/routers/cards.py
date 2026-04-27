@@ -98,8 +98,6 @@ class CardUpdate(BaseModel):
 
 @router.get("/cards")
 async def list_cards(user: dict = Depends(current_user), x_impersonate: Optional[str] = Header(default=None)):
-    import logging
-    logging.info(f"[cards] user={user.get('email')} x_impersonate={x_impersonate}")
     user_id = resolve_user_id(user, x_impersonate)
     async with httpx.AsyncClient() as client:
         resp = await client.get(
