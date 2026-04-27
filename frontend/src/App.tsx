@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -139,6 +139,73 @@ function UserMenu() {
   );
 }
 
+function AddDropdown({ activeView, onSelect }: { activeView: string; onSelect: (v: any) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const isActive = activeView === 'add_card' || activeView === 'studio' || activeView === 'batch';
+
+  useEffect(() => {
+    if (!open) return;
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [open]);
+
+  const options = [
+    { id: 'add_card', label: 'Ajout rapide', desc: 'Une carte avec IA', icon: Plus },
+    { id: 'studio', label: 'Studio photo', desc: 'Session multi-cartes', icon: ScanLine },
+    { id: 'batch', label: 'Import en lot', desc: 'Glisser-déposer', icon: Upload },
+  ] as const;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 shadow-lg"
+        style={
+          isActive
+            ? { background: 'var(--accent)', color: '#09090B' }
+            : { background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)' }
+        }
+      >
+        <Plus size={18} strokeWidth={3} />
+        <span className="hidden sm:inline">Ajouter</span>
+        <ChevronDown size={13} className={`hidden sm:block transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: 8, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.95 }}
+            className="absolute right-0 top-full mt-2 w-52 glass border-strong rounded-2xl shadow-2xl p-1.5 z-50"
+          >
+            {options.map((opt) => (
+              <button
+                key={opt.id}
+                onClick={() => { onSelect(opt.id); setOpen(false); }}
+                className="flex items-center gap-3 w-full px-3.5 py-2.5 text-left rounded-xl transition-all hover:bg-white/5"
+                style={{ color: activeView === opt.id ? 'var(--accent)' : 'var(--text-primary)' }}
+              >
+                <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${activeView === opt.id ? 'bg-[var(--accent-dim)]' : 'bg-white/5'}`}>
+                  <opt.icon size={14} className={activeView === opt.id ? 'text-[var(--accent)]' : 'text-white/40'} />
+                </div>
+                <div>
+                  <div className="text-sm font-bold leading-none mb-0.5">{opt.label}</div>
+                  <div className="text-[10px] text-white/30">{opt.desc}</div>
+                </div>
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
 function Header({ onShare, isAdmin }: { onShare: () => void; isAdmin: boolean }) {
   const { activeView, setActiveView } = useAppStore();
   const { data: cards = [] } = useCards();
@@ -275,18 +342,7 @@ function Header({ onShare, isAdmin }: { onShare: () => void; isAdmin: boolean })
             </button>
           )}
 
-          <button
-            onClick={() => handleViewChange('add_card')}
-            className="flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 shadow-lg"
-            style={
-              activeView === 'add_card'
-                ? { background: 'var(--accent)', color: '#09090B' }
-                : { background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)' }
-            }
-          >
-            <Plus size={18} strokeWidth={3} />
-            <span className="hidden sm:inline">Ajouter</span>
-          </button>
+          <AddDropdown activeView={activeView} onSelect={handleViewChange} />
 
           <UserMenu />
 
