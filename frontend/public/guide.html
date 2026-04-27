@@ -493,19 +493,26 @@
         <div class="step">
           <div class="step-num">1</div>
           <div class="step-content">
-            <h4>Glissez vos photos</h4>
-            <p>Déposez plusieurs images en une fois dans la zone d'import.</p>
+            <h4>Choisissez la méthode d'appairage</h4>
+            <p>Avant d'importer, choisissez comment recto et verso sont associés (voir ci-dessous).</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">2</div>
           <div class="step-content">
-            <h4>Identification automatique</h4>
-            <p>Chaque carte est analysée par l'IA et enregistrée en brouillon.</p>
+            <h4>Glissez vos photos</h4>
+            <p>Déposez toutes les images en une fois dans la zone d'import.</p>
           </div>
         </div>
         <div class="step">
           <div class="step-num">3</div>
+          <div class="step-content">
+            <h4>Lancez l'analyse</h4>
+            <p>Chaque paire est analysée par l'IA et enregistrée en brouillon.</p>
+          </div>
+        </div>
+        <div class="step">
+          <div class="step-num">4</div>
           <div class="step-content">
             <h4>Revue des brouillons</h4>
             <p>Validez ou corrigez chaque carte depuis la vue Brouillons.</p>
@@ -515,7 +522,42 @@
     </div>
   </div>
 
+  <h3 style="font-size:1rem;font-weight:800;margin:32px 0 16px;letter-spacing:-0.02em">Méthodes d'appairage recto / verso</h3>
+  <div class="grid-2" style="margin-bottom:24px">
+    <div class="card" style="border-color:rgba(245,166,35,0.2)">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <span style="background:rgba(245,166,35,0.1);border:1px solid rgba(245,166,35,0.2);color:var(--accent);font-size:0.7rem;font-weight:800;padding:3px 10px;border-radius:6px;text-transform:uppercase;letter-spacing:0.06em">Consécutif</span>
+      </div>
+      <p style="font-size:0.875rem;color:var(--text-muted);margin-bottom:12px">Les fichiers sont appairés <strong style="color:var(--text)">dans l'ordre alphabétique/numérique</strong> : le 1er fichier = recto carte 1, le 2e = verso carte 1, le 3e = recto carte 2, etc.</p>
+      <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:0.8rem;font-family:monospace;color:var(--text-muted);line-height:1.8">
+        <span style="color:var(--accent)">carte1_001.jpg</span> → recto<br>
+        <span style="color:var(--accent)">carte1_002.jpg</span> → verso<br>
+        <span style="color:#60a5fa">carte2_001.jpg</span> → recto<br>
+        <span style="color:#60a5fa">carte2_002.jpg</span> → verso
+      </div>
+      <p style="font-size:0.8rem;color:var(--text-muted);margin-top:10px">✓ Idéal si vous numérotez vos photos lors de la prise de vue.</p>
+    </div>
+    <div class="card">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <span style="background:rgba(255,255,255,0.05);border:1px solid var(--border);color:var(--text);font-size:0.7rem;font-weight:800;padding:3px 10px;border-radius:6px;text-transform:uppercase;letter-spacing:0.06em">Suffixe</span>
+      </div>
+      <p style="font-size:0.875rem;color:var(--text-muted);margin-bottom:12px">Les fichiers sont appairés <strong style="color:var(--text)">par leur nom</strong> : recto et verso doivent avoir le même nom de base avec un suffixe différent.</p>
+      <div style="background:var(--bg-elevated);border:1px solid var(--border);border-radius:10px;padding:12px;font-size:0.8rem;font-family:monospace;color:var(--text-muted);line-height:1.8">
+        anthony_<span style="color:var(--accent)">recto</span>.jpg + anthony_<span style="color:var(--accent)">verso</span>.jpg<br>
+        luka_<span style="color:var(--accent)">front</span>.jpg + luka_<span style="color:var(--accent)">back</span>.jpg<br>
+        wemby_<span style="color:var(--accent)">face</span>.jpg + wemby_<span style="color:var(--accent)">dos</span>.jpg<br>
+        img_<span style="color:var(--accent)">r</span>.jpg + img_<span style="color:var(--accent)">v</span>.jpg
+      </div>
+      <p style="font-size:0.8rem;color:var(--text-muted);margin-top:10px">✓ Idéal si vous nommez vos photos manuellement ou avec un script.</p>
+    </div>
+  </div>
+
   <div class="tip">
+    <div class="tip-icon">⚠️</div>
+    <p>Si un fichier n'a pas de correspondance (pas de verso, nom mal orthographié…), il apparaît en <strong>orphelin</strong> et ne sera pas traité. Vérifiez le panneau de droite avant de lancer.</p>
+  </div>
+
+  <div class="tip" style="margin-top:12px">
     <div class="tip-icon">💡</div>
     <p>Le bouton <strong>Brouillons</strong> apparaît dans la barre de navigation dès qu'il y a des cartes en attente de validation.</p>
   </div>
