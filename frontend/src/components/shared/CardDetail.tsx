@@ -11,6 +11,8 @@ import {
   Search,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   Image as ImageIcon,
   AlertCircle,
   Clock,
@@ -78,7 +80,7 @@ export function CardDetail({ card, onClose }: Props) {
   const [dragOver, setDragOver] = useState<'front' | 'back' | null>(null);
   const [uploadingImage, setUploadingImage] = useState<'front' | 'back' | null>(null);
   const [showGrading, setShowGrading] = useState(false);
-  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [lightboxSide, setLightboxSide] = useState<'front' | 'back' | null>(null);
   const frontInputRef = useRef<HTMLInputElement>(null);
   const backInputRef = useRef<HTMLInputElement>(null);
   const [fields, setFields] = useState({
@@ -259,7 +261,7 @@ export function CardDetail({ card, onClose }: Props) {
       else backInputRef.current?.click();
       return;
     }
-    setLightboxUrl(url);
+    setLightboxSide(side);
   }
 
   return (
@@ -675,28 +677,77 @@ export function CardDetail({ card, onClose }: Props) {
     </AnimatePresence>
 
     <AnimatePresence>
-    {lightboxUrl && (
-      <div
-        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-xl"
-        onClick={() => setLightboxUrl(null)}
-      >
-        <motion.img
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          exit={{ opacity: 0, scale: 0.9 }}
-          src={lightboxUrl}
-          alt=""
-          className="max-h-[90vh] max-w-[90vw] object-contain rounded-2xl shadow-2xl"
-          onClick={(e) => e.stopPropagation()}
-        />
-        <button
-          onClick={() => setLightboxUrl(null)}
-          className="absolute top-6 right-6 w-10 h-10 flex items-center justify-center rounded-xl bg-white/10 text-white hover:bg-white/20 transition-all"
+    {lightboxSide && (() => {
+      const urls = [card.image_front_url, card.image_back_url].filter(Boolean) as string[];
+      const currentUrl = lightboxSide === 'front' ? card.image_front_url : card.image_back_url;
+      const canPrev = lightboxSide === 'back' && !!card.image_front_url;
+      const canNext = lightboxSide === 'front' && !!card.image_back_url;
+      void urls;
+      return (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-xl"
+          onClick={() => setLightboxSide(null)}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setLightboxSide(null);
+            if (e.key === 'ArrowLeft' && canPrev) setLightboxSide('front');
+            if (e.key === 'ArrowRight' && canNext) setLightboxSide('back');
+          }}
+          tabIndex={0}
+          ref={(el) => el?.focus()}
         >
-          <X size={20} />
-        </button>
-      </div>
-    )}
+          <motion.img
+            key={lightboxSide}
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.95 }}
+            src={currentUrl ?? ''}
+            alt=""
+            className="max-h-[90vh] max-w-[80vw] object-contain rounded-2xl shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+
+          {canPrev && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setLightboxSide('front'); }}
+              className="absolute left-6 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center rounded-2xl bg-white/10 text-white hover:bg-white/20 transition-all"
+            >
+              <ChevronLeft size={24} />
+            </button>
+          )}
+          {canNext && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setLightboxSide('back'); }}
+              className="absolute right-6 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center rounded-2xl bg-white/10 text-white hover:bg-white/20 transition-all"
+            >
+              <ChevronRight size={24} />
+            </button>
+          )}
+
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2">
+            {card.image_front_url && (
+              <button onClick={(e) => { e.stopPropagation(); setLightboxSide('front'); }}
+                className={`w-2 h-2 rounded-full transition-all ${lightboxSide === 'front' ? 'bg-white scale-125' : 'bg-white/30 hover:bg-white/60'}`}
+              />
+            )}
+            {card.image_back_url && (
+              <button onClick={(e) => { e.stopPropagation(); setLightboxSide('back'); }}
+                className={`w-2 h-2 rounded-full transition-all ${lightboxSide === 'back' ? 'bg-white scale-125' : 'bg-white/30 hover:bg-white/60'}`}
+              />
+            )}
+          </div>
+
+          <button
+            onClick={() => setLightboxSide(null)}
+            className="absolute top-6 right-6 w-10 h-10 flex items-center justify-center rounded-xl bg-white/10 text-white hover:bg-white/20 transition-all"
+          >
+            <X size={20} />
+          </button>
+        </motion.div>
+      );
+    })()}
     </AnimatePresence>
     </>
   );
