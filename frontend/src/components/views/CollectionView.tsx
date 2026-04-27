@@ -26,7 +26,7 @@ import { GradingBadge } from '../shared/GradingBadge';
 import { StatusBadge } from '../shared/StatusBadge';
 import { CardDetail } from '../shared/CardDetail';
 import { RookieBadge } from '../shared/RookieBadge';
-import { AlertChips } from '../shared/CardSignals';
+
 import { normalizeParallelName } from '../../lib/cardQuality';
 
 type FilterTab = 'all' | 'a_vendre' | 'vendu';
@@ -361,9 +361,6 @@ function GridCard({ card, onClick }: { card: Card; onClick: () => void }) {
           </div>
         )}
 
-        <div className="mt-2">
-          <AlertChips card={card} limit={2} />
-        </div>
       </div>
     </motion.button>
   );
