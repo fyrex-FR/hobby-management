@@ -89,7 +89,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function UserMenu({ onShare }: { onShare: () => void }) {
+function UserMenu() {
   const [open, setOpen] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
 
@@ -113,14 +113,6 @@ function UserMenu({ onShare }: { onShare: () => void }) {
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
               className="absolute right-0 top-full mt-2 rounded-2xl overflow-hidden z-20 w-52 glass border-strong shadow-xl p-1"
             >
-              <button
-                onClick={() => { onShare(); setOpen(false); }}
-                className="w-full px-4 py-2.5 text-left text-sm transition-colors hover:bg-white/5 rounded-xl flex items-center gap-3"
-                style={{ color: 'var(--text-primary)' }}
-              >
-                <Share2 size={15} className="text-[var(--text-secondary)]" />
-                Partager ma collection
-              </button>
               <button
                 onClick={() => { setShowChangePassword(true); setOpen(false); }}
                 className="w-full px-4 py-2.5 text-left text-sm transition-colors hover:bg-white/5 rounded-xl flex items-center gap-3"
@@ -255,6 +247,15 @@ function Header({ onShare, isAdmin }: { onShare: () => void; isAdmin: boolean })
                       {tool.label}
                     </button>
                   ))}
+                  <div className="h-px bg-white/5 my-1 mx-2" />
+                  <button
+                    onClick={() => { onShare(); setToolsOpen(false); }}
+                    className="flex items-center gap-3 w-full px-3.5 py-2.5 text-left text-sm font-medium rounded-xl transition-all hover:bg-white/5"
+                    style={{ color: 'var(--text-primary)' }}
+                  >
+                    <Share2 size={16} className="text-[var(--text-secondary)]" />
+                    Partager ma collection
+                  </button>
                 </motion.div>
               )}
             </AnimatePresence>
@@ -287,7 +288,7 @@ function Header({ onShare, isAdmin }: { onShare: () => void; isAdmin: boolean })
             <span className="hidden sm:inline">Ajouter</span>
           </button>
 
-          <UserMenu onShare={onShare} />
+          <UserMenu />
 
           {/* Mobile Menu Toggle */}
           <button
