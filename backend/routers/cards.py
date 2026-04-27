@@ -1,10 +1,19 @@
 import os
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
 from typing import Optional
 import httpx
 
 from .auth import current_user
+
+ADMIN_EMAIL = "xavier.andrieux@gmail.com"
+
+
+def resolve_user_id(user: dict, x_impersonate: Optional[str] = None) -> str:
+    email = user.get("email") or ""
+    if x_impersonate and email == ADMIN_EMAIL:
+        return x_impersonate
+    return user["sub"]
 
 router = APIRouter()
 
@@ -88,8 +97,10 @@ class CardUpdate(BaseModel):
 
 
 @router.get("/cards")
-async def list_cards(user: dict = Depends(current_user)):
-    user_id = user["sub"]
+async def list_cards(user: dict = Depends(current_user), x_impersonate: Optional[str] = Header(default=None)):
+    import logging
+    logging.info(f"[cards] user={user.get('email')} x_impersonate={x_impersonate}")
+    user_id = resolve_user_id(user, x_impersonate)
     async with httpx.AsyncClient() as client:
         resp = await client.get(
             f"{SUPABASE_URL}/rest/v1/cards",
