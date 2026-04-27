@@ -147,7 +147,7 @@ function UserMenu({ onShare }: { onShare: () => void }) {
   );
 }
 
-function Header({ onShare }: { onShare: () => void }) {
+function Header({ onShare, isAdmin }: { onShare: () => void; isAdmin: boolean }) {
   const { activeView, setActiveView } = useAppStore();
   const { data: cards = [] } = useCards();
   const draftCount = cards.filter((c) => c.status === 'draft').length;
@@ -165,7 +165,7 @@ function Header({ onShare }: { onShare: () => void }) {
     { id: 'grading', label: 'Grading', icon: GraduationCap },
     { id: 'studio', label: 'Studio photo', icon: ScanLine },
     { id: 'batch', label: 'Import lot', icon: Upload },
-    { id: 'compare', label: 'Comparer IA', icon: Database },
+    ...(isAdmin ? [{ id: 'compare' as const, label: 'Comparer IA', icon: Database }] : []),
   ] as const;
 
   // Auto-close tools when switching views
@@ -367,9 +367,11 @@ function AppShell() {
 
   if (!session) return <LoginView />;
 
+  const isAdmin = session.user.email === 'xavier.andrieux@gmail.com';
+
   return (
     <div className="flex flex-col h-screen overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
-      <Header onShare={() => setShowShare(true)} />
+      <Header onShare={() => setShowShare(true)} isAdmin={isAdmin} />
       <main className="flex-1 overflow-hidden relative">
         <AnimatePresence mode="wait">
           <motion.div
@@ -387,7 +389,7 @@ function AppShell() {
             {activeView === 'batch' && <BatchView />}
             {activeView === 'review' && <ReviewView />}
             {activeView === 'sales' && <SalesView />}
-            {activeView === 'compare' && <CompareView />}
+            {activeView === 'compare' && isAdmin && <CompareView />}
             {activeView === 'players' && <PlayersView />}
             {activeView === 'grading' && <GradingView />}
           </motion.div>
