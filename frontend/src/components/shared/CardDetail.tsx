@@ -30,7 +30,6 @@ import { EbaySoldItems } from './EbaySoldItems';
 import { supabase } from '../../lib/supabase';
 import { compressImage } from '../../lib/storage';
 import { RookieBadge } from './RookieBadge';
-import { ConfidenceBadge } from './CardSignals';
 import { normalizeParallelName } from '../../lib/cardQuality';
 
 
@@ -380,7 +379,7 @@ export function CardDetail({ card, onClose }: Props) {
                 <StatusBadge status={card.status} />
                 {card.is_rookie && <RookieBadge compact />}
                 {card.grading_company && <GradingBadge card={card} />}
-                <ConfidenceBadge card={card} />
+
                 {card.numbered && (
                   <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--accent-dim)] text-[var(--accent)] text-[10px] font-black border border-[var(--border-accent)]">
                     <Hash size={10} />
