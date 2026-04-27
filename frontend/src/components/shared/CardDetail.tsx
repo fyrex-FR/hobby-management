@@ -78,6 +78,7 @@ export function CardDetail({ card, onClose }: Props) {
   const [dragOver, setDragOver] = useState<'front' | 'back' | null>(null);
   const [uploadingImage, setUploadingImage] = useState<'front' | 'back' | null>(null);
   const [showGrading, setShowGrading] = useState(false);
+  const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
   const frontInputRef = useRef<HTMLInputElement>(null);
   const backInputRef = useRef<HTMLInputElement>(null);
   const [fields, setFields] = useState({
@@ -258,10 +259,11 @@ export function CardDetail({ card, onClose }: Props) {
       else backInputRef.current?.click();
       return;
     }
-    // TODO: Add lightbox if needed, for now we just show the detail
+    setLightboxUrl(url);
   }
 
   return (
+    <>
     <AnimatePresence>
       <motion.div
         initial={{ opacity: 0 }}
@@ -671,5 +673,31 @@ export function CardDetail({ card, onClose }: Props) {
         </motion.div>
       </motion.div>
     </AnimatePresence>
+
+    <AnimatePresence>
+    {lightboxUrl && (
+      <div
+        className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-xl"
+        onClick={() => setLightboxUrl(null)}
+      >
+        <motion.img
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.9 }}
+          src={lightboxUrl}
+          alt=""
+          className="max-h-[90vh] max-w-[90vw] object-contain rounded-2xl shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        />
+        <button
+          onClick={() => setLightboxUrl(null)}
+          className="absolute top-6 right-6 w-10 h-10 flex items-center justify-center rounded-xl bg-white/10 text-white hover:bg-white/20 transition-all"
+        >
+          <X size={20} />
+        </button>
+      </div>
+    )}
+    </AnimatePresence>
+    </>
   );
 }
