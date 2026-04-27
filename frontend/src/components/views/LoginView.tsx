@@ -10,8 +10,8 @@ function Logo() {
       <div
         className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl font-black mb-4"
         style={{ background: 'var(--accent)', color: '#0d0c0b', boxShadow: '0 0 40px var(--accent-glow)' }}
-      >N</div>
-      <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>NBA Card Studio</h1>
+      >C</div>
+      <h1 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>CardVaults</h1>
       <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Gère ta collection</p>
     </div>
   );

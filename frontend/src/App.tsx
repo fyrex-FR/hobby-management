@@ -182,11 +182,11 @@ function Header({ onShare, isAdmin }: { onShare: () => void; isAdmin: boolean })
               boxShadow: '0 0 25px var(--accent-glow)',
             }}
           >
-            N
+            C
           </div>
           <div className="hidden sm:block text-left">
             <div className="text-sm font-bold leading-none text-white tracking-tight">
-              NBA Card <span className="text-[var(--accent)]">Studio</span>
+              Card<span className="text-[var(--accent)]">Vaults</span>
             </div>
             <div className="text-[10px] mt-1 font-medium text-[var(--text-muted)]">
               {cards.length} carte{cards.length !== 1 ? 's' : ''}

@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from routers import auth, cards, identify, upload, compare, vinted, ebay, share
 
 _debug = os.getenv("DEBUG", "false").lower() == "true"
-app = FastAPI(title="NBA Card Studio API", docs_url="/docs" if _debug else None, redoc_url=None)
+app = FastAPI(title="CardVaults API", docs_url="/docs" if _debug else None, redoc_url=None)
 
 app.add_middleware(
     CORSMiddleware,

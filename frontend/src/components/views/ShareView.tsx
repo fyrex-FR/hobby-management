@@ -529,8 +529,8 @@ export function ShareView({ token }: { token: string }) {
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-8">
           <div>
             <div className="flex items-center gap-3 mb-6 opacity-40 hover:opacity-100 transition-opacity">
-              <div className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center text-[var(--accent)] font-black text-xs">N</div>
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white">NBA Card Studio</span>
+              <div className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center text-[var(--accent)] font-black text-xs">C</div>
+              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white">CardVaults</span>
             </div>
             <h1 className="text-3xl font-black text-white tracking-tight mb-3">
               {data.title || FILTER_LABELS[data.filter] || 'Ma collection'}
@@ -687,7 +687,7 @@ export function ShareView({ token }: { token: string }) {
             <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Public Showcase</span>
           </div>
           <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest">
-            Powered by <span className="text-white/40">NBA Card Studio</span> v2.0
+            Powered by <span className="text-white/40">CardVaults</span>
           </p>
         </div>
       </footer>
