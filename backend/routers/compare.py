@@ -8,7 +8,6 @@ import httpx
 from .auth import current_user
 from services.claude import identify_haiku
 from services.gemini import identify_gemini
-from services.openclaw import identify_openclaw
 
 router = APIRouter()
 
@@ -30,7 +29,6 @@ class CompareRequest(BaseModel):
     back_base64: str
     front_url: Optional[str] = None
     back_url: Optional[str] = None
-    include_openclaw: bool = False
 
 
 class ScoreRequest(BaseModel):
@@ -41,22 +39,12 @@ class ScoreRequest(BaseModel):
 
 @router.post("/compare")
 async def compare(body: CompareRequest, user: dict = Depends(current_user)):
-    """Run AI models in parallel on the same card images and store the Haiku/Gemini result.
+    """Run Haiku and Gemini Flash in parallel on the same card images and store the result."""
 
-    Set include_openclaw=true to also call the private OpenClaw proxy for side-by-side testing.
-    OpenClaw output is returned to the frontend but not stored until the Supabase schema is extended.
-    """
+    haiku_task = identify_haiku(body.front_base64, body.back_base64)
+    gemini_task = identify_gemini(body.front_base64, body.back_base64)
 
-    tasks = [
-        identify_haiku(body.front_base64, body.back_base64),
-        identify_gemini(body.front_base64, body.back_base64),
-    ]
-    if body.include_openclaw:
-        tasks.append(identify_openclaw(body.front_base64, body.back_base64))
-
-    outputs = await asyncio.gather(*tasks)
-    haiku_out, gemini_out = outputs[0], outputs[1]
-    openclaw_out = outputs[2] if body.include_openclaw else None
+    haiku_out, gemini_out = await asyncio.gather(haiku_task, gemini_task)
 
     row = {
         "user_id": user["sub"],
@@ -85,7 +73,7 @@ async def compare(body: CompareRequest, user: dict = Depends(current_user)):
     saved = resp.json()
     record = saved[0] if isinstance(saved, list) else saved
 
-    response = {
+    return {
         "id": record["id"],
         "haiku": {
             **(haiku_out["result"] or {}),
@@ -104,18 +92,6 @@ async def compare(body: CompareRequest, user: dict = Depends(current_user)):
             },
         },
     }
-
-    if openclaw_out is not None:
-        response["openclaw"] = {
-            **(openclaw_out["result"] or {}),
-            "_meta": {
-                "latency_ms": openclaw_out["latency_ms"],
-                "cost_usd": openclaw_out["cost_usd"],
-                "error": openclaw_out["error"],
-            },
-        }
-
-    return response
 
 
 @router.post("/compare/{comparison_id}/score")
