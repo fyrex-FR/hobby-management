@@ -17,10 +17,6 @@ function send(res, status, body) {
   res.end(text);
 }
 
-function log(...args) {
-  console.log(new Date().toISOString(), ...args);
-}
-
 function readJson(req) {
   return new Promise((resolve, reject) => {
     let body = '';
@@ -119,8 +115,6 @@ const server = http.createServer(async (req, res) => {
       return send(res, 401, { error: 'unauthorized' });
     }
 
-    const started = Date.now();
-    log('POST /identify start', { remote: req.socket.remoteAddress });
     const body = await readJson(req);
     const tmp = await mkdtemp(join(tmpdir(), 'card-openclaw-'));
     try {
@@ -132,17 +126,15 @@ const server = http.createServer(async (req, res) => {
       const prompt = `${body.system_prompt || ''}\n\nYou receive two images: image 1 is the FRONT of the card, image 2 is the BACK. Return ONLY the final JSON object, no markdown.`;
       const stdout = await runOpenClaw(front, back, prompt);
       const result = extractResult(stdout);
-      log('POST /identify ok', { latency_ms: Date.now() - started, keys: result && typeof result === 'object' ? Object.keys(result) : [] });
       return send(res, 200, { result, cost_usd: 0 });
     } finally {
       await rm(tmp, { recursive: true, force: true });
     }
   } catch (err) {
-    log('POST /identify error', String(err?.message || err));
     return send(res, 502, { error: String(err?.message || err) });
   }
 });
 
 server.listen(PORT, HOST, () => {
-  log(`OpenClaw vision proxy listening on http://${HOST}:${PORT} using ${MODEL}`);
+  console.log(`OpenClaw vision proxy listening on http://${HOST}:${PORT} using ${MODEL}`);
 });

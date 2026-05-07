@@ -106,16 +106,12 @@ async def compare(body: CompareRequest, user: dict = Depends(current_user)):
     }
 
     if openclaw_out is not None:
-        openclaw_result = openclaw_out["result"] or {}
-        openclaw_error = openclaw_out["error"]
-        if not openclaw_result and not openclaw_error:
-            openclaw_error = "OpenClaw returned an empty result"
         response["openclaw"] = {
-            **openclaw_result,
+            **(openclaw_out["result"] or {}),
             "_meta": {
                 "latency_ms": openclaw_out["latency_ms"],
                 "cost_usd": openclaw_out["cost_usd"],
-                "error": openclaw_error,
+                "error": openclaw_out["error"],
             },
         }
 
