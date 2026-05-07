@@ -53,63 +53,27 @@ function stripFence(text) {
   return raw;
 }
 
-function collectStrings(value, out = []) {
-  if (typeof value === 'string') {
-    if (value.trim()) out.push(value.trim());
-    return out;
-  }
-  if (Array.isArray(value)) {
-    for (const item of value) collectStrings(item, out);
-    return out;
-  }
-  if (value && typeof value === 'object') {
-    // Prefer likely model-output fields before walking metadata fields.
-    for (const key of ['result', 'text', 'content', 'description', 'output', 'message']) {
-      if (key in value) collectStrings(value[key], out);
-    }
-    for (const [key, item] of Object.entries(value)) {
-      if (!['result', 'text', 'content', 'description', 'output', 'message'].includes(key)) {
-        collectStrings(item, out);
-      }
-    }
-  }
-  return out;
-}
-
-function tryParseCardJson(text) {
-  const raw = stripFence(text);
-  try { return JSON.parse(raw); } catch {}
-
-  const start = raw.indexOf('{');
-  const end = raw.lastIndexOf('}');
-  if (start >= 0 && end > start) {
-    return JSON.parse(raw.slice(start, end + 1));
-  }
-  throw new Error('No JSON object found in model output');
-}
-
-function looksLikeCardResult(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  return ['player', 'team', 'year', 'brand', 'set', 'parallel', 'card_number', 'card_type'].some(key => key in value);
-}
-
 function extractResult(stdout) {
   const raw = stdout.trim();
   let payload;
   try { payload = JSON.parse(raw); }
-  catch { return tryParseCardJson(raw); }
+  catch { payload = { result: raw }; }
 
-  if (looksLikeCardResult(payload)) return payload;
-
-  const candidates = collectStrings(payload);
-  for (const text of candidates) {
-    try {
-      const parsed = tryParseCardJson(text);
-      if (looksLikeCardResult(parsed)) return parsed;
-    } catch {}
+  let text = '';
+  if (payload && typeof payload === 'object') {
+    for (const key of ['result', 'text', 'content', 'description', 'output']) {
+      if (typeof payload[key] === 'string' && payload[key].trim()) {
+        text = payload[key].trim();
+        break;
+      }
+    }
+    if (!text) text = JSON.stringify(payload);
+  } else {
+    text = String(payload);
   }
 
-  throw new Error(`Could not find card JSON in OpenClaw output; top-level keys=${payload && typeof payload === 'object' ? Object.keys(payload).join(',') : typeof payload}`);
+  text = stripFence(text);
+  return JSON.parse(text);
 }
 
 function runOpenClaw(frontPath, backPath, prompt) {
