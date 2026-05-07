@@ -43,6 +43,7 @@ interface CompareResponse {
   id: string;
   haiku: CardResult;
   gemini: CardResult;
+  openclaw?: CardResult;
 }
 
 interface StatsResponse {
@@ -120,6 +121,7 @@ function ResultColumn({
   other,
   winner,
   onScore,
+  canScore = true,
 }: {
   label: string;
   color: string;
@@ -127,6 +129,7 @@ function ResultColumn({
   other: CardResult;
   winner: string | null;
   onScore: () => void;
+  canScore?: boolean;
 }) {
   const isWinner = winner === label.toLowerCase();
   const hasError = !!result._meta.error;
@@ -185,7 +188,7 @@ function ResultColumn({
       )}
 
       <AnimatePresence>
-        {!hasError && !winner && (
+        {!hasError && !winner && canScore && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="p-4 pt-0">
             <button
               onClick={onScore}
@@ -308,7 +311,7 @@ export function CompareView() {
       const [frontB64, backB64] = await Promise.all([blobToB64(frontBlob), blobToB64(backBlob)]);
       const res = await apiFetch<CompareResponse>('/compare', {
         method: 'POST',
-        body: JSON.stringify({ front_base64: frontB64, back_base64: backB64 }),
+        body: JSON.stringify({ front_base64: frontB64, back_base64: backB64, include_openclaw: true }),
       });
       setResult(res);
       await loadStats();
@@ -422,6 +425,17 @@ export function CompareView() {
                   winner={winner}
                   onScore={() => handleScore('gemini')}
                 />
+                {result.openclaw && (
+                  <ResultColumn
+                    label="Jarvis"
+                    color="#A855F7"
+                    result={result.openclaw}
+                    other={result.gemini}
+                    winner={winner}
+                    onScore={() => {}}
+                    canScore={false}
+                  />
+                )}
               </div>
             )}
 
