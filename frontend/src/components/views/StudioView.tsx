@@ -31,12 +31,19 @@ const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
 type CaptureSide = 'front' | 'back';
 type StudioStep = 'front' | 'back' | 'ready' | 'saving';
+type CaptureMode = 'per_card' | 'halves';
+type HalvesPhase = 'front' | 'back';
 type CapturedPair = {
   id: string;
   frontName: string;
   backName: string;
   imageFrontUrl: string;
   imageBackUrl: string;
+};
+type FrontStackItem = {
+  cardId: string;
+  frontName: string;
+  imageFrontUrl: string;
 };
 
 type ImageCaptureLike = {
@@ -151,6 +158,10 @@ export function StudioView() {
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [currentSession, setCurrentSession] = useState<StudioSessionSummary | null>(null);
   const [sessionHistory, setSessionHistory] = useState<StudioSessionSummary[]>([]);
+  const [captureMode, setCaptureMode] = useState<CaptureMode>('per_card');
+  const [halvesPhase, setHalvesPhase] = useState<HalvesPhase>('front');
+  const [frontStack, setFrontStack] = useState<FrontStackItem[]>([]);
+  const [backIndex, setBackIndex] = useState(0);
 
   const identify = useIdentify();
   const createCard = useCreateCard();
@@ -220,6 +231,9 @@ export function StudioView() {
     resetCurrentPair();
     setCapturedPairs([]);
     setSaveMessage('');
+    setHalvesPhase('front');
+    setFrontStack([]);
+    setBackIndex(0);
   }
 
   function ensureSession() {
@@ -230,17 +244,28 @@ export function StudioView() {
     return session;
   }
 
+  async function takePhoto(side: CaptureSide): Promise<File> {
+    if (!videoRef.current) throw new Error('Flux caméra indisponible');
+    const track = streamRef.current?.getVideoTracks()[0] ?? null;
+    return (
+      (track ? await mediaTrackToFile(track, side) : null) ??
+      (await canvasToFile(videoRef.current, side))
+    );
+  }
+
   async function handleCapture() {
     if (!videoRef.current) return;
     setSaveError('');
     setSaveMessage('');
 
+    if (captureMode === 'halves') {
+      if (halvesPhase === 'front') return captureHalvesFront();
+      return captureHalvesBack();
+    }
+
     try {
       const side: CaptureSide = step === 'back' ? 'back' : 'front';
-      const track = streamRef.current?.getVideoTracks()[0] ?? null;
-      const file =
-        (track ? await mediaTrackToFile(track, side) : null) ??
-        await canvasToFile(videoRef.current, side);
+      const file = await takePhoto(side);
 
       if (side === 'front') {
         setFrontFile(file);
@@ -326,6 +351,121 @@ export function StudioView() {
       setSaveError(message);
       setStep('ready');
     }
+  }
+
+  // ── Mode lot : tous les recto puis tous les verso ──────────────────────────
+
+  async function captureHalvesFront() {
+    setStep('saving');
+    setSaveError('');
+    setSaveMessage('Recto : création du brouillon…');
+    let createdCardId: string | null = null;
+
+    try {
+      const file = await takePhoto('front');
+      const session = ensureSession();
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) throw new Error('Non authentifié');
+
+      const newCard = await createCard.mutateAsync({ status: 'draft' });
+      createdCardId = newCard.id;
+
+      setSaveMessage('Upload du recto…');
+      const imageFrontUrl = await uploadViaBackend(file, newCard.id, token, 'front');
+      await updateCard.mutateAsync({ id: newCard.id, image_front_url: imageFrontUrl });
+
+      setFrontStack((prev) => [
+        ...prev,
+        { cardId: newCard.id, frontName: file.name, imageFrontUrl },
+      ]);
+      const updated = updateStudioSession(session.id, (draft) => ({
+        ...draft,
+        capturedCount: draft.capturedCount + 1,
+        cardIds: [...draft.cardIds, newCard.id],
+      }));
+      if (updated) setCurrentSession(updated);
+      setSessionHistory(loadStudioSessions());
+      setStep('front');
+      setSaveMessage('Recto enregistré. Continue ou passe aux verso.');
+    } catch (error) {
+      const message = (error as Error).message;
+      if (createdCardId) {
+        try {
+          await deleteCard.mutateAsync(createdCardId);
+        } catch {
+          /* le brouillon recto-seul reste, sera visible en revue */
+        }
+      }
+      setSaveError(message);
+      setStep('front');
+    }
+  }
+
+  function goToBackPhase() {
+    if (frontStack.length === 0) return;
+    setBackIndex(0);
+    setHalvesPhase('back');
+    setSaveError('');
+    setSaveMessage('Capture les verso dans le même ordre que les recto.');
+  }
+
+  async function removeLastFront() {
+    const last = frontStack[frontStack.length - 1];
+    if (!last) return;
+    await removePair(last.cardId);
+    setFrontStack((prev) => prev.slice(0, -1));
+  }
+
+  async function captureHalvesBack() {
+    const target = frontStack[backIndex];
+    if (!target) return;
+
+    setStep('saving');
+    setSaveError('');
+    setSaveMessage(`Verso ${backIndex + 1}/${frontStack.length} : upload…`);
+
+    try {
+      const file = await takePhoto('back');
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) throw new Error('Non authentifié');
+
+      const imageBackUrl = await uploadViaBackend(file, target.cardId, token, 'back');
+      await updateCard.mutateAsync({ id: target.cardId, image_back_url: imageBackUrl });
+
+      setCapturedPairs((prev) => [
+        ...prev,
+        {
+          id: target.cardId,
+          frontName: target.frontName,
+          backName: file.name,
+          imageFrontUrl: target.imageFrontUrl,
+          imageBackUrl,
+        },
+      ]);
+      const nextIndex = backIndex + 1;
+      setBackIndex(nextIndex);
+      setStep('front');
+      if (nextIndex >= frontStack.length) {
+        setSaveMessage('Tous les verso capturés. Tu peux traiter le lot.');
+      } else {
+        setSaveMessage(`Verso ${backIndex + 1} enregistré.`);
+      }
+    } catch (error) {
+      setSaveError((error as Error).message);
+      setStep('front');
+    }
+  }
+
+  function undoLastBack() {
+    if (backIndex === 0) return;
+    const prevIndex = backIndex - 1;
+    const undone = frontStack[prevIndex];
+    setCapturedPairs((prev) => prev.filter((pair) => pair.id !== undone.cardId));
+    setBackIndex(prevIndex);
+    setSaveError('');
+    setSaveMessage(`Reprends le verso ${prevIndex + 1}.`);
   }
 
   async function removePair(id: string) {
@@ -444,26 +584,58 @@ export function StudioView() {
     updateCard.isPending ||
     deleteCard.isPending;
 
-  const primaryDisabled = !!cameraError || !cameraReady || isBusy;
-  const primaryAction =
-    step === 'ready'
+  const halvesBackDone =
+    captureMode === 'halves' && halvesPhase === 'back' && backIndex >= frontStack.length;
+  const primaryDisabled =
+    !!cameraError || !cameraReady || isBusy || halvesBackDone;
+
+  const primaryAction = (() => {
+    if (captureMode === 'halves') {
+      if (halvesPhase === 'front') {
+        return { label: `Capturer le recto${frontStack.length ? ` (${frontStack.length})` : ''}`, icon: Camera, onClick: handleCapture };
+      }
+      if (halvesBackDone) {
+        return { label: 'Tous les verso capturés', icon: CheckCircle2, onClick: () => {} };
+      }
+      return { label: `Capturer le verso (${backIndex + 1}/${frontStack.length})`, icon: Camera, onClick: handleCapture };
+    }
+    return step === 'ready'
       ? { label: 'Enregistrer et carte suivante', icon: Archive, onClick: queueCurrentPair }
       : {
           label: step === 'front' ? 'Capturer le recto' : 'Capturer le verso',
           icon: Camera,
           onClick: handleCapture,
         };
+  })();
 
-  const stepLabel =
-    step === 'front'
+  const stepLabel = (() => {
+    if (captureMode === 'halves') {
+      if (step === 'saving') return 'ENREGISTREMENT';
+      if (halvesPhase === 'front') return `RECTO ${frontStack.length + 1}`;
+      return halvesBackDone ? 'TERMINÉ' : `VERSO ${backIndex + 1}/${frontStack.length}`;
+    }
+    return step === 'front'
       ? 'RECTO'
       : step === 'back'
         ? 'VERSO'
         : step === 'ready'
           ? 'ENREGISTRE'
           : 'ENREGISTREMENT';
+  })();
 
   const lotCount = capturedPairs.length;
+  const sessionStarted =
+    capturedPairs.length > 0 || frontStack.length > 0 || !!frontFile || !!backFile;
+
+  function switchMode(mode: CaptureMode) {
+    if (mode === captureMode || sessionStarted || isBusy) return;
+    setCaptureMode(mode);
+    resetCurrentPair();
+    setHalvesPhase('front');
+    setBackIndex(0);
+    setSaveMessage('');
+    setSaveError('');
+  }
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -484,7 +656,7 @@ export function StudioView() {
         return;
       }
 
-      if (event.key === 'Backspace' && capturedPairs.length > 0 && step === 'front') {
+      if (event.key === 'Backspace' && captureMode === 'per_card' && capturedPairs.length > 0 && step === 'front') {
         event.preventDefault();
         removePair(capturedPairs[capturedPairs.length - 1].id);
       }
@@ -492,7 +664,7 @@ export function StudioView() {
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [capturedPairs, isBusy, primaryDisabled, primaryAction, step]);
+  }, [capturedPairs, isBusy, primaryDisabled, primaryAction, step, captureMode]);
 
   return (
     <div className="flex-1 overflow-auto bg-[radial-gradient(circle_at_50%_-20%,_var(--accent-dim)_0%,_transparent_70%)]">
@@ -517,14 +689,39 @@ export function StudioView() {
             </div>
           </div>
 
-          <button
-            onClick={() => setFacingMode((value) => (value === 'environment' ? 'user' : 'environment'))}
-            className="inline-flex items-center justify-center gap-2 self-start sm:self-auto rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-white/10"
-            disabled={isBusy}
-          >
-            <RefreshCw size={16} />
-            Changer caméra
-          </button>
+          <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+            <div
+              className="inline-flex rounded-xl border border-white/10 bg-white/5 p-1"
+              title={sessionStarted ? 'Termine ou réinitialise le lot pour changer de mode' : undefined}
+            >
+              {([
+                { id: 'per_card', label: 'Carte par carte' },
+                { id: 'halves', label: 'Recto puis verso' },
+              ] as { id: CaptureMode; label: string }[]).map((opt) => (
+                <button
+                  key={opt.id}
+                  onClick={() => switchMode(opt.id)}
+                  disabled={sessionStarted || isBusy}
+                  className={`rounded-lg px-3 py-2 text-xs font-bold transition-all disabled:cursor-not-allowed ${
+                    captureMode === opt.id
+                      ? 'bg-[var(--accent)] text-[#0d0c0b]'
+                      : 'text-white/60 hover:text-white disabled:opacity-40'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={() => setFacingMode((value) => (value === 'environment' ? 'user' : 'environment'))}
+              className="inline-flex items-center justify-center gap-2 self-start sm:self-auto rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-white/10"
+              disabled={isBusy}
+            >
+              <RefreshCw size={16} />
+              Changer caméra
+            </button>
+          </div>
         </div>
 
         <div className="mb-6 grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_380px]">
@@ -589,50 +786,124 @@ export function StudioView() {
 
           <aside className="space-y-4 sm:space-y-5">
             <div className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-4 sm:p-5">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Paire</div>
-                  <div className="mt-1 text-sm font-semibold text-white">
-                    Recto / Verso {capturedPairs.length > 0 ? `• ${capturedPairs.length} en lot` : ''}
+              {captureMode === 'per_card' ? (
+                <>
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Paire</div>
+                      <div className="mt-1 text-sm font-semibold text-white">
+                        Recto / Verso {capturedPairs.length > 0 ? `• ${capturedPairs.length} en lot` : ''}
+                      </div>
+                    </div>
+                    {(frontFile || backFile) && (
+                      <button
+                        onClick={resetCurrentPair}
+                        disabled={isBusy}
+                        className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] sm:text-xs font-bold text-white/75 transition-all hover:bg-white/10"
+                      >
+                        <RotateCcw size={14} />
+                        Reset paire
+                      </button>
+                    )}
                   </div>
-                </div>
-                {(frontFile || backFile) && (
-                  <button
-                    onClick={resetCurrentPair}
-                    disabled={isBusy}
-                    className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] sm:text-xs font-bold text-white/75 transition-all hover:bg-white/10"
-                  >
-                    <RotateCcw size={14} />
-                    Reset paire
-                  </button>
-                )}
-              </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <PreviewCard label="Recto" file={frontFile} active={step === 'front'} />
-                <PreviewCard label="Verso" file={backFile} active={step === 'back'} />
-              </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <PreviewCard label="Recto" file={frontFile} active={step === 'front'} />
+                    <PreviewCard label="Verso" file={backFile} active={step === 'back'} />
+                  </div>
 
-              <div className="mt-3 flex gap-3">
-                {frontFile && (
+                  <div className="mt-3 flex gap-3">
+                    {frontFile && (
+                      <button
+                        onClick={() => recapture('front')}
+                        disabled={isBusy}
+                        className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs sm:text-sm font-semibold text-white/80 transition-all hover:bg-white/10"
+                      >
+                        Reprendre recto
+                      </button>
+                    )}
+                    {backFile && (
+                      <button
+                        onClick={() => recapture('back')}
+                        disabled={isBusy}
+                        className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs sm:text-sm font-semibold text-white/80 transition-all hover:bg-white/10"
+                      >
+                        Reprendre verso
+                      </button>
+                    )}
+                  </div>
+                </>
+              ) : halvesPhase === 'front' ? (
+                <>
+                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Phase 1 — Recto</div>
+                  <div className="mt-1 text-sm font-semibold text-white">
+                    {frontStack.length} recto capturé{frontStack.length > 1 ? 's' : ''}
+                  </div>
+                  <p className="mt-2 text-xs text-white/45">
+                    Photographie tous les recto dans l'ordre, puis passe aux verso.
+                  </p>
                   <button
-                    onClick={() => recapture('front')}
-                    disabled={isBusy}
-                    className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs sm:text-sm font-semibold text-white/80 transition-all hover:bg-white/10"
+                    onClick={goToBackPhase}
+                    disabled={frontStack.length === 0 || isBusy}
+                    className="mt-4 w-full rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent-dim)] px-4 py-3 text-sm font-bold text-[var(--accent)] transition-all hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
                   >
-                    Reprendre recto
+                    Passer aux verso ({frontStack.length})
                   </button>
-                )}
-                {backFile && (
-                  <button
-                    onClick={() => recapture('back')}
-                    disabled={isBusy}
-                    className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs sm:text-sm font-semibold text-white/80 transition-all hover:bg-white/10"
-                  >
-                    Reprendre verso
-                  </button>
-                )}
-              </div>
+                  {frontStack.length > 0 && (
+                    <button
+                      onClick={removeLastFront}
+                      disabled={isBusy}
+                      className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2.5 text-xs font-bold text-red-300 transition-all hover:bg-red-500/15 disabled:opacity-50"
+                    >
+                      <Trash2 size={14} />
+                      Retirer le dernier recto
+                    </button>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Phase 2 — Verso</div>
+                      <div className="mt-1 text-sm font-semibold text-white">
+                        {halvesBackDone ? 'Tous les verso capturés' : `Verso ${backIndex + 1} / ${frontStack.length}`}
+                      </div>
+                    </div>
+                  </div>
+
+                  {!halvesBackDone && (
+                    <>
+                      <div className="mt-3 text-[10px] font-black uppercase tracking-[0.18em] text-white/40">
+                        Recto à apparier (carte {backIndex + 1})
+                      </div>
+                      <div
+                        className="mt-2 overflow-hidden rounded-2xl border border-[var(--accent)]/40 bg-black"
+                        style={{ aspectRatio: '2/3' }}
+                      >
+                        <img
+                          src={frontStack[backIndex].imageFrontUrl}
+                          alt={`Recto carte ${backIndex + 1}`}
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                      <p className="mt-2 text-xs text-white/45">
+                        Place le verso correspondant à ce recto, puis capture.
+                      </p>
+                    </>
+                  )}
+
+                  {backIndex > 0 && !halvesBackDone && (
+                    <button
+                      onClick={undoLastBack}
+                      disabled={isBusy}
+                      className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs font-bold text-white/75 transition-all hover:bg-white/10 disabled:opacity-50"
+                    >
+                      <RotateCcw size={14} />
+                      Annuler le dernier verso
+                    </button>
+                  )}
+                </>
+              )}
             </div>
 
             <div className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-4 sm:p-5 space-y-4">
@@ -655,7 +926,7 @@ export function StudioView() {
 
               <button
                 onClick={() => handleProcessBatch(false)}
-                disabled={capturedPairs.length === 0 || isBusy}
+                disabled={capturedPairs.length === 0 || isBusy || (captureMode === 'halves' && !halvesBackDone)}
                 className="flex w-full items-center justify-center gap-3 rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent-dim)] px-4 py-3.5 text-sm font-bold text-[var(--accent)] transition-all disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isBusy && step === 'saving' ? <RefreshCw size={16} className="animate-spin" /> : <Upload size={16} />}
@@ -664,13 +935,13 @@ export function StudioView() {
 
               <button
                 onClick={() => handleProcessBatch(true)}
-                disabled={capturedPairs.length === 0 || isBusy}
+                disabled={capturedPairs.length === 0 || isBusy || (captureMode === 'halves' && !halvesBackDone)}
                 className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3.5 text-sm font-bold text-white transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Traiter le lot et ouvrir la revue
               </button>
 
-              {capturedPairs.length > 0 && (
+              {capturedPairs.length > 0 && !(captureMode === 'halves' && halvesPhase === 'back' && !halvesBackDone) && (
                 <div className="space-y-3">
                   <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Lot capturé</div>
                   <div className="max-h-64 space-y-2 overflow-auto pr-1">
@@ -742,7 +1013,15 @@ export function StudioView() {
           <div className="mb-3 flex items-center justify-between gap-3 px-2">
             <div className="min-w-0">
               <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[var(--accent)]">Action principale</div>
-              <div className="truncate text-xs sm:text-sm font-semibold text-white">Bluetooth: recto, verso, enregistrement.</div>
+              <div className="truncate text-xs sm:text-sm font-semibold text-white">
+                {captureMode === 'halves'
+                  ? halvesPhase === 'front'
+                    ? 'Phase recto : capture tous les recto.'
+                    : halvesBackDone
+                      ? 'Verso terminés : traite le lot.'
+                      : 'Phase verso : suis le guide recto.'
+                  : 'Bluetooth: recto, verso, enregistrement.'}
+              </div>
             </div>
             {(frontFile || backFile) && (
               <button
@@ -785,7 +1064,7 @@ export function StudioView() {
           {capturedPairs.length > 0 && (
             <button
               onClick={() => handleProcessBatch(true)}
-              disabled={isBusy}
+              disabled={isBusy || (captureMode === 'halves' && !halvesBackDone)}
               className="mt-3 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Traiter le lot et ouvrir la revue
