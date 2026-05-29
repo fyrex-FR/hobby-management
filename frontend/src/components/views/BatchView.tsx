@@ -11,6 +11,7 @@ import {
   ChevronRight,
   Info,
   Layers,
+  SplitSquareHorizontal,
   ArrowRight,
   History
 } from 'lucide-react';
@@ -69,7 +70,7 @@ function normalizeName(name: string): string {
   return name.toLowerCase().replace(/\.[^.]+$/, '').replace(/[_\-\s]+/g, ' ').trim();
 }
 
-type PairMethod = 'sequential' | 'suffix';
+type PairMethod = 'sequential' | 'suffix' | 'halves';
 
 const FRONT_SUFFIXES = ['recto', 'front', 'face', 'r'];
 const BACK_SUFFIXES = ['verso', 'back', 'dos', 'v'];
@@ -185,6 +186,11 @@ export function BatchView() {
     if (m === 'sequential') {
       for (let i = 0; i + 1 < files.length; i += 2) newPairs.push({ front: files[i], back: files[i + 1] });
       unpairedStr = files.length % 2 === 1 ? files[files.length - 1].name : '';
+    } else if (m === 'halves') {
+      // 1ère moitié = tous les recto, 2ème moitié = tous les verso (même ordre).
+      const half = Math.floor(files.length / 2);
+      for (let i = 0; i < half; i++) newPairs.push({ front: files[i], back: files[half + i] });
+      unpairedStr = files.length % 2 === 1 ? files[half].name : '';
     } else {
       const result = pairBySuffix(files);
       newPairs = result.pairs;
@@ -509,6 +515,7 @@ export function BatchView() {
                 <div className="space-y-2">
                   {[
                     { id: 'sequential', label: 'Consécutif', desc: '1-2, 3-4, 5-6...', icon: FileStack },
+                    { id: 'halves', label: 'Moitiés', desc: 'Tous recto, puis tous verso', icon: SplitSquareHorizontal },
                     { id: 'suffix', label: 'Suffixe', desc: '_recto / _verso', icon: Layers }
                   ].map((opt) => (
                     <button
@@ -566,7 +573,9 @@ export function BatchView() {
                   {unpaired && (
                     <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] font-bold leading-relaxed">
                       <AlertCircle size={12} className="inline mr-2 mb-0.5" />
-                      Certains fichiers sont orphelins : {unpaired}
+                      {method === 'halves'
+                        ? <>Nombre de photos impair : impossible de couper en deux moitiés égales. Une photo recto ou verso manque probablement, ce qui décale tout l'appairage. Vérifiez vos {allFiles.current.length} fichiers. Fichier ignoré : {unpaired}</>
+                        : <>Certains fichiers sont orphelins : {unpaired}</>}
                     </div>
                   )}
                 </div>
