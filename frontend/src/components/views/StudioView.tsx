@@ -43,11 +43,16 @@ type CapturedPair = {
   backName: string;
   imageFrontUrl: string;
   imageBackUrl: string;
+  // Photos capturées (compressées) gardées en mémoire pour l'identification,
+  // afin d'éviter un re-téléchargement de l'image (parfois mal rognée) après upload.
+  frontBlob?: File;
+  backBlob?: File;
 };
 type FrontStackItem = {
   cardId: string;
   frontName: string;
   imageFrontUrl: string;
+  frontBlob?: File;
 };
 
 type ImageCaptureLike = {
@@ -99,6 +104,11 @@ async function urlToFile(url: string, filename: string): Promise<File> {
   if (!response.ok) throw new Error('Impossible de relire une photo déjà uploadée');
   const blob = await response.blob();
   return new File([blob], filename, { type: blob.type || 'image/jpeg' });
+}
+
+async function compressToFile(file: File, name: string): Promise<File> {
+  const blob = await compressImage(file);
+  return new File([blob], name, { type: 'image/jpeg' });
 }
 
 function PreviewCard({
@@ -319,9 +329,13 @@ export function StudioView() {
       createdCardId = newCard.id;
 
       setSaveMessage('Upload des photos…');
+      const [frontCompressed, backCompressed] = await Promise.all([
+        compressToFile(frontFile, 'front.jpg'),
+        compressToFile(backFile, 'back.jpg'),
+      ]);
       const [imageFrontUrl, imageBackUrl] = await Promise.all([
-        uploadViaBackend(frontFile, newCard.id, token, 'front', autoCropEnabled),
-        uploadViaBackend(backFile, newCard.id, token, 'back', autoCropEnabled),
+        uploadViaBackend(frontCompressed, newCard.id, token, 'front', autoCropEnabled),
+        uploadViaBackend(backCompressed, newCard.id, token, 'back', autoCropEnabled),
       ]);
 
       await updateCard.mutateAsync({
@@ -338,6 +352,8 @@ export function StudioView() {
           backName: backFile.name,
           imageFrontUrl,
           imageBackUrl,
+          frontBlob: frontCompressed,
+          backBlob: backCompressed,
         },
       ]);
       const updated = updateStudioSession(session.id, (draft) => ({
@@ -384,12 +400,13 @@ export function StudioView() {
       createdCardId = newCard.id;
 
       setSaveMessage('Upload du recto…');
-      const imageFrontUrl = await uploadViaBackend(file, newCard.id, token, 'front', autoCropEnabled);
+      const frontCompressed = await compressToFile(file, 'front.jpg');
+      const imageFrontUrl = await uploadViaBackend(frontCompressed, newCard.id, token, 'front', autoCropEnabled);
       await updateCard.mutateAsync({ id: newCard.id, image_front_url: imageFrontUrl });
 
       setFrontStack((prev) => [
         ...prev,
-        { cardId: newCard.id, frontName: file.name, imageFrontUrl },
+        { cardId: newCard.id, frontName: file.name, imageFrontUrl, frontBlob: frontCompressed },
       ]);
       const updated = updateStudioSession(session.id, (draft) => ({
         ...draft,
@@ -443,7 +460,8 @@ export function StudioView() {
       const token = data.session?.access_token;
       if (!token) throw new Error('Non authentifié');
 
-      const imageBackUrl = await uploadViaBackend(file, target.cardId, token, 'back', autoCropEnabled);
+      const backCompressed = await compressToFile(file, 'back.jpg');
+      const imageBackUrl = await uploadViaBackend(backCompressed, target.cardId, token, 'back', autoCropEnabled);
       await updateCard.mutateAsync({ id: target.cardId, image_back_url: imageBackUrl });
 
       setCapturedPairs((prev) => [
@@ -454,6 +472,8 @@ export function StudioView() {
           backName: file.name,
           imageFrontUrl: target.imageFrontUrl,
           imageBackUrl,
+          frontBlob: target.frontBlob,
+          backBlob: backCompressed,
         },
       ]);
       const nextIndex = backIndex + 1;
@@ -495,10 +515,10 @@ export function StudioView() {
     setSessionHistory(loadStudioSessions());
   }
 
-  async function uploadViaBackend(file: File, cardId: string, token: string, side: CaptureSide, crop = false): Promise<string> {
-    const blob = await compressImage(file);
+  // `compressed` est déjà compressé (cf. compressToFile) — pas de recompression ici.
+  async function uploadViaBackend(compressed: File, cardId: string, token: string, side: CaptureSide, crop = false): Promise<string> {
     const form = new FormData();
-    form.append('file', new File([blob], `${side}.jpg`, { type: 'image/jpeg' }));
+    form.append('file', new File([compressed], `${side}.jpg`, { type: 'image/jpeg' }));
     form.append('card_id', cardId);
     form.append('side', side);
     if (crop) form.append('crop', 'true');
@@ -512,17 +532,19 @@ export function StudioView() {
   }
 
   async function identifyDraftPair(pair: CapturedPair) {
-    const [frontFileFromUrl, backFileFromUrl] = await Promise.all([
-      urlToFile(pair.imageFrontUrl, pair.frontName),
-      urlToFile(pair.imageBackUrl, pair.backName),
+    // On identifie en priorité depuis les photos gardées en mémoire (évite le
+    // re-téléchargement juste après upload et une éventuelle image mal rognée).
+    const [frontFileForAI, backFileForAI] = await Promise.all([
+      pair.frontBlob ?? urlToFile(pair.imageFrontUrl, pair.frontName),
+      pair.backBlob ?? urlToFile(pair.imageBackUrl, pair.backName),
     ]);
 
-    // L'identification du studio échoue parfois de façon transitoire (réseau, image
-    // pas encore propagée, réponse vide du modèle). On relance une fois si besoin.
+    // L'identification du studio échoue parfois de façon transitoire (réseau,
+    // réponse vide du modèle). On relance une fois si besoin.
     async function runIdentify() {
       return identify.mutateAsync({
-        frontFile: frontFileFromUrl,
-        backFile: backFileFromUrl,
+        frontFile: frontFileForAI,
+        backFile: backFileForAI,
       });
     }
 
