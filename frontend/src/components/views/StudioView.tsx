@@ -9,11 +9,14 @@ import {
   ImagePlus,
   RefreshCw,
   RotateCcw,
+  ScanLine,
   Sparkles,
   Trash2,
   Upload,
 } from 'lucide-react';
 import { compressImage } from '../../lib/storage';
+import { cropAndWarp, detectCardQuad } from '../../lib/cardCrop';
+import { CropReviewModal } from './CropReviewModal';
 import { useCreateCard, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { useIdentify } from '../../hooks/useIdentify';
 import { useAppStore } from '../../stores/appStore';
@@ -33,6 +36,7 @@ type CaptureSide = 'front' | 'back';
 type StudioStep = 'front' | 'back' | 'ready' | 'saving';
 type CaptureMode = 'per_card' | 'halves';
 type HalvesPhase = 'front' | 'back';
+type AutoCropMode = 'silent' | 'review';
 type CapturedPair = {
   id: string;
   frontName: string;
@@ -163,6 +167,23 @@ export function StudioView() {
   const [frontStack, setFrontStack] = useState<FrontStackItem[]>([]);
   const [backIndex, setBackIndex] = useState(0);
 
+  const [autoCropEnabled, setAutoCropEnabled] = useState(
+    () => localStorage.getItem('studio_autocrop') === '1',
+  );
+  const [autoCropMode, setAutoCropMode] = useState<AutoCropMode>(() =>
+    localStorage.getItem('studio_autocrop_mode') === 'review' ? 'review' : 'silent',
+  );
+  const [reviewFile, setReviewFile] = useState<File | null>(null);
+  const reviewResolverRef = useRef<((file: File | null) => void) | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem('studio_autocrop', autoCropEnabled ? '1' : '0');
+  }, [autoCropEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem('studio_autocrop_mode', autoCropMode);
+  }, [autoCropMode]);
+
   const identify = useIdentify();
   const createCard = useCreateCard();
   const updateCard = useUpdateCard();
@@ -253,6 +274,37 @@ export function StudioView() {
     );
   }
 
+  function resolveReview(file: File | null) {
+    reviewResolverRef.current?.(file);
+    reviewResolverRef.current = null;
+    setReviewFile(null);
+  }
+
+  // Applique éventuellement le rognage auto après une capture.
+  // Renvoie le fichier (rogné ou original), ou null si l'utilisateur annule la capture (mode revue).
+  async function maybeAutoCrop(file: File): Promise<File | null> {
+    if (!autoCropEnabled) return file;
+
+    if (autoCropMode === 'review') {
+      return new Promise<File | null>((resolve) => {
+        reviewResolverRef.current = resolve;
+        setReviewFile(file);
+      });
+    }
+
+    // Mode silencieux : détection + rognage, repli sur l'original si rien de fiable.
+    try {
+      setSaveMessage('Analyse de la carte…');
+      const quad = await detectCardQuad(file);
+      if (quad && quad.confidence >= 0.1) {
+        return await cropAndWarp(file, quad.corners);
+      }
+      return file;
+    } catch {
+      return file;
+    }
+  }
+
   async function handleCapture() {
     if (!videoRef.current) return;
     setSaveError('');
@@ -265,7 +317,9 @@ export function StudioView() {
 
     try {
       const side: CaptureSide = step === 'back' ? 'back' : 'front';
-      const file = await takePhoto(side);
+      const raw = await takePhoto(side);
+      const file = await maybeAutoCrop(raw);
+      if (!file) return; // capture annulée dans la revue
 
       if (side === 'front') {
         setFrontFile(file);
@@ -362,7 +416,13 @@ export function StudioView() {
     let createdCardId: string | null = null;
 
     try {
-      const file = await takePhoto('front');
+      const raw = await takePhoto('front');
+      const file = await maybeAutoCrop(raw);
+      if (!file) {
+        setStep('front');
+        setSaveMessage('');
+        return;
+      }
       const session = ensureSession();
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
@@ -426,7 +486,13 @@ export function StudioView() {
     setSaveMessage(`Verso ${backIndex + 1}/${frontStack.length} : upload…`);
 
     try {
-      const file = await takePhoto('back');
+      const raw = await takePhoto('back');
+      const file = await maybeAutoCrop(raw);
+      if (!file) {
+        setStep('front');
+        setSaveMessage('');
+        return;
+      }
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
       if (!token) throw new Error('Non authentifié');
@@ -579,6 +645,7 @@ export function StudioView() {
 
   const isBusy =
     step === 'saving' ||
+    !!reviewFile ||
     identify.isPending ||
     createCard.isPending ||
     updateCard.isPending ||
@@ -711,6 +778,42 @@ export function StudioView() {
                   {opt.label}
                 </button>
               ))}
+            </div>
+
+            <div
+              className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-1"
+              title={sessionStarted ? 'Réinitialise le lot pour changer le rognage' : undefined}
+            >
+              <button
+                onClick={() => setAutoCropEnabled((v) => !v)}
+                disabled={sessionStarted || isBusy}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
+                  autoCropEnabled
+                    ? 'bg-[var(--accent)] text-[#0d0c0b]'
+                    : 'text-white/60 hover:text-white'
+                }`}
+              >
+                <ScanLine size={14} />
+                Rognage auto
+              </button>
+              {autoCropEnabled &&
+                ([
+                  { id: 'silent', label: 'Auto' },
+                  { id: 'review', label: 'Vérifier' },
+                ] as { id: AutoCropMode; label: string }[]).map((opt) => (
+                  <button
+                    key={opt.id}
+                    onClick={() => setAutoCropMode(opt.id)}
+                    disabled={sessionStarted || isBusy}
+                    className={`rounded-lg px-2.5 py-2 text-xs font-bold transition-all disabled:cursor-not-allowed ${
+                      autoCropMode === opt.id
+                        ? 'bg-white/15 text-white'
+                        : 'text-white/50 hover:text-white disabled:opacity-40'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
             </div>
 
             <button
@@ -1072,6 +1175,15 @@ export function StudioView() {
           )}
         </div>
       </div>
+
+      {reviewFile && (
+        <CropReviewModal
+          file={reviewFile}
+          onConfirm={(cropped) => resolveReview(cropped)}
+          onKeepOriginal={(original) => resolveReview(original)}
+          onCancel={() => resolveReview(null)}
+        />
+      )}
     </div>
   );
 }
