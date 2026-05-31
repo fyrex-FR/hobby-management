@@ -19,6 +19,7 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { useCards, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
+import { useIdentify } from '../../hooks/useIdentify';
 import { useAppStore } from '../../stores/appStore';
 import { getStudioSession } from '../../lib/studioSessions';
 import { normalizeParallelName } from '../../lib/cardQuality';
@@ -125,6 +126,50 @@ function DraftEditor({
   const [saving, setSaving] = useState(false);
   const [discarding, setDiscarding] = useState(false);
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const identify = useIdentify();
+  const [retrying, setRetrying] = useState(false);
+  const [retryError, setRetryError] = useState('');
+
+  async function handleRetryAI() {
+    if (!card.image_front_url || !card.image_back_url) {
+      setRetryError('Photos recto/verso manquantes.');
+      return;
+    }
+    setRetrying(true);
+    setRetryError('');
+    try {
+      async function urlToFile(url: string, name: string): Promise<File> {
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error('Image illisible');
+        const blob = await resp.blob();
+        return new File([blob], name, { type: blob.type || 'image/jpeg' });
+      }
+      const [frontFile, backFile] = await Promise.all([
+        urlToFile(card.image_front_url, 'front.jpg'),
+        urlToFile(card.image_back_url, 'back.jpg'),
+      ]);
+      const r = await identify.mutateAsync({ frontFile, backFile });
+      setFields((prev) => ({
+        ...prev,
+        player: r.player || prev.player,
+        team: r.team || prev.team,
+        year: r.year || prev.year,
+        brand: r.brand || prev.brand,
+        set_name: r.set || prev.set_name,
+        card_type: (r.card_type || prev.card_type) as typeof prev.card_type,
+        insert_name: r.insert || prev.insert_name,
+        parallel_name: r.parallel || prev.parallel_name,
+        card_number: r.card_number || prev.card_number,
+        numbered: r.numbered || prev.numbered,
+        is_rookie: r.is_rookie ?? prev.is_rookie,
+        condition_notes: r.condition_notes || prev.condition_notes,
+      }));
+    } catch (e) {
+      setRetryError((e as Error).message);
+    } finally {
+      setRetrying(false);
+    }
+  }
 
   const signalCard: Partial<Card> = {
     ...card,
@@ -237,6 +282,21 @@ function DraftEditor({
           <div className="mt-4">
             <AlertChips card={signalCard} />
           </div>
+
+          <button
+            type="button"
+            onClick={handleRetryAI}
+            disabled={retrying || !card.image_front_url || !card.image_back_url}
+            className="mt-4 w-full flex items-center justify-center gap-2 rounded-2xl border border-[var(--border-accent)] bg-[var(--accent-dim)] px-4 py-3 text-xs font-black uppercase tracking-widest text-[var(--accent)] transition-all hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <RefreshCw size={14} className={retrying ? 'animate-spin' : ''} />
+            {retrying ? 'Analyse IA…' : "Réessayer l'IA"}
+          </button>
+          {retryError && (
+            <div className="mt-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+              {retryError}
+            </div>
+          )}
           {duplicateMatches.length > 0 && (
             <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3">
               <div className="text-[10px] font-black uppercase tracking-[0.2em] text-red-300">Doublons probables</div>
