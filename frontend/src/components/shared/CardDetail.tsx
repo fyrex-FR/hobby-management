@@ -6,6 +6,7 @@ import {
   Edit2,
   Save,
   Camera,
+  Download,
   RefreshCw,
   ExternalLink,
   Search,
@@ -65,6 +66,37 @@ function buildPriceSearchText(card: Card): string {
     .trim();
 }
 
+function slugify(text: string): string {
+  return text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 60);
+}
+
+function buildPhotoFilename(card: Card, side: 'front' | 'back'): string {
+  const base = [card.player, card.year, card.set_name || card.brand, card.card_number]
+    .filter(Boolean)
+    .join(' ');
+  const slug = slugify(base) || 'carte';
+  return `${slug}_${side === 'front' ? 'recto' : 'verso'}.jpg`;
+}
+
+async function downloadImage(url: string, filename: string): Promise<void> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error('Téléchargement impossible');
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = objectUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
 interface Props {
   card: Card;
   onClose: () => void;
@@ -81,6 +113,7 @@ export function CardDetail({ card, onClose }: Props) {
   const [uploadingImage, setUploadingImage] = useState<'front' | 'back' | null>(null);
   const [showGrading, setShowGrading] = useState(false);
   const [lightboxSide, setLightboxSide] = useState<'front' | 'back' | null>(null);
+  const [downloadingPhotos, setDownloadingPhotos] = useState(false);
   const frontInputRef = useRef<HTMLInputElement>(null);
   const backInputRef = useRef<HTMLInputElement>(null);
   const [fields, setFields] = useState({
@@ -264,6 +297,23 @@ export function CardDetail({ card, onClose }: Props) {
     setLightboxSide(side);
   }
 
+  async function handleDownloadPhotos() {
+    if (downloadingPhotos) return;
+    setDownloadingPhotos(true);
+    try {
+      if (card.image_front_url) {
+        await downloadImage(card.image_front_url, buildPhotoFilename(card, 'front'));
+      }
+      if (card.image_back_url) {
+        await downloadImage(card.image_back_url, buildPhotoFilename(card, 'back'));
+      }
+    } catch {
+      // échec silencieux : on ne bloque pas l'UI
+    } finally {
+      setDownloadingPhotos(false);
+    }
+  }
+
   return (
     <>
     <AnimatePresence>
@@ -397,6 +447,22 @@ export function CardDetail({ card, onClose }: Props) {
             </div>
 
             <div className="absolute top-6 right-6 flex items-center gap-2">
+              {!editing && (card.image_front_url || card.image_back_url) && (
+                <button
+                  onClick={handleDownloadPhotos}
+                  disabled={downloadingPhotos}
+                  title="Télécharger les photos"
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border border-white/10 bg-white/5 text-white hover:bg-white/10 active:scale-95 disabled:opacity-50"
+                >
+                  {downloadingPhotos ? (
+                    <RefreshCw size={14} className="animate-spin" />
+                  ) : (
+                    <Download size={14} />
+                  )}
+                  Photos
+                </button>
+              )}
+
               <button
                 onClick={() => setEditing((v) => !v)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border group active:scale-95 ${editing
@@ -738,6 +804,19 @@ export function CardDetail({ card, onClose }: Props) {
               />
             )}
           </div>
+
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (currentUrl && lightboxSide) {
+                downloadImage(currentUrl, buildPhotoFilename(card, lightboxSide));
+              }
+            }}
+            title="Télécharger cette photo"
+            className="absolute top-6 right-20 w-10 h-10 flex items-center justify-center rounded-xl bg-white/10 text-white hover:bg-white/20 transition-all"
+          >
+            <Download size={20} />
+          </button>
 
           <button
             onClick={() => setLightboxSide(null)}
