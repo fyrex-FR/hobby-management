@@ -296,11 +296,22 @@ export function StudioView() {
     try {
       setSaveMessage('Analyse de la carte…');
       const quad = await detectCardQuad(file);
+      console.log('[autocrop] quad =', quad);
       if (quad && quad.confidence >= 0.1) {
-        return await cropAndWarp(file, quad.corners);
+        const cropped = await cropAndWarp(file, quad.corners);
+        console.log('[autocrop] rognée', { confidence: quad.confidence, corners: quad.corners });
+        setSaveMessage(`Photo rognée ✓ (confiance ${(quad.confidence * 100).toFixed(0)}%)`);
+        return cropped;
       }
+      setSaveMessage(
+        quad
+          ? `Bords trop incertains (${(quad.confidence * 100).toFixed(0)}%), photo conservée.`
+          : 'Bords non détectés, photo conservée.',
+      );
       return file;
-    } catch {
+    } catch (error) {
+      console.error('[autocrop] échec', error);
+      setSaveMessage(`Rognage indisponible: ${(error as Error).message}`);
       return file;
     }
   }
@@ -570,26 +581,48 @@ export function StudioView() {
       urlToFile(pair.imageBackUrl, pair.backName),
     ]);
 
-    const identifyResult = await identify.mutateAsync({
-      frontFile: frontFileFromUrl,
-      backFile: backFileFromUrl,
+    // L'identification du studio échoue parfois de façon transitoire (réseau, image
+    // pas encore propagée, réponse vide du modèle). On relance une fois si besoin.
+    async function runIdentify() {
+      return identify.mutateAsync({
+        frontFile: frontFileFromUrl,
+        backFile: backFileFromUrl,
+      });
+    }
+
+    let identifyResult = await runIdentify().catch((err) => {
+      console.warn('[studio identify] 1er essai échoué, relance…', err);
+      return null;
     });
 
+    const isEmpty = (r: typeof identifyResult) =>
+      !r || (!r.player && !r.card_number && !r.year && !r.set);
+
+    if (isEmpty(identifyResult)) {
+      await new Promise((r) => setTimeout(r, 800));
+      identifyResult = await runIdentify();
+    }
+
+    if (isEmpty(identifyResult)) {
+      throw new Error('Identification vide après 2 essais');
+    }
+
+    const result = identifyResult!;
     await updateCard.mutateAsync({
       id: pair.id,
-      player: identifyResult.player || null,
-      team: identifyResult.team || null,
-      year: identifyResult.year || null,
-      brand: identifyResult.brand || null,
-      set_name: identifyResult.set || null,
-      card_type: (identifyResult.card_type || null) as CardType | null,
-      insert_name: identifyResult.insert || null,
-      parallel_name: identifyResult.parallel || null,
-      parallel_confidence: identifyResult.parallel_confidence ?? null,
-      card_number: identifyResult.card_number || null,
-      numbered: identifyResult.numbered || null,
-      is_rookie: identifyResult.is_rookie ?? null,
-      condition_notes: identifyResult.condition_notes || null,
+      player: result.player || null,
+      team: result.team || null,
+      year: result.year || null,
+      brand: result.brand || null,
+      set_name: result.set || null,
+      card_type: (result.card_type || null) as CardType | null,
+      insert_name: result.insert || null,
+      parallel_name: result.parallel || null,
+      parallel_confidence: result.parallel_confidence ?? null,
+      card_number: result.card_number || null,
+      numbered: result.numbered || null,
+      is_rookie: result.is_rookie ?? null,
+      condition_notes: result.condition_notes || null,
     });
   }
 
@@ -599,6 +632,7 @@ export function StudioView() {
 
     setStep('saving');
     setSaveError('');
+    const batchErrors: string[] = [];
 
     try {
       for (let index = 0; index < pairsToProcess.length; index += 1) {
@@ -617,12 +651,15 @@ export function StudioView() {
             if (updated) setCurrentSession(updated);
           }
         } catch (error) {
+          const message = (error as Error).message;
+          console.error(`[studio] échec identification carte ${index + 1}`, error);
+          batchErrors.push(`Carte ${index + 1}: ${message}`);
           if (currentSession) {
             const updated = updateStudioSession(currentSession.id, (session) => ({
               ...session,
               processedAt: new Date().toISOString(),
               errorsCount: session.errorsCount + 1,
-              lastError: (error as Error).message,
+              lastError: message,
             }));
             if (updated) setCurrentSession(updated);
           }
@@ -631,6 +668,9 @@ export function StudioView() {
 
       setSessionHistory(loadStudioSessions());
       resetSession();
+      if (batchErrors.length > 0) {
+        setSaveError(`${batchErrors.length} carte(s) en échec — ${batchErrors.join(' · ')}`);
+      }
       if (openReviewAfterSave) {
         if (currentSession) setReviewSessionId(currentSession.id);
         setActiveView('review');
