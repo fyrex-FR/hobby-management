@@ -32,6 +32,10 @@ import type { CardType } from '../../types';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
+// Rognage auto temporairement désactivé : OpenCV.js (11 Mo wasm) est trop lourd/
+// instable sur mobile et déstabilisait la capture. Code conservé pour reprise ultérieure.
+const AUTO_CROP_AVAILABLE = false;
+
 type CaptureSide = 'front' | 'back';
 type StudioStep = 'front' | 'back' | 'ready' | 'saving';
 type CaptureMode = 'per_card' | 'halves';
@@ -283,7 +287,7 @@ export function StudioView() {
   // Applique éventuellement le rognage auto après une capture.
   // Renvoie le fichier (rogné ou original), ou null si l'utilisateur annule la capture (mode revue).
   async function maybeAutoCrop(file: File): Promise<File | null> {
-    if (!autoCropEnabled) return file;
+    if (!AUTO_CROP_AVAILABLE || !autoCropEnabled) return file;
 
     if (autoCropMode === 'review') {
       return new Promise<File | null>((resolve) => {
@@ -822,6 +826,7 @@ export function StudioView() {
 
             <div
               className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-1"
+              hidden={!AUTO_CROP_AVAILABLE}
               title={sessionStarted ? 'Réinitialise le lot pour changer le rognage' : undefined}
             >
               <button
