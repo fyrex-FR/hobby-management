@@ -24,42 +24,19 @@ let cvPromise: Promise<OpenCv> | null = null;
 export function loadOpenCv(): Promise<OpenCv> {
   if (cvPromise) return cvPromise;
 
-  cvPromise = import('@techstark/opencv-js').then((mod) => {
-    const cv = ((mod as { default?: OpenCv }).default ?? mod) as OpenCv;
-    return new Promise<OpenCv>((resolve, reject) => {
-      const isReady = () =>
-        typeof (cv as unknown as { Mat?: unknown }).Mat === 'function';
-
-      // Déjà initialisé ?
-      if (isReady()) {
-        resolve(cv);
-        return;
+  // @techstark/opencv-js >= 4.11 : l'export par défaut est une Promise qui se
+  // résout sur l'objet `cv` une fois le runtime wasm initialisé.
+  cvPromise = import('@techstark/opencv-js')
+    .then((mod) => {
+      const def = (mod as { default?: unknown }).default ?? mod;
+      return Promise.resolve(def) as Promise<OpenCv>;
+    })
+    .then((cv) => {
+      if (typeof (cv as unknown as { Mat?: unknown }).Mat !== 'function') {
+        throw new Error('OpenCV: runtime non initialisé');
       }
-
-      let settled = false;
-      const finish = () => {
-        if (settled) return;
-        settled = true;
-        clearInterval(poll);
-        clearTimeout(timeout);
-        resolve(cv);
-      };
-
-      // Callback d'init du runtime wasm.
-      (cv as unknown as { onRuntimeInitialized: () => void }).onRuntimeInitialized = finish;
-      // Fallback : on sonde au cas où le callback aurait déjà été consommé.
-      const poll = setInterval(() => {
-        if (isReady()) finish();
-      }, 50);
-      // Sécurité : abandon après 20 s.
-      const timeout = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        clearInterval(poll);
-        reject(new Error('OpenCV: initialisation expirée'));
-      }, 20000);
+      return cv;
     });
-  });
 
   // Permet une nouvelle tentative si l'initialisation échoue.
   cvPromise.catch(() => {
