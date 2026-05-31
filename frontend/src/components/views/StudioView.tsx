@@ -15,8 +15,6 @@ import {
   Upload,
 } from 'lucide-react';
 import { compressImage } from '../../lib/storage';
-import { cropAndWarp, detectCardQuad } from '../../lib/cardCrop';
-import { CropReviewModal } from './CropReviewModal';
 import { useCreateCard, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { useIdentify } from '../../hooks/useIdentify';
 import { useAppStore } from '../../stores/appStore';
@@ -32,15 +30,13 @@ import type { CardType } from '../../types';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
-// Rognage auto temporairement désactivé : OpenCV.js (11 Mo wasm) est trop lourd/
-// instable sur mobile et déstabilisait la capture. Code conservé pour reprise ultérieure.
-const AUTO_CROP_AVAILABLE = false;
+// Rognage auto : effectué côté serveur (OpenCV) au moment de l'upload.
+const AUTO_CROP_AVAILABLE = true;
 
 type CaptureSide = 'front' | 'back';
 type StudioStep = 'front' | 'back' | 'ready' | 'saving';
 type CaptureMode = 'per_card' | 'halves';
 type HalvesPhase = 'front' | 'back';
-type AutoCropMode = 'silent' | 'review';
 type CapturedPair = {
   id: string;
   frontName: string;
@@ -174,19 +170,10 @@ export function StudioView() {
   const [autoCropEnabled, setAutoCropEnabled] = useState(
     () => localStorage.getItem('studio_autocrop') === '1',
   );
-  const [autoCropMode, setAutoCropMode] = useState<AutoCropMode>(() =>
-    localStorage.getItem('studio_autocrop_mode') === 'review' ? 'review' : 'silent',
-  );
-  const [reviewFile, setReviewFile] = useState<File | null>(null);
-  const reviewResolverRef = useRef<((file: File | null) => void) | null>(null);
 
   useEffect(() => {
     localStorage.setItem('studio_autocrop', autoCropEnabled ? '1' : '0');
   }, [autoCropEnabled]);
-
-  useEffect(() => {
-    localStorage.setItem('studio_autocrop_mode', autoCropMode);
-  }, [autoCropMode]);
 
   const identify = useIdentify();
   const createCard = useCreateCard();
@@ -278,48 +265,6 @@ export function StudioView() {
     );
   }
 
-  function resolveReview(file: File | null) {
-    reviewResolverRef.current?.(file);
-    reviewResolverRef.current = null;
-    setReviewFile(null);
-  }
-
-  // Applique éventuellement le rognage auto après une capture.
-  // Renvoie le fichier (rogné ou original), ou null si l'utilisateur annule la capture (mode revue).
-  async function maybeAutoCrop(file: File): Promise<File | null> {
-    if (!AUTO_CROP_AVAILABLE || !autoCropEnabled) return file;
-
-    if (autoCropMode === 'review') {
-      return new Promise<File | null>((resolve) => {
-        reviewResolverRef.current = resolve;
-        setReviewFile(file);
-      });
-    }
-
-    // Mode silencieux : détection + rognage, repli sur l'original si rien de fiable.
-    try {
-      setSaveMessage('Analyse de la carte…');
-      const quad = await detectCardQuad(file);
-      console.log('[autocrop] quad =', quad);
-      if (quad && quad.confidence >= 0.1) {
-        const cropped = await cropAndWarp(file, quad.corners);
-        console.log('[autocrop] rognée', { confidence: quad.confidence, corners: quad.corners });
-        setSaveMessage(`Photo rognée ✓ (confiance ${(quad.confidence * 100).toFixed(0)}%)`);
-        return cropped;
-      }
-      setSaveMessage(
-        quad
-          ? `Bords trop incertains (${(quad.confidence * 100).toFixed(0)}%), photo conservée.`
-          : 'Bords non détectés, photo conservée.',
-      );
-      return file;
-    } catch (error) {
-      console.error('[autocrop] échec', error);
-      setSaveMessage(`Rognage indisponible: ${(error as Error).message}`);
-      return file;
-    }
-  }
-
   async function handleCapture() {
     if (!videoRef.current) return;
     setSaveError('');
@@ -332,9 +277,7 @@ export function StudioView() {
 
     try {
       const side: CaptureSide = step === 'back' ? 'back' : 'front';
-      const raw = await takePhoto(side);
-      const file = await maybeAutoCrop(raw);
-      if (!file) return; // capture annulée dans la revue
+      const file = await takePhoto(side);
 
       if (side === 'front') {
         setFrontFile(file);
@@ -377,8 +320,8 @@ export function StudioView() {
 
       setSaveMessage('Upload des photos…');
       const [imageFrontUrl, imageBackUrl] = await Promise.all([
-        uploadViaBackend(frontFile, newCard.id, token, 'front'),
-        uploadViaBackend(backFile, newCard.id, token, 'back'),
+        uploadViaBackend(frontFile, newCard.id, token, 'front', autoCropEnabled),
+        uploadViaBackend(backFile, newCard.id, token, 'back', autoCropEnabled),
       ]);
 
       await updateCard.mutateAsync({
@@ -431,13 +374,7 @@ export function StudioView() {
     let createdCardId: string | null = null;
 
     try {
-      const raw = await takePhoto('front');
-      const file = await maybeAutoCrop(raw);
-      if (!file) {
-        setStep('front');
-        setSaveMessage('');
-        return;
-      }
+      const file = await takePhoto('front');
       const session = ensureSession();
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
@@ -447,7 +384,7 @@ export function StudioView() {
       createdCardId = newCard.id;
 
       setSaveMessage('Upload du recto…');
-      const imageFrontUrl = await uploadViaBackend(file, newCard.id, token, 'front');
+      const imageFrontUrl = await uploadViaBackend(file, newCard.id, token, 'front', autoCropEnabled);
       await updateCard.mutateAsync({ id: newCard.id, image_front_url: imageFrontUrl });
 
       setFrontStack((prev) => [
@@ -501,18 +438,12 @@ export function StudioView() {
     setSaveMessage(`Verso ${backIndex + 1}/${frontStack.length} : upload…`);
 
     try {
-      const raw = await takePhoto('back');
-      const file = await maybeAutoCrop(raw);
-      if (!file) {
-        setStep('front');
-        setSaveMessage('');
-        return;
-      }
+      const file = await takePhoto('back');
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
       if (!token) throw new Error('Non authentifié');
 
-      const imageBackUrl = await uploadViaBackend(file, target.cardId, token, 'back');
+      const imageBackUrl = await uploadViaBackend(file, target.cardId, token, 'back', autoCropEnabled);
       await updateCard.mutateAsync({ id: target.cardId, image_back_url: imageBackUrl });
 
       setCapturedPairs((prev) => [
@@ -564,12 +495,13 @@ export function StudioView() {
     setSessionHistory(loadStudioSessions());
   }
 
-  async function uploadViaBackend(file: File, cardId: string, token: string, side: CaptureSide): Promise<string> {
+  async function uploadViaBackend(file: File, cardId: string, token: string, side: CaptureSide, crop = false): Promise<string> {
     const blob = await compressImage(file);
     const form = new FormData();
     form.append('file', new File([blob], `${side}.jpg`, { type: 'image/jpeg' }));
     form.append('card_id', cardId);
     form.append('side', side);
+    if (crop) form.append('crop', 'true');
     const response = await fetch(`${API_BASE}/api/upload`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
@@ -689,7 +621,6 @@ export function StudioView() {
 
   const isBusy =
     step === 'saving' ||
-    !!reviewFile ||
     identify.isPending ||
     createCard.isPending ||
     updateCard.isPending ||
@@ -827,7 +758,7 @@ export function StudioView() {
             <div
               className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-1"
               hidden={!AUTO_CROP_AVAILABLE}
-              title={sessionStarted ? 'Réinitialise le lot pour changer le rognage' : undefined}
+              title={sessionStarted ? 'Réinitialise le lot pour changer le rognage' : 'Détecte les bords et rogne automatiquement (serveur)'}
             >
               <button
                 onClick={() => setAutoCropEnabled((v) => !v)}
@@ -839,26 +770,8 @@ export function StudioView() {
                 }`}
               >
                 <ScanLine size={14} />
-                Rognage auto
+                Rognage auto {autoCropEnabled ? 'ON' : 'OFF'}
               </button>
-              {autoCropEnabled &&
-                ([
-                  { id: 'silent', label: 'Auto' },
-                  { id: 'review', label: 'Vérifier' },
-                ] as { id: AutoCropMode; label: string }[]).map((opt) => (
-                  <button
-                    key={opt.id}
-                    onClick={() => setAutoCropMode(opt.id)}
-                    disabled={sessionStarted || isBusy}
-                    className={`rounded-lg px-2.5 py-2 text-xs font-bold transition-all disabled:cursor-not-allowed ${
-                      autoCropMode === opt.id
-                        ? 'bg-white/15 text-white'
-                        : 'text-white/50 hover:text-white disabled:opacity-40'
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
             </div>
 
             <button
@@ -1220,15 +1133,6 @@ export function StudioView() {
           )}
         </div>
       </div>
-
-      {reviewFile && (
-        <CropReviewModal
-          file={reviewFile}
-          onConfirm={(cropped) => resolveReview(cropped)}
-          onKeepOriginal={(original) => resolveReview(original)}
-          onCancel={() => resolveReview(null)}
-        />
-      )}
     </div>
   );
 }

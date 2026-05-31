@@ -2,6 +2,7 @@ import os
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from .auth import current_user
+from services.card_crop import crop_card
 
 router = APIRouter()
 
@@ -15,11 +16,15 @@ async def upload_image(
     file: UploadFile = File(...),
     card_id: str = Form(...),
     side: str = Form(...),
+    crop: str = Form("false"),
     user: dict = Depends(current_user),
 ):
     user_id = user["sub"]
     path = f"{user_id}/{card_id}_{side}.jpg"
     content = await file.read()
+
+    if crop.lower() in ("1", "true", "yes"):
+        content = crop_card(content)
 
     async with httpx.AsyncClient() as client:
         resp = await client.post(
