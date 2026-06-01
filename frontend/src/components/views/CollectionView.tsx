@@ -650,7 +650,17 @@ export function CollectionView() {
       if (!groups[key]) groups[key] = [];
       groups[key].push(c);
     });
-    return Object.fromEntries(Object.entries(groups).sort(([a], [b]) => a.localeCompare(b)));
+    // Pour un classement par joueur, on trie sur le nom de famille (dernier mot).
+    const lastName = (name: string) => {
+      const parts = name.trim().split(/\s+/);
+      return (parts[parts.length - 1] ?? name).toLowerCase();
+    };
+    const compare =
+      groupBy === 'player'
+        ? ([a]: [string, Card[]], [b]: [string, Card[]]) =>
+            lastName(a).localeCompare(lastName(b)) || a.localeCompare(b)
+        : ([a]: [string, Card[]], [b]: [string, Card[]]) => a.localeCompare(b);
+    return Object.fromEntries(Object.entries(groups).sort(compare));
   }, [filtered, groupBy]);
 
   const rookieCount = useMemo(() => cards.filter((c) => c.is_rookie).length, [cards]);
