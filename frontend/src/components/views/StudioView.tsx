@@ -720,6 +720,8 @@ export function StudioView() {
 
       if (event.key === ' ' || event.key === 'Enter') {
         event.preventDefault();
+        // Évite qu'un bouton ayant le focus soit aussi déclenché par la barre d'espace.
+        if (target?.tagName === 'BUTTON') target.blur();
         if (!primaryDisabled) primaryAction.onClick();
         return;
       }

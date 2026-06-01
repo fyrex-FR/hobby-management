@@ -9,7 +9,10 @@ import {
   Trash2,
   Group,
   X,
-  ChevronDown
+  ChevronDown,
+  CheckCircle2,
+  Circle,
+  ListChecks,
 } from 'lucide-react';
 import {
   createColumnHelper,
@@ -288,14 +291,37 @@ function buildColumns(onEdit: (card: Card) => void) {
   ];
 }
 
-function GridCard({ card, onClick }: { card: Card; onClick: () => void }) {
+function GridCard({
+  card,
+  onClick,
+  selectMode = false,
+  selected = false,
+  onToggleSelect,
+}: {
+  card: Card;
+  onClick: () => void;
+  selectMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (id: string) => void;
+}) {
   return (
     <motion.button
       whileHover={{ y: -4 }}
-      onClick={onClick}
-      className="group relative bg-[var(--bg-card)] rounded-3xl overflow-hidden border border-white/5 hover:border-[var(--accent)]/40 transition-all duration-300 hover:shadow-2xl hover:shadow-[var(--accent-glow)] text-left w-full glass"
+      onClick={() => (selectMode ? onToggleSelect?.(card.id) : onClick())}
+      className={`group relative bg-[var(--bg-card)] rounded-3xl overflow-hidden border transition-all duration-300 hover:shadow-2xl hover:shadow-[var(--accent-glow)] text-left w-full glass ${
+        selected ? 'border-[var(--accent)] ring-2 ring-[var(--accent)]' : 'border-white/5 hover:border-[var(--accent)]/40'
+      }`}
     >
       <div className="relative aspect-[3/4] bg-[var(--bg-primary)] overflow-hidden">
+        {selectMode && (
+          <div className="absolute top-3 right-3 z-20">
+            {selected ? (
+              <CheckCircle2 size={26} className="text-[var(--accent)] drop-shadow-[0_1px_3px_rgba(0,0,0,0.6)]" fill="currentColor" />
+            ) : (
+              <Circle size={26} className="text-white/80 drop-shadow-[0_1px_3px_rgba(0,0,0,0.6)]" />
+            )}
+          </div>
+        )}
         {card.image_front_url ? (
           <img
             src={card.image_front_url}
@@ -513,6 +539,50 @@ export function CollectionView() {
   const [groupBy, setGroupBy] = useState<GroupBy>('none');
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [sorting, setSorting] = useState<SortingState>([]);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const updateCard = useUpdateCard();
+  const deleteCard = useDeleteCard();
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }
+
+  async function applyBulkStatus(status: CardStatus) {
+    if (selectedIds.size === 0) return;
+    setBulkBusy(true);
+    try {
+      await Promise.all(
+        [...selectedIds].map((id) => updateCard.mutateAsync({ id, status })),
+      );
+      exitSelectMode();
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function bulkDelete() {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Supprimer ${selectedIds.size} carte(s) ?`)) return;
+    setBulkBusy(true);
+    try {
+      await Promise.all([...selectedIds].map((id) => deleteCard.mutateAsync(id)));
+      exitSelectMode();
+    } finally {
+      setBulkBusy(false);
+    }
+  }
 
   // Counts pour les onglets (avant filtres sidebar)
   const statusCounts = useMemo(() => ({
@@ -684,6 +754,17 @@ export function CollectionView() {
             </div>
 
             <button
+              onClick={() => (selectMode ? exitSelectMode() : (setViewMode('grid'), setSelectMode(true)))}
+              className="p-3 rounded-2xl border transition-all active:scale-95"
+              style={selectMode
+                ? { background: 'var(--accent)', color: '#09090B', borderColor: 'var(--border-accent)' }
+                : { background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)' }}
+              title="Sélection multiple"
+            >
+              <ListChecks size={16} />
+            </button>
+
+            <button
               onClick={exportCSV}
               className="p-3 rounded-2xl bg-white/5 border border-white/5 text-[var(--text-secondary)] hover:bg-white/10 hover:text-white transition-all active:scale-95"
               title="Exporter en CSV"
@@ -802,7 +883,14 @@ export function CollectionView() {
                 )}
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                   {groupCards.map((card) => (
-                    <GridCard key={card.id} card={card} onClick={() => setSelectedCard(card)} />
+                    <GridCard
+                      key={card.id}
+                      card={card}
+                      onClick={() => setSelectedCard(card)}
+                      selectMode={selectMode}
+                      selected={selectedIds.has(card.id)}
+                      onToggleSelect={toggleSelect}
+                    />
                   ))}
                 </div>
               </div>
@@ -812,6 +900,58 @@ export function CollectionView() {
           <TableView table={table} onRowClick={setSelectedCard} />
         )}
       </div>
+
+      {selectMode && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 px-4 pb-4">
+          <div className="pointer-events-auto mx-auto flex max-w-3xl flex-wrap items-center gap-3 rounded-[1.5rem] border border-white/10 bg-black/80 p-3 shadow-2xl backdrop-blur-2xl">
+            <span className="px-2 text-sm font-bold text-white">
+              {selectedIds.size} sélectionnée{selectedIds.size > 1 ? 's' : ''}
+            </span>
+            <button
+              onClick={() => setSelectedIds(new Set(filtered.map((c) => c.id)))}
+              disabled={bulkBusy}
+              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white/80 hover:bg-white/10 disabled:opacity-40"
+            >
+              Tout ({filtered.length})
+            </button>
+
+            <div className="h-6 w-px bg-white/10" />
+
+            <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Statut →</span>
+            {STATUS_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => applyBulkStatus(opt.value)}
+                disabled={bulkBusy || selectedIds.size === 0}
+                className="rounded-xl border border-[var(--accent)]/30 bg-[var(--accent-dim)] px-3 py-2 text-xs font-bold text-[var(--accent)] transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {opt.label}
+              </button>
+            ))}
+
+            <div className="h-6 w-px bg-white/10" />
+
+            <button
+              onClick={bulkDelete}
+              disabled={bulkBusy || selectedIds.size === 0}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-300 hover:bg-red-500/15 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Trash2 size={14} />
+              Supprimer
+            </button>
+
+            <div className="flex-1" />
+
+            <button
+              onClick={exitSelectMode}
+              disabled={bulkBusy}
+              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white/70 hover:bg-white/10 disabled:opacity-40"
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      )}
 
       {selectedCard && (
         <CardDetail card={selectedCard} onClose={() => setSelectedCard(null)} />
