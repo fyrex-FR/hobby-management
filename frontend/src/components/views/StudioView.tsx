@@ -15,6 +15,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { compressImage } from '../../lib/storage';
+import { cropVideoToGuide, GUIDE_ASPECT, GUIDE_HEIGHT_FRAC } from '../../lib/guideCrop';
 import { useCreateCard, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { useIdentify } from '../../hooks/useIdentify';
 import { useAppStore } from '../../stores/appStore';
@@ -166,7 +167,6 @@ export function StudioView() {
   const [step, setStep] = useState<StudioStep>('front');
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState('');
-  const [cameraAspectRatio, setCameraAspectRatio] = useState('4 / 3');
   const [saveError, setSaveError] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
@@ -222,11 +222,6 @@ export function StudioView() {
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           await videoRef.current.play();
-          const width = videoRef.current.videoWidth;
-          const height = videoRef.current.videoHeight;
-          if (width && height) {
-            setCameraAspectRatio(`${width} / ${height}`);
-          }
         }
         setCameraReady(true);
       } catch (error) {
@@ -275,6 +270,15 @@ export function StudioView() {
     );
   }
 
+  // Capture la photo. Si le rognage auto est activé, on rogne sur la zone exacte
+  // du cadre-guide (déterministe, basé sur l'image vidéo affichée).
+  async function capturePhoto(side: CaptureSide): Promise<File> {
+    if (AUTO_CROP_AVAILABLE && autoCropEnabled && videoRef.current) {
+      return cropVideoToGuide(videoRef.current, side);
+    }
+    return takePhoto(side);
+  }
+
   async function handleCapture() {
     if (!videoRef.current) return;
     setSaveError('');
@@ -287,7 +291,7 @@ export function StudioView() {
 
     try {
       const side: CaptureSide = step === 'back' ? 'back' : 'front';
-      const file = await takePhoto(side);
+      const file = await capturePhoto(side);
 
       if (side === 'front') {
         setFrontFile(file);
@@ -334,8 +338,8 @@ export function StudioView() {
         compressToFile(backFile, 'back.jpg'),
       ]);
       const [imageFrontUrl, imageBackUrl] = await Promise.all([
-        uploadViaBackend(frontCompressed, newCard.id, token, 'front', autoCropEnabled),
-        uploadViaBackend(backCompressed, newCard.id, token, 'back', autoCropEnabled),
+        uploadViaBackend(frontCompressed, newCard.id, token, 'front'),
+        uploadViaBackend(backCompressed, newCard.id, token, 'back'),
       ]);
 
       await updateCard.mutateAsync({
@@ -390,7 +394,7 @@ export function StudioView() {
     let createdCardId: string | null = null;
 
     try {
-      const file = await takePhoto('front');
+      const file = await capturePhoto('front');
       const session = ensureSession();
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
@@ -401,7 +405,7 @@ export function StudioView() {
 
       setSaveMessage('Upload du recto…');
       const frontCompressed = await compressToFile(file, 'front.jpg');
-      const imageFrontUrl = await uploadViaBackend(frontCompressed, newCard.id, token, 'front', autoCropEnabled);
+      const imageFrontUrl = await uploadViaBackend(frontCompressed, newCard.id, token, 'front');
       await updateCard.mutateAsync({ id: newCard.id, image_front_url: imageFrontUrl });
 
       setFrontStack((prev) => [
@@ -455,13 +459,13 @@ export function StudioView() {
     setSaveMessage(`Verso ${backIndex + 1}/${frontStack.length} : upload…`);
 
     try {
-      const file = await takePhoto('back');
+      const file = await capturePhoto('back');
       const { data } = await supabase.auth.getSession();
       const token = data.session?.access_token;
       if (!token) throw new Error('Non authentifié');
 
       const backCompressed = await compressToFile(file, 'back.jpg');
-      const imageBackUrl = await uploadViaBackend(backCompressed, target.cardId, token, 'back', autoCropEnabled);
+      const imageBackUrl = await uploadViaBackend(backCompressed, target.cardId, token, 'back');
       await updateCard.mutateAsync({ id: target.cardId, image_back_url: imageBackUrl });
 
       setCapturedPairs((prev) => [
@@ -515,13 +519,13 @@ export function StudioView() {
     setSessionHistory(loadStudioSessions());
   }
 
-  // `compressed` est déjà compressé (cf. compressToFile) — pas de recompression ici.
-  async function uploadViaBackend(compressed: File, cardId: string, token: string, side: CaptureSide, crop = false): Promise<string> {
+  // `compressed` est déjà compressé (cf. compressToFile). Le rognage est fait
+  // côté client (cf. cropVideoToGuide) avant compression.
+  async function uploadViaBackend(compressed: File, cardId: string, token: string, side: CaptureSide): Promise<string> {
     const form = new FormData();
     form.append('file', new File([compressed], `${side}.jpg`, { type: 'image/jpeg' }));
     form.append('card_id', cardId);
     form.append('side', side);
-    if (crop) form.append('crop', 'true');
     const response = await fetch(`${API_BASE}/api/upload`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
@@ -838,18 +842,35 @@ export function StudioView() {
                 <>
                   <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(0,0,0,0.30),transparent_20%,transparent_80%,rgba(0,0,0,0.35))]" />
                   <div className="absolute inset-0 flex items-center justify-center p-3 sm:p-5">
-                    <div
-                      className="relative max-h-full max-w-full overflow-hidden rounded-[1.75rem] border border-white/10 bg-black shadow-2xl"
-                      style={{ aspectRatio: cameraAspectRatio, width: '100%', height: '100%' }}
-                    >
-                      <video ref={videoRef} className="h-full w-full object-cover" autoPlay muted playsInline />
-                      <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-[6%]">
-                        <div className="relative aspect-[2/3] h-full max-h-full rounded-[2rem] border border-white/70 shadow-[0_0_0_9999px_rgba(0,0,0,0.30)]">
-                          <div className="absolute inset-3 rounded-[1.6rem] border border-dashed border-white/25" />
+                    <div className="relative inline-flex max-h-full max-w-full overflow-hidden rounded-[1.75rem] border border-white/10 bg-black shadow-2xl">
+                      <video
+                        ref={videoRef}
+                        className="block h-auto w-auto max-h-full max-w-full object-contain"
+                        autoPlay
+                        muted
+                        playsInline
+                      />
+                      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                        <div
+                          className="relative rounded-[1.4rem] border-2 border-[var(--accent)]/80 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]"
+                          style={{
+                            height: `${GUIDE_HEIGHT_FRAC * 100}%`,
+                            aspectRatio: String(GUIDE_ASPECT),
+                            maxWidth: '95%',
+                          }}
+                        >
+                          <div className="absolute inset-2 rounded-[1.1rem] border border-dashed border-white/30" />
                         </div>
                       </div>
                     </div>
                   </div>
+                  {autoCropEnabled && (
+                    <div className="pointer-events-none absolute inset-x-0 bottom-16 sm:bottom-20 flex justify-center px-4">
+                      <div className="rounded-full border border-[var(--accent)]/30 bg-black/60 px-4 py-1.5 text-[10px] sm:text-xs font-bold text-[var(--accent)] backdrop-blur-xl">
+                        Rognage auto — aligne la carte dans le cadre
+                      </div>
+                    </div>
+                  )}
                   <div className="pointer-events-none absolute inset-x-0 top-5 sm:top-6 flex justify-center px-4">
                     <div className="rounded-full border border-white/10 bg-black/60 px-5 py-2.5 sm:px-7 sm:py-3 text-lg sm:text-2xl font-black tracking-[0.25em] text-white shadow-2xl backdrop-blur-xl">
                       {stepLabel}
