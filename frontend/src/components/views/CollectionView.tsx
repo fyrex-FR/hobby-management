@@ -268,6 +268,12 @@ function buildColumns(
             {card.numbered && (
               <span className="text-[10px] font-bold px-1 py-0.5 rounded shrink-0 whitespace-nowrap" style={{ background: 'rgba(245,166,35,0.15)', color: 'var(--accent)', border: '1px solid rgba(245,166,35,0.25)' }}>{card.numbered}</span>
             )}
+            {card.vinted_url && (
+              <span className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-black shrink-0 text-white" style={{ background: '#007782' }} title="Annonce Vinted">V</span>
+            )}
+            {card.ebay_url && (
+              <span className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-black shrink-0 text-white" style={{ background: '#E53238' }} title="Annonce eBay">e</span>
+            )}
           </div>
         );
       },
@@ -386,6 +392,21 @@ function GridCard({
         {card.status !== 'collection' && (
           <div className="absolute bottom-3 left-3 z-10">
             <StatusBadge status={card.status} />
+          </div>
+        )}
+
+        {(card.vinted_url || card.ebay_url) && (
+          <div className="absolute bottom-3 right-3 z-10 flex gap-1">
+            {card.vinted_url && (
+              <span className="h-5 px-1.5 rounded-md flex items-center text-[9px] font-black bg-[#007782] text-white shadow-lg border border-white/10 backdrop-blur-sm" title="Annonce Vinted">
+                V
+              </span>
+            )}
+            {card.ebay_url && (
+              <span className="h-5 px-1.5 rounded-md flex items-center text-[9px] font-black bg-[#E53238] text-white shadow-lg border border-white/10 backdrop-blur-sm" title="Annonce eBay">
+                e
+              </span>
+            )}
           </div>
         )}
       </div>

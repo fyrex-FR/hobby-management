@@ -133,6 +133,7 @@ export function CardDetail({ card, onClose }: Props) {
     purchase_price: card.purchase_price?.toString() ?? '',
     price: card.price?.toString() ?? '',
     vinted_url: card.vinted_url ?? '',
+    ebay_url: card.ebay_url ?? '',
     grading_company: card.grading_company ?? '',
     grading_status: card.grading_status ?? 'submitted',
     grading_grade: card.grading_grade ?? '',
@@ -154,6 +155,7 @@ export function CardDetail({ card, onClose }: Props) {
       purchase_price: fields.purchase_price ? parseFloat(fields.purchase_price) : null,
       price: fields.price ? parseFloat(fields.price) : null,
       vinted_url: fields.vinted_url || null,
+      ebay_url: fields.ebay_url || null,
       is_rookie: fields.is_rookie,
       grading_company: (fields.grading_company || null) as GradingCompany | null,
       grading_status: (fields.grading_status || null) as GradingStatus | null,
@@ -678,8 +680,9 @@ export function CardDetail({ card, onClose }: Props) {
                     ['purchase_price', 'Prix achat (€)'],
                     ['price', 'Prix vente (€)'],
                     ['vinted_url', 'Lien Vinted'],
+                    ['ebay_url', 'Lien eBay'],
                   ] as [
-                    'player' | 'team' | 'year' | 'brand' | 'set_name' | 'insert_name' | 'parallel_name' | 'card_number' | 'numbered' | 'purchase_price' | 'price' | 'vinted_url',
+                    'player' | 'team' | 'year' | 'brand' | 'set_name' | 'insert_name' | 'parallel_name' | 'card_number' | 'numbered' | 'purchase_price' | 'price' | 'vinted_url' | 'ebay_url',
                     string
                   ][]).map(([key, label]) => (
                     <div key={key}>

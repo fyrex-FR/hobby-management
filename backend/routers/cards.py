@@ -61,6 +61,7 @@ class CardCreate(BaseModel):
     grading_cert: Optional[str] = None
     grading_cost: Optional[float] = None
     vinted_url: Optional[str] = None
+    ebay_url: Optional[str] = None
 
 
 class CardUpdate(BaseModel):
@@ -94,6 +95,7 @@ class CardUpdate(BaseModel):
     grading_cert: Optional[str] = None
     grading_cost: Optional[float] = None
     vinted_url: Optional[str] = None
+    ebay_url: Optional[str] = None
 
 
 @router.get("/cards")
