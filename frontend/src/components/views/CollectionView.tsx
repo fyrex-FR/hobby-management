@@ -200,6 +200,13 @@ function QuickParallelInput({ card }: { card: Card }) {
 
 const columnHelper = createColumnHelper<Card>();
 
+// Nom de famille = dernier mot du nom (pour le tri).
+function playerLastName(name: string | null | undefined): string {
+  if (!name) return '';
+  const parts = name.trim().split(/\s+/);
+  return (parts[parts.length - 1] ?? '').toLowerCase();
+}
+
 function buildColumns(
   onEdit: (card: Card) => void,
   selectMode: boolean,
@@ -230,6 +237,11 @@ function buildColumns(
     ...(selectMode ? [selectCol] : []),
     columnHelper.accessor('player', {
       header: 'Joueur',
+      sortingFn: (a, b) => {
+        const la = playerLastName(a.original.player);
+        const lb = playerLastName(b.original.player);
+        return la.localeCompare(lb) || (a.original.player ?? '').localeCompare(b.original.player ?? '');
+      },
       cell: (info) => {
         const card = info.row.original;
         return (
