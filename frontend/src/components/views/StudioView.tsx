@@ -15,7 +15,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { compressImage } from '../../lib/storage';
-import { cropVideoToGuide, GUIDE_ASPECT, GUIDE_HEIGHT_FRAC } from '../../lib/guideCrop';
+import { cropVideoToGuide, captureZoomedFull, GUIDE_ASPECT, GUIDE_HEIGHT_FRAC } from '../../lib/guideCrop';
 import { useCreateCard, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { useIdentify } from '../../hooks/useIdentify';
 import { useAppStore } from '../../stores/appStore';
@@ -180,6 +180,8 @@ export function StudioView() {
   const [autoCropEnabled, setAutoCropEnabled] = useState(
     () => localStorage.getItem('studio_autocrop') === '1',
   );
+  const [zoom, setZoom] = useState(1);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
     localStorage.setItem('studio_autocrop', autoCropEnabled ? '1' : '0');
@@ -271,10 +273,14 @@ export function StudioView() {
   }
 
   // Capture la photo. Si le rognage auto est activé, on rogne sur la zone exacte
-  // du cadre-guide (déterministe, basé sur l'image vidéo affichée).
+  // du cadre-guide. Le zoom numérique est appliqué dans les deux cas.
   async function capturePhoto(side: CaptureSide): Promise<File> {
-    if (AUTO_CROP_AVAILABLE && autoCropEnabled && videoRef.current) {
-      return cropVideoToGuide(videoRef.current, side);
+    const video = videoRef.current;
+    if (video && AUTO_CROP_AVAILABLE && autoCropEnabled) {
+      return cropVideoToGuide(video, side, zoom);
+    }
+    if (video && zoom > 1) {
+      return captureZoomedFull(video, side, zoom);
     }
     return takePhoto(side);
   }
@@ -845,7 +851,8 @@ export function StudioView() {
                     <div className="relative inline-flex max-h-full max-w-full overflow-hidden rounded-[1.75rem] border border-white/10 bg-black shadow-2xl">
                       <video
                         ref={videoRef}
-                        className="block h-auto w-auto max-h-full max-w-full object-contain"
+                        className="block h-auto w-auto max-h-full max-w-full object-contain transition-transform"
+                        style={{ transform: `scale(${zoom})` }}
                         autoPlay
                         muted
                         playsInline
@@ -880,6 +887,29 @@ export function StudioView() {
                     {!cameraReady && (
                       <div className="rounded-full border border-white/10 bg-black/55 px-4 py-2 text-[11px] sm:text-xs font-semibold text-white/60 backdrop-blur-xl">
                         Initialisation caméra…
+                      </div>
+                    )}
+                    {cameraReady && (
+                      <div className="flex items-center gap-3 rounded-full border border-white/10 bg-black/55 px-4 py-2 backdrop-blur-xl">
+                        <span className="text-[10px] font-black uppercase tracking-widest text-white/60">Zoom</span>
+                        <input
+                          type="range"
+                          min={1}
+                          max={3}
+                          step={0.1}
+                          value={zoom}
+                          onChange={(e) => setZoom(Number(e.target.value))}
+                          className="h-1 w-32 sm:w-44 cursor-pointer accent-[var(--accent)]"
+                        />
+                        <span className="w-9 text-right text-xs font-bold text-white tabular-nums">{zoom.toFixed(1)}×</span>
+                        {zoom > 1 && (
+                          <button
+                            onClick={() => setZoom(1)}
+                            className="rounded-full border border-white/10 bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/70 hover:text-white"
+                          >
+                            Reset
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -946,6 +976,26 @@ export function StudioView() {
                   <p className="mt-2 text-xs text-white/45">
                     Photographie tous les recto dans l'ordre, puis passe aux verso.
                   </p>
+                  {frontStack.length > 0 && (
+                    <div className="mt-3">
+                      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/40">
+                        Aperçu — touche pour vérifier la netteté
+                      </div>
+                      <div className="mt-2 grid grid-cols-4 gap-2">
+                        {frontStack.map((item, i) => (
+                          <button
+                            key={item.cardId}
+                            onClick={() => setPreviewUrl(item.imageFrontUrl)}
+                            className="relative overflow-hidden rounded-lg border border-white/10 bg-black"
+                            style={{ aspectRatio: '2/3' }}
+                          >
+                            <img src={item.imageFrontUrl} alt={`Recto ${i + 1}`} className="h-full w-full object-cover" />
+                            <span className="absolute left-1 top-1 rounded bg-black/60 px-1 text-[9px] font-bold text-white/80">{i + 1}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                   <button
                     onClick={goToBackPhase}
                     disabled={frontStack.length === 0 || isBusy}
@@ -1176,6 +1226,26 @@ export function StudioView() {
           )}
         </div>
       </div>
+
+      {previewUrl && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 p-4 backdrop-blur-xl"
+          onClick={() => setPreviewUrl(null)}
+        >
+          <img
+            src={previewUrl}
+            alt="Aperçu"
+            className="max-h-[90vh] max-w-[95vw] rounded-2xl object-contain shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            onClick={() => setPreviewUrl(null)}
+            className="absolute top-6 right-6 flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-lg text-white hover:bg-white/20"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 }
