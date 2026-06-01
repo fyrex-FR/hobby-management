@@ -200,8 +200,34 @@ function QuickParallelInput({ card }: { card: Card }) {
 
 const columnHelper = createColumnHelper<Card>();
 
-function buildColumns(onEdit: (card: Card) => void) {
+function buildColumns(
+  onEdit: (card: Card) => void,
+  selectMode: boolean,
+  selectedIds: Set<string>,
+  onToggleSelect: (id: string) => void,
+) {
+  const selectCol = columnHelper.display({
+    id: 'select',
+    header: '',
+    cell: (info) => {
+      const id = info.row.original.id;
+      const checked = selectedIds.has(id);
+      return (
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleSelect(id); }}
+          className="flex items-center justify-center"
+        >
+          {checked ? (
+            <CheckCircle2 size={20} className="text-[var(--accent)]" fill="currentColor" />
+          ) : (
+            <Circle size={20} className="text-white/40" />
+          )}
+        </button>
+      );
+    },
+  });
   return [
+    ...(selectMode ? [selectCol] : []),
     columnHelper.accessor('player', {
       header: 'Joueur',
       cell: (info) => {
@@ -472,7 +498,7 @@ function FilterDropdown({
   );
 }
 
-function TableView({ table, onRowClick }: { table: ReturnType<typeof useReactTable<Card>>; onRowClick: (card: Card) => void }) {
+function TableView({ table, onRowClick, selectMode, selectedIds, onToggleSelect }: { table: ReturnType<typeof useReactTable<Card>>; onRowClick: (card: Card) => void; selectMode: boolean; selectedIds: Set<string>; onToggleSelect: (id: string) => void }) {
   const isMobile = window.innerWidth < 640;
 
   return (
@@ -500,23 +526,26 @@ function TableView({ table, onRowClick }: { table: ReturnType<typeof useReactTab
           ))}
         </thead>
         <tbody>
-          {table.getRowModel().rows.map((row, i) => (
-            <tr
-              key={row.id}
-              onClick={() => onRowClick(row.original)}
-              className={`group border-b border-white/5 cursor-pointer transition-colors hover:bg-white/[0.04] ${i % 2 === 0 ? '' : 'bg-white/[0.02]'
-                }`}
-            >
-              {row.getVisibleCells().map((cell) => {
-                if (isMobile && (cell.column.columnDef.meta as any)?.mobileHide) return null;
-                return (
-                  <td key={cell.id} className="px-3 py-3 text-[var(--text-primary)] align-middle">
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
+          {table.getRowModel().rows.map((row, i) => {
+            const isSelected = selectMode && selectedIds.has(row.original.id);
+            return (
+              <tr
+                key={row.id}
+                onClick={() => (selectMode ? onToggleSelect(row.original.id) : onRowClick(row.original))}
+                className={`group border-b border-white/5 cursor-pointer transition-colors hover:bg-white/[0.04] ${isSelected ? 'bg-[var(--accent-dim)]' : i % 2 === 0 ? '' : 'bg-white/[0.02]'
+                  }`}
+              >
+                {row.getVisibleCells().map((cell) => {
+                  if (isMobile && (cell.column.columnDef.meta as any)?.mobileHide) return null;
+                  return (
+                    <td key={cell.id} className="px-3 py-3 text-[var(--text-primary)] align-middle">
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -552,6 +581,26 @@ export function CollectionView() {
       else next.add(id);
       return next;
     });
+  }
+
+  async function applyBulkPrice() {
+    const raw = prompt('Prix de vente à appliquer aux cartes sélectionnées (€) :');
+    if (raw === null) return;
+    const trimmed = raw.trim();
+    const price = trimmed === '' ? null : parseFloat(trimmed.replace(',', '.'));
+    if (price !== null && (Number.isNaN(price) || price < 0)) {
+      alert('Prix invalide.');
+      return;
+    }
+    setBulkBusy(true);
+    try {
+      await Promise.all(
+        [...selectedIds].map((id) => updateCard.mutateAsync({ id, price })),
+      );
+      exitSelectMode();
+    } finally {
+      setBulkBusy(false);
+    }
   }
 
   function exitSelectMode() {
@@ -703,7 +752,11 @@ export function CollectionView() {
     URL.revokeObjectURL(url);
   }
 
-  const columns = useMemo(() => buildColumns(setSelectedCard), []);
+  const columns = useMemo(
+    () => buildColumns(setSelectedCard, selectMode, selectedIds, toggleSelect),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectMode, selectedIds],
+  );
 
   const table = useReactTable({
     data: filtered,
@@ -764,7 +817,7 @@ export function CollectionView() {
             </div>
 
             <button
-              onClick={() => (selectMode ? exitSelectMode() : (setViewMode('grid'), setSelectMode(true)))}
+              onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
               className="p-3 rounded-2xl border transition-all active:scale-95"
               style={selectMode
                 ? { background: 'var(--accent)', color: '#09090B', borderColor: 'var(--border-accent)' }
@@ -907,7 +960,7 @@ export function CollectionView() {
             ))}
           </div>
         ) : (
-          <TableView table={table} onRowClick={setSelectedCard} />
+          <TableView table={table} onRowClick={setSelectedCard} selectMode={selectMode} selectedIds={selectedIds} onToggleSelect={toggleSelect} />
         )}
       </div>
 
@@ -938,6 +991,16 @@ export function CollectionView() {
                 {opt.label}
               </button>
             ))}
+
+            <div className="h-6 w-px bg-white/10" />
+
+            <button
+              onClick={applyBulkPrice}
+              disabled={bulkBusy || selectedIds.size === 0}
+              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white/85 transition-all hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Prix de vente…
+            </button>
 
             <div className="h-6 w-px bg-white/10" />
 
