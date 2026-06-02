@@ -16,6 +16,7 @@ import {
   FolderPlus,
   Settings2,
   Check,
+  Smile,
 } from 'lucide-react';
 import {
   createColumnHelper,
@@ -1300,6 +1301,66 @@ export function CollectionView() {
   );
 }
 
+const EMOJI_CHOICES = [
+  '🏀', '⚾', '🏈', '⚽', '🏒', '🎾', '🏐', '🏉',
+  '🥎', '🎱', '🏓', '🥊', '🥇', '🥈', '🥉', '🏆',
+  '⭐', '🔥', '💎', '👑', '💰', '📈', '🎯', '✨',
+  '❤️', '💙', '💚', '💛', '💜', '🧡', '🖤', '🤍',
+  '🇺🇸', '🇫🇷', '🇨🇦', '🦁', '🐍', '🐂', '🦅', '🐻',
+  '📁', '📦', '🗂️', '🔒', '⚡', '🌟', '🎬', '🎵',
+];
+
+function EmojiPicker({ value, onChange }: { value: string; onChange: (emoji: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [open]);
+
+  return (
+    <div className="relative shrink-0" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex h-[38px] w-12 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-lg outline-none hover:bg-white/10 focus:border-[var(--accent)]/50"
+        title="Choisir un emoji"
+      >
+        {value || <span className="text-[var(--text-muted)]"><Smile size={16} /></span>}
+      </button>
+      {open && (
+        <div className="absolute left-0 top-[44px] z-20 w-60 rounded-2xl border border-white/10 bg-[var(--bg-elevated)] p-2 shadow-2xl">
+          <div className="grid grid-cols-8 gap-1">
+            <button
+              type="button"
+              onClick={() => { onChange(''); setOpen(false); }}
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:bg-white/10"
+              title="Aucun"
+            >
+              <X size={13} />
+            </button>
+            {EMOJI_CHOICES.map((e) => (
+              <button
+                type="button"
+                key={e}
+                onClick={() => { onChange(e); setOpen(false); }}
+                className={`flex h-7 w-7 items-center justify-center rounded-lg text-base hover:bg-white/10 ${value === e ? 'bg-[var(--accent-dim)] ring-1 ring-[var(--accent)]' : ''}`}
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FolderManager({
   folders,
   onClose,
@@ -1343,13 +1404,7 @@ function FolderManager({
 
         {/* Création */}
         <div className="mb-4 flex items-center gap-2">
-          <input
-            value={newEmoji}
-            onChange={(e) => setNewEmoji(e.target.value)}
-            placeholder="🏀"
-            maxLength={2}
-            className="w-12 rounded-xl border border-white/10 bg-white/5 px-2 py-2 text-center text-sm outline-none focus:border-[var(--accent)]/50"
-          />
+          <EmojiPicker value={newEmoji} onChange={setNewEmoji} />
           <input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
@@ -1396,12 +1451,7 @@ function FolderRow({
 
   return (
     <div className="flex items-center gap-2 rounded-xl border border-white/5 bg-white/[0.03] p-2">
-      <input
-        value={emoji}
-        onChange={(e) => setEmoji(e.target.value)}
-        maxLength={2}
-        className="w-12 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-center text-sm outline-none focus:border-[var(--accent)]/50"
-      />
+      <EmojiPicker value={emoji} onChange={setEmoji} />
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
