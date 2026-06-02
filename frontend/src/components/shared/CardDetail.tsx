@@ -28,6 +28,7 @@ import type { Card, CardType, GradingCompany, GradingStatus } from '../../types'
 import { GradingBadge } from './GradingBadge';
 import { StatusBadge } from './StatusBadge';
 import { useDeleteCard, useUpdateCard } from '../../hooks/useCards';
+import { useFolders } from '../../hooks/useFolders';
 import { useIdentify } from '../../hooks/useIdentify';
 import { EbaySoldItems } from './EbaySoldItems';
 import { supabase } from '../../lib/supabase';
@@ -114,6 +115,8 @@ export function CardDetail({ card, onClose }: Props) {
   const [showGrading, setShowGrading] = useState(false);
   const [lightboxSide, setLightboxSide] = useState<'front' | 'back' | null>(null);
   const [downloadingPhotos, setDownloadingPhotos] = useState(false);
+  const { data: folders = [] } = useFolders();
+  const [folderIds, setFolderIds] = useState<string[]>(card.folder_ids ?? []);
   const frontInputRef = useRef<HTMLInputElement>(null);
   const backInputRef = useRef<HTMLInputElement>(null);
   const [fields, setFields] = useState({
@@ -158,6 +161,7 @@ export function CardDetail({ card, onClose }: Props) {
       vinted_url: fields.vinted_url || null,
       ebay_url: fields.ebay_url || null,
       quantity: fields.quantity ? parseInt(fields.quantity, 10) : null,
+      folder_ids: folderIds,
       is_rookie: fields.is_rookie,
       grading_company: (fields.grading_company || null) as GradingCompany | null,
       grading_status: (fields.grading_status || null) as GradingStatus | null,
@@ -716,6 +720,30 @@ export function CardDetail({ card, onClose }: Props) {
                     <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Notes d'état</label>
                     <input className={inputCls} value={fields.condition_notes} onChange={(e) => set('condition_notes', e.target.value)} />
                   </div>
+                  {folders.length > 0 && (
+                    <div className="col-span-2">
+                      <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Dossiers</label>
+                      <div className="flex flex-wrap gap-2">
+                        {folders.map((f) => {
+                          const active = folderIds.includes(f.id);
+                          return (
+                            <button
+                              type="button"
+                              key={f.id}
+                              onClick={() => setFolderIds((prev) => (active ? prev.filter((id) => id !== f.id) : [...prev, f.id]))}
+                              className="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all border"
+                              style={active
+                                ? { background: 'var(--accent)', color: '#09090B', borderColor: 'var(--border-accent)' }
+                                : { background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.1)', color: 'var(--text-secondary)' }}
+                            >
+                              {f.emoji && <span>{f.emoji}</span>}
+                              {f.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="pt-2 space-y-3">

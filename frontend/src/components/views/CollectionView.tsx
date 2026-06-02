@@ -13,6 +13,9 @@ import {
   CheckCircle2,
   Circle,
   ListChecks,
+  FolderPlus,
+  Settings2,
+  Check,
 } from 'lucide-react';
 import {
   createColumnHelper,
@@ -23,8 +26,9 @@ import {
   type SortingState,
 } from '@tanstack/react-table';
 import { useCards, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
+import { useFolders, useCreateFolder, useUpdateFolder, useDeleteFolder } from '../../hooks/useFolders';
 import { useAppStore } from '../../stores/appStore';
-import type { Card, CardStatus, CardType } from '../../types';
+import type { Card, CardStatus, CardType, Folder } from '../../types';
 import { GradingBadge } from '../shared/GradingBadge';
 import { StatusBadge } from '../shared/StatusBadge';
 import { CardDetail } from '../shared/CardDetail';
@@ -206,6 +210,7 @@ function buildColumns(
   selectMode: boolean,
   selectedIds: Set<string>,
   onToggleSelect: (id: string) => void,
+  folderById: Map<string, Folder>,
 ) {
   const selectCol = columnHelper.display({
     id: 'select',
@@ -283,6 +288,15 @@ function buildColumns(
             {card.ebay_url && (
               <span className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-black shrink-0 text-white" style={{ background: '#E53238' }} title="Annonce eBay">e</span>
             )}
+            {(card.folder_ids ?? []).map((fid) => {
+              const f = folderById.get(fid);
+              if (!f) return null;
+              return (
+                <span key={fid} className="text-[10px] font-bold px-1 py-0.5 rounded shrink-0 whitespace-nowrap max-w-[90px] truncate" style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }} title={`${f.emoji ?? ''} ${f.name}`.trim()}>
+                  {f.emoji || f.name}
+                </span>
+              );
+            })}
           </div>
         );
       },
@@ -339,6 +353,7 @@ function GridCard({
   selected = false,
   onToggleSelect,
   anchorLetter,
+  folderChips = [],
 }: {
   card: Card;
   onClick: () => void;
@@ -346,6 +361,7 @@ function GridCard({
   selected?: boolean;
   onToggleSelect?: (id: string) => void;
   anchorLetter?: string;
+  folderChips?: string[];
 }) {
   return (
     <motion.button
@@ -406,9 +422,22 @@ function GridCard({
 
         <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-card)] via-transparent to-transparent opacity-60 group-hover:opacity-40 transition-opacity" />
 
-        {card.status !== 'collection' && (
-          <div className="absolute bottom-3 left-3 z-10">
-            <StatusBadge status={card.status} />
+        {(folderChips.length > 0 || card.status !== 'collection') && (
+          <div className="absolute bottom-3 left-3 z-10 flex flex-col items-start gap-1.5">
+            {folderChips.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {folderChips.map((chip, i) => (
+                  <span
+                    key={i}
+                    className="max-w-[120px] truncate rounded-md bg-black/55 px-1.5 py-0.5 text-[10px] font-bold text-white shadow-lg border border-white/10 backdrop-blur-sm"
+                    title={chip}
+                  >
+                    {chip}
+                  </span>
+                ))}
+              </div>
+            )}
+            {card.status !== 'collection' && <StatusBadge status={card.status} />}
           </div>
         )}
 
@@ -606,6 +635,7 @@ function TableView({ table, onRowClick, selectMode, selectedIds, onToggleSelect 
 
 export function CollectionView() {
   const { data: cards = [], isLoading } = useCards();
+  const { data: folders = [] } = useFolders();
   const { viewMode, setViewMode, drillFilter, clearDrillFilter } = useAppStore();
 
   const [statusFilter, setStatusFilter] = useState<FilterTab>('all');
@@ -617,6 +647,8 @@ export function CollectionView() {
   const [yearFilter, setYearFilter] = useState<string | null>(drillFilter.year ?? null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [rookieOnly, setRookieOnly] = useState(false);
+  const [folderFilter, setFolderFilter] = useState<string | null>(null); // id de dossier, ou '__none__' pour Non classé
+  const [manageFolders, setManageFolders] = useState(false);
   const [groupBy, setGroupBy] = useState<GroupBy>('none');
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -625,6 +657,9 @@ export function CollectionView() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const updateCard = useUpdateCard();
   const deleteCard = useDeleteCard();
+  const deleteFolder = useDeleteFolder();
+
+  const folderById = useMemo(() => new Map(folders.map((f) => [f.id, f])), [folders]);
 
   function toggleSelect(id: string) {
     setSelectedIds((prev) => {
@@ -685,6 +720,40 @@ export function CollectionView() {
     }
   }
 
+  // Ajoute ou retire un dossier sur les cartes sélectionnées (fusion du tableau folder_ids).
+  async function applyBulkFolder(folderId: string, add: boolean) {
+    if (selectedIds.size === 0) return;
+    setBulkBusy(true);
+    try {
+      const byId = new Map(cards.map((c) => [c.id, c]));
+      await Promise.all(
+        [...selectedIds].map((id) => {
+          const current = byId.get(id)?.folder_ids ?? [];
+          const set = new Set(current);
+          if (add) set.add(folderId);
+          else set.delete(folderId);
+          return updateCard.mutateAsync({ id, folder_ids: [...set] });
+        }),
+      );
+      exitSelectMode();
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  // Supprime un dossier + nettoie les cartes qui le référencent.
+  async function removeFolder(folderId: string) {
+    if (!confirm('Supprimer ce dossier ? Les cartes ne seront pas supprimées.')) return;
+    const affected = cards.filter((c) => (c.folder_ids ?? []).includes(folderId));
+    await Promise.all(
+      affected.map((c) =>
+        updateCard.mutateAsync({ id: c.id, folder_ids: (c.folder_ids ?? []).filter((f) => f !== folderId) }),
+      ),
+    );
+    await deleteFolder.mutateAsync(folderId);
+    if (folderFilter === folderId) setFolderFilter(null);
+  }
+
   // Counts pour les onglets (avant filtres sidebar)
   const statusCounts = useMemo(() => ({
     all: cards.length,
@@ -704,6 +773,14 @@ export function CollectionView() {
       if (yearFilter && c.year !== yearFilter) return false;
       if (typeFilter && c.card_type !== typeFilter) return false;
       if (rookieOnly && !c.is_rookie) return false;
+      if (folderFilter) {
+        const fids = c.folder_ids ?? [];
+        if (folderFilter === '__none__') {
+          if (fids.length > 0) return false;
+        } else if (!fids.includes(folderFilter)) {
+          return false;
+        }
+      }
       if (search) {
         const q = search.toLowerCase();
         const haystack = [c.player, c.team, c.brand, c.set_name, c.insert_name, c.parallel_name, c.year]
@@ -714,7 +791,20 @@ export function CollectionView() {
       }
       return true;
     });
-  }, [cards, statusFilter, playerFilter, teamFilter, brandFilter, setFilter, yearFilter, typeFilter, rookieOnly, search]);
+  }, [cards, statusFilter, playerFilter, teamFilter, brandFilter, setFilter, yearFilter, typeFilter, rookieOnly, folderFilter, search]);
+
+  // Compteurs par dossier (cartes hors brouillon).
+  const folderCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    let unfiled = 0;
+    cards.forEach((c) => {
+      if (c.status === 'draft') return;
+      const fids = c.folder_ids ?? [];
+      if (fids.length === 0) unfiled += 1;
+      fids.forEach((fid) => { counts[fid] = (counts[fid] ?? 0) + 1; });
+    });
+    return { counts, unfiled };
+  }, [cards]);
 
   const facets = useCallback((key: keyof Card) => {
     const counts: Record<string, number> = {};
@@ -826,9 +916,8 @@ export function CollectionView() {
   }
 
   const columns = useMemo(
-    () => buildColumns(setSelectedCard, selectMode, selectedIds, toggleSelect),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selectMode, selectedIds],
+    () => buildColumns(setSelectedCard, selectMode, selectedIds, toggleSelect, folderById),
+    [selectMode, selectedIds, folderById],
   );
 
   const table = useReactTable({
@@ -985,9 +1074,56 @@ export function CollectionView() {
             </div>
           </div>
         </div>
+
+        {/* Row 3: dossiers */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <button
+            onClick={() => setFolderFilter(null)}
+            className="px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 border"
+            style={folderFilter === null
+              ? { background: 'var(--accent)', color: '#09090B', borderColor: 'var(--border-accent)' }
+              : { background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+          >
+            Tous
+          </button>
+          {folders.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => setFolderFilter((prev) => (prev === f.id ? null : f.id))}
+              className="px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 border inline-flex items-center gap-1.5"
+              style={folderFilter === f.id
+                ? { background: 'var(--accent)', color: '#09090B', borderColor: 'var(--border-accent)' }
+                : { background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+            >
+              {f.emoji && <span>{f.emoji}</span>}
+              {f.name}
+              <span className={`px-1.5 py-0.5 rounded-lg text-[9px] font-black ${folderFilter === f.id ? 'bg-black/10' : 'bg-white/10'}`}>
+                {folderCounts.counts[f.id] ?? 0}
+              </span>
+            </button>
+          ))}
+          {folderCounts.unfiled > 0 && (
+            <button
+              onClick={() => setFolderFilter((prev) => (prev === '__none__' ? null : '__none__'))}
+              className="px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 border"
+              style={folderFilter === '__none__'
+                ? { background: 'var(--accent)', color: '#09090B', borderColor: 'var(--border-accent)' }
+                : { background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}
+            >
+              Non classé ({folderCounts.unfiled})
+            </button>
+          )}
+          <button
+            onClick={() => setManageFolders(true)}
+            className="px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 border inline-flex items-center gap-1.5 bg-white/5 border-white/5 text-[var(--text-secondary)] hover:text-white hover:bg-white/10"
+            title="Gérer les dossiers"
+          >
+            <Settings2 size={13} />
+            Gérer
+          </button>
+        </div>
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-auto px-6 py-6">
         {!isLoading && filtered.length > 0 && (
           <div className="sticky top-0 z-20 -mx-6 mb-4 flex flex-wrap items-center justify-center gap-0.5 border-b border-white/5 bg-[var(--bg-primary)]/85 px-6 py-2 backdrop-blur-xl">
@@ -1048,6 +1184,10 @@ export function CollectionView() {
                       selected={selectedIds.has(card.id)}
                       onToggleSelect={toggleSelect}
                       anchorLetter={gridAnchor.get(card.id)}
+                      folderChips={(card.folder_ids ?? [])
+                        .map((fid) => folderById.get(fid))
+                        .filter((f): f is Folder => !!f)
+                        .map((f) => (f.emoji ? `${f.emoji} ${f.name}` : f.name))}
                     />
                   ))}
                 </div>
@@ -1097,6 +1237,34 @@ export function CollectionView() {
               Prix de vente…
             </button>
 
+            {folders.length > 0 && (
+              <>
+                <div className="h-6 w-px bg-white/10" />
+                <select
+                  value=""
+                  disabled={bulkBusy || selectedIds.size === 0}
+                  onChange={(e) => { if (e.target.value) applyBulkFolder(e.target.value, true); e.target.value = ''; }}
+                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white/85 outline-none transition-all hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <option value="" className="bg-[#18181b]">Ajouter au dossier…</option>
+                  {folders.map((f) => (
+                    <option key={f.id} value={f.id} className="bg-[#18181b]">{f.emoji ? `${f.emoji} ` : ''}{f.name}</option>
+                  ))}
+                </select>
+                <select
+                  value=""
+                  disabled={bulkBusy || selectedIds.size === 0}
+                  onChange={(e) => { if (e.target.value) applyBulkFolder(e.target.value, false); e.target.value = ''; }}
+                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white/85 outline-none transition-all hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  <option value="" className="bg-[#18181b]">Retirer du dossier…</option>
+                  {folders.map((f) => (
+                    <option key={f.id} value={f.id} className="bg-[#18181b]">{f.emoji ? `${f.emoji} ` : ''}{f.name}</option>
+                  ))}
+                </select>
+              </>
+            )}
+
             <div className="h-6 w-px bg-white/10" />
 
             <button
@@ -1124,6 +1292,136 @@ export function CollectionView() {
       {selectedCard && (
         <CardDetail card={selectedCard} onClose={() => setSelectedCard(null)} />
       )}
+
+      {manageFolders && (
+        <FolderManager folders={folders} onClose={() => setManageFolders(false)} onDelete={removeFolder} />
+      )}
+    </div>
+  );
+}
+
+function FolderManager({
+  folders,
+  onClose,
+  onDelete,
+}: {
+  folders: Folder[];
+  onClose: () => void;
+  onDelete: (id: string) => void;
+}) {
+  const createFolder = useCreateFolder();
+  const updateFolder = useUpdateFolder();
+  const [newEmoji, setNewEmoji] = useState('');
+  const [newName, setNewName] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function handleCreate() {
+    const name = newName.trim();
+    if (!name) return;
+    setBusy(true);
+    try {
+      await createFolder.mutateAsync({ name, emoji: newEmoji.trim() || null, position: folders.length });
+      setNewEmoji('');
+      setNewName('');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div
+        className="w-full max-w-md rounded-3xl border border-white/10 bg-[var(--bg-card)] p-5 shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-sm font-black uppercase tracking-widest text-white">Dossiers</h3>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-[var(--text-muted)] hover:bg-white/10 hover:text-white">
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Création */}
+        <div className="mb-4 flex items-center gap-2">
+          <input
+            value={newEmoji}
+            onChange={(e) => setNewEmoji(e.target.value)}
+            placeholder="🏀"
+            maxLength={2}
+            className="w-12 rounded-xl border border-white/10 bg-white/5 px-2 py-2 text-center text-sm outline-none focus:border-[var(--accent)]/50"
+          />
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); }}
+            placeholder="Nom du dossier"
+            className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/50"
+          />
+          <button
+            onClick={handleCreate}
+            disabled={busy || !newName.trim()}
+            className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--accent)]/30 bg-[var(--accent-dim)] px-3 py-2 text-xs font-bold text-[var(--accent)] hover:opacity-90 disabled:opacity-40"
+          >
+            <FolderPlus size={14} />
+            Créer
+          </button>
+        </div>
+
+        {/* Liste */}
+        <div className="max-h-[50vh] space-y-2 overflow-auto">
+          {folders.length === 0 && (
+            <p className="py-6 text-center text-xs text-[var(--text-muted)]">Aucun dossier pour le moment.</p>
+          )}
+          {folders.map((f) => (
+            <FolderRow key={f.id} folder={f} onSave={(emoji, name) => updateFolder.mutate({ id: f.id, emoji, name })} onDelete={() => onDelete(f.id)} />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FolderRow({
+  folder,
+  onSave,
+  onDelete,
+}: {
+  folder: Folder;
+  onSave: (emoji: string | null, name: string) => void;
+  onDelete: () => void;
+}) {
+  const [emoji, setEmoji] = useState(folder.emoji ?? '');
+  const [name, setName] = useState(folder.name);
+  const dirty = emoji !== (folder.emoji ?? '') || name !== folder.name;
+
+  return (
+    <div className="flex items-center gap-2 rounded-xl border border-white/5 bg-white/[0.03] p-2">
+      <input
+        value={emoji}
+        onChange={(e) => setEmoji(e.target.value)}
+        maxLength={2}
+        className="w-12 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-center text-sm outline-none focus:border-[var(--accent)]/50"
+      />
+      <input
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm outline-none focus:border-[var(--accent)]/50"
+      />
+      <button
+        onClick={() => name.trim() && onSave(emoji.trim() || null, name.trim())}
+        disabled={!dirty || !name.trim()}
+        className="rounded-lg p-2 text-[var(--accent)] hover:bg-[var(--accent-dim)] disabled:opacity-30"
+        title="Enregistrer"
+      >
+        <Check size={15} />
+      </button>
+      <button
+        onClick={onDelete}
+        className="rounded-lg p-2 text-red-300 hover:bg-red-500/15"
+        title="Supprimer"
+      >
+        <Trash2 size={15} />
+      </button>
     </div>
   );
 }

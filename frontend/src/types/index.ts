@@ -41,6 +41,16 @@ export interface Card {
   vinted_url: string | null;
   ebay_url: string | null;
   quantity: number | null;
+  folder_ids: string[] | null;
+}
+
+export interface Folder {
+  id: string;
+  user_id: string;
+  name: string;
+  emoji: string | null;
+  position: number | null;
+  created_at: string;
 }
 
 export interface AIIdentificationResult {

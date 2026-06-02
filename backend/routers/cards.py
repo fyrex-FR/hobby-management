@@ -63,6 +63,7 @@ class CardCreate(BaseModel):
     vinted_url: Optional[str] = None
     ebay_url: Optional[str] = None
     quantity: Optional[int] = None
+    folder_ids: Optional[list[str]] = None
 
 
 class CardUpdate(BaseModel):
@@ -98,6 +99,7 @@ class CardUpdate(BaseModel):
     vinted_url: Optional[str] = None
     ebay_url: Optional[str] = None
     quantity: Optional[int] = None
+    folder_ids: Optional[list[str]] = None
 
 
 @router.get("/cards")
