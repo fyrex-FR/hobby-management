@@ -40,6 +40,7 @@ export interface Card {
   grading_cost: number | null;
   vinted_url: string | null;
   ebay_url: string | null;
+  quantity: number | null;
 }
 
 export interface AIIdentificationResult {

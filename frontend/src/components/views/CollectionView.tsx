@@ -31,6 +31,7 @@ import { CardDetail } from '../shared/CardDetail';
 import { RookieBadge } from '../shared/RookieBadge';
 
 import { normalizeParallelName } from '../../lib/cardQuality';
+import { playerLastName, playerInitial } from '../../lib/playerName';
 
 type FilterTab = 'all' | 'a_vendre' | 'vendu';
 type GroupBy = 'none' | 'player' | 'team' | 'brand' | 'set_name' | 'year';
@@ -200,13 +201,6 @@ function QuickParallelInput({ card }: { card: Card }) {
 
 const columnHelper = createColumnHelper<Card>();
 
-// Nom de famille = dernier mot du nom (pour le tri).
-function playerLastName(name: string | null | undefined): string {
-  if (!name) return '';
-  const parts = name.trim().split(/\s+/);
-  return (parts[parts.length - 1] ?? '').toLowerCase();
-}
-
 function buildColumns(
   onEdit: (card: Card) => void,
   selectMode: boolean,
@@ -280,6 +274,9 @@ function buildColumns(
             {card.numbered && (
               <span className="text-[10px] font-bold px-1 py-0.5 rounded shrink-0 whitespace-nowrap" style={{ background: 'rgba(245,166,35,0.15)', color: 'var(--accent)', border: '1px solid rgba(245,166,35,0.25)' }}>{card.numbered}</span>
             )}
+            {(card.quantity ?? 1) > 1 && (
+              <span className="text-[10px] font-bold px-1 py-0.5 rounded shrink-0 whitespace-nowrap text-white" style={{ background: '#6366F1' }} title={`${card.quantity} exemplaires`}>×{card.quantity}</span>
+            )}
             {card.vinted_url && (
               <span className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-black shrink-0 text-white" style={{ background: '#007782' }} title="Annonce Vinted">V</span>
             )}
@@ -341,16 +338,19 @@ function GridCard({
   selectMode = false,
   selected = false,
   onToggleSelect,
+  anchorLetter,
 }: {
   card: Card;
   onClick: () => void;
   selectMode?: boolean;
   selected?: boolean;
   onToggleSelect?: (id: string) => void;
+  anchorLetter?: string;
 }) {
   return (
     <motion.button
       whileHover={{ y: -4 }}
+      data-jump={anchorLetter}
       onClick={() => (selectMode ? onToggleSelect?.(card.id) : onClick())}
       className={`group relative bg-[var(--bg-card)] rounded-3xl overflow-hidden border transition-all duration-300 hover:shadow-2xl hover:shadow-[var(--accent-glow)] text-left w-full glass ${
         selected ? 'border-[var(--accent)] ring-2 ring-[var(--accent)]' : 'border-white/5 hover:border-[var(--accent)]/40'
@@ -395,6 +395,11 @@ function GridCard({
           {card.numbered && (
             <div className="h-5 px-2 rounded-lg flex items-center justify-center text-[9px] font-black bg-[var(--accent)] text-black shadow-lg shadow-amber-900/40 border border-amber-400/20 backdrop-blur-sm">
               {card.numbered}
+            </div>
+          )}
+          {(card.quantity ?? 1) > 1 && (
+            <div className="h-5 px-2 rounded-lg flex items-center justify-center text-[9px] font-black bg-[#6366F1] text-white shadow-lg shadow-indigo-900/40 border border-indigo-400/20 backdrop-blur-sm" title={`${card.quantity} exemplaires`}>
+              ×{card.quantity}
             </div>
           )}
         </div>
@@ -534,6 +539,19 @@ function FilterDropdown({
 function TableView({ table, onRowClick, selectMode, selectedIds, onToggleSelect }: { table: ReturnType<typeof useReactTable<Card>>; onRowClick: (card: Card) => void; selectMode: boolean; selectedIds: Set<string>; onToggleSelect: (id: string) => void }) {
   const isMobile = window.innerWidth < 640;
 
+  // Premier id de ligne pour chaque initiale (répertoire A-Z).
+  const rowAnchor = new Map<string, string>();
+  {
+    const seen = new Set<string>();
+    for (const row of table.getRowModel().rows) {
+      const ini = playerInitial(row.original.player);
+      if (!seen.has(ini)) {
+        seen.add(ini);
+        rowAnchor.set(row.id, ini);
+      }
+    }
+  }
+
   return (
     <div className="rounded-xl border border-white/5 overflow-hidden">
       <table className="w-full text-sm border-collapse">
@@ -564,6 +582,7 @@ function TableView({ table, onRowClick, selectMode, selectedIds, onToggleSelect 
             return (
               <tr
                 key={row.id}
+                data-jump={rowAnchor.get(row.id)}
                 onClick={() => (selectMode ? onToggleSelect(row.original.id) : onRowClick(row.original))}
                 className={`group border-b border-white/5 cursor-pointer transition-colors hover:bg-white/[0.04] ${isSelected ? 'bg-[var(--accent-dim)]' : i % 2 === 0 ? '' : 'bg-white/[0.02]'
                   }`}
@@ -732,18 +751,39 @@ export function CollectionView() {
       if (!groups[key]) groups[key] = [];
       groups[key].push(c);
     });
-    // Pour un classement par joueur, on trie sur le nom de famille (dernier mot).
-    const lastName = (name: string) => {
-      const parts = name.trim().split(/\s+/);
-      return (parts[parts.length - 1] ?? name).toLowerCase();
-    };
+    // Pour un classement par joueur, on trie sur le nom de famille (suffixes / multi-joueurs gérés).
     const compare =
       groupBy === 'player'
         ? ([a]: [string, Card[]], [b]: [string, Card[]]) =>
-            lastName(a).localeCompare(lastName(b)) || a.localeCompare(b)
+            playerLastName(a).localeCompare(playerLastName(b)) || a.localeCompare(b)
         : ([a]: [string, Card[]], [b]: [string, Card[]]) => a.localeCompare(b);
     return Object.fromEntries(Object.entries(groups).sort(compare));
   }, [filtered, groupBy]);
+
+  // Répertoire alphabétique : initiales présentes + ancre (1er id de carte par initiale dans l'ordre affiché en grille).
+  const availableInitials = useMemo(
+    () => new Set(filtered.map((c) => playerInitial(c.player))),
+    [filtered],
+  );
+  const gridAnchor = useMemo(() => {
+    const m = new Map<string, string>();
+    const seen = new Set<string>();
+    for (const list of Object.values(grouped)) {
+      for (const c of list) {
+        const ini = playerInitial(c.player);
+        if (!seen.has(ini)) {
+          seen.add(ini);
+          m.set(c.id, ini);
+        }
+      }
+    }
+    return m;
+  }, [grouped]);
+
+  function jumpToLetter(letter: string) {
+    const el = document.querySelector(`[data-jump="${letter}"]`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
 
   const rookieCount = useMemo(() => cards.filter((c) => c.is_rookie).length, [cards]);
   const activeFiltersCount = [playerFilter, teamFilter, brandFilter, setFilter, yearFilter, typeFilter, rookieOnly ? 'rookie' : null].filter(Boolean).length;
@@ -949,6 +989,27 @@ export function CollectionView() {
 
       {/* Content */}
       <div className="flex-1 overflow-auto px-6 py-6">
+        {!isLoading && filtered.length > 0 && (
+          <div className="sticky top-0 z-20 -mx-6 mb-4 flex flex-wrap items-center justify-center gap-0.5 border-b border-white/5 bg-[var(--bg-primary)]/85 px-6 py-2 backdrop-blur-xl">
+            {[...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''), '#'].map((letter) => {
+              const has = availableInitials.has(letter);
+              return (
+                <button
+                  key={letter}
+                  disabled={!has}
+                  onClick={() => jumpToLetter(letter)}
+                  className={`h-6 w-6 rounded-md text-[11px] font-bold transition-colors ${
+                    has
+                      ? 'text-[var(--text-secondary)] hover:bg-[var(--accent)] hover:text-black'
+                      : 'cursor-default text-[var(--text-muted)]/30'
+                  }`}
+                >
+                  {letter}
+                </button>
+              );
+            })}
+          </div>
+        )}
         {isLoading ? (
           <div className="flex items-center justify-center h-48">
             <div className="text-[var(--text-muted)] text-sm">Chargement…</div>
@@ -986,6 +1047,7 @@ export function CollectionView() {
                       selectMode={selectMode}
                       selected={selectedIds.has(card.id)}
                       onToggleSelect={toggleSelect}
+                      anchorLetter={gridAnchor.get(card.id)}
                     />
                   ))}
                 </div>

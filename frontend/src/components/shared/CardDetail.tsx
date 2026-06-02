@@ -134,6 +134,7 @@ export function CardDetail({ card, onClose }: Props) {
     price: card.price?.toString() ?? '',
     vinted_url: card.vinted_url ?? '',
     ebay_url: card.ebay_url ?? '',
+    quantity: card.quantity?.toString() ?? '',
     grading_company: card.grading_company ?? '',
     grading_status: card.grading_status ?? 'submitted',
     grading_grade: card.grading_grade ?? '',
@@ -156,6 +157,7 @@ export function CardDetail({ card, onClose }: Props) {
       price: fields.price ? parseFloat(fields.price) : null,
       vinted_url: fields.vinted_url || null,
       ebay_url: fields.ebay_url || null,
+      quantity: fields.quantity ? parseInt(fields.quantity, 10) : null,
       is_rookie: fields.is_rookie,
       grading_company: (fields.grading_company || null) as GradingCompany | null,
       grading_status: (fields.grading_status || null) as GradingStatus | null,
@@ -690,6 +692,10 @@ export function CardDetail({ card, onClose }: Props) {
                       <input className={inputCls} value={fields[key]} onChange={(e) => set(key, e.target.value)} />
                     </div>
                   ))}
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Quantité</label>
+                    <input type="number" min={1} className={inputCls} value={fields.quantity} onChange={(e) => set('quantity', e.target.value)} placeholder="1" />
+                  </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Type</label>
                     <select className={inputCls} value={fields.card_type} onChange={(e) => set('card_type', e.target.value)}>
