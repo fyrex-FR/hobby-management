@@ -1,4 +1,5 @@
 import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Search,
@@ -17,6 +18,7 @@ import {
   Settings2,
   Check,
   Smile,
+  Folder as FolderIcon,
 } from 'lucide-react';
 import {
   createColumnHelper,
@@ -212,6 +214,7 @@ function buildColumns(
   selectedIds: Set<string>,
   onToggleSelect: (id: string) => void,
   folderById: Map<string, Folder>,
+  folders: Folder[],
 ) {
   const selectCol = columnHelper.display({
     id: 'select',
@@ -298,6 +301,11 @@ function buildColumns(
                 </span>
               );
             })}
+            {folders.length > 0 && (
+              <span onClick={(e) => e.stopPropagation()}>
+                <FolderQuickAssign card={card} folders={folders} variant="icon" />
+              </span>
+            )}
           </div>
         );
       },
@@ -355,6 +363,7 @@ function GridCard({
   onToggleSelect,
   anchorLetter,
   folderChips = [],
+  folders = [],
 }: {
   card: Card;
   onClick: () => void;
@@ -363,6 +372,7 @@ function GridCard({
   onToggleSelect?: (id: string) => void;
   anchorLetter?: string;
   folderChips?: string[];
+  folders?: Folder[];
 }) {
   return (
     <motion.button
@@ -381,6 +391,11 @@ function GridCard({
             ) : (
               <Circle size={26} className="text-white/80 drop-shadow-[0_1px_3px_rgba(0,0,0,0.6)]" />
             )}
+          </div>
+        )}
+        {!selectMode && folders.length > 0 && (
+          <div className="absolute top-3 right-3 z-20">
+            <FolderQuickAssign card={card} folders={folders} variant="overlay" />
           </div>
         )}
         {card.image_front_url ? (
@@ -917,8 +932,8 @@ export function CollectionView() {
   }
 
   const columns = useMemo(
-    () => buildColumns(setSelectedCard, selectMode, selectedIds, toggleSelect, folderById),
-    [selectMode, selectedIds, folderById],
+    () => buildColumns(setSelectedCard, selectMode, selectedIds, toggleSelect, folderById, folders),
+    [selectMode, selectedIds, folderById, folders],
   );
 
   const table = useReactTable({
@@ -1189,6 +1204,7 @@ export function CollectionView() {
                         .map((fid) => folderById.get(fid))
                         .filter((f): f is Folder => !!f)
                         .map((f) => (f.emoji ? `${f.emoji} ${f.name}` : f.name))}
+                      folders={folders}
                     />
                   ))}
                 </div>
@@ -1298,6 +1314,107 @@ export function CollectionView() {
         <FolderManager folders={folders} onClose={() => setManageFolders(false)} onDelete={removeFolder} />
       )}
     </div>
+  );
+}
+
+function FolderQuickAssign({
+  card,
+  folders,
+  variant,
+}: {
+  card: Card;
+  folders: Folder[];
+  variant: 'overlay' | 'icon';
+}) {
+  const updateCard = useUpdateCard();
+  const [open, setOpen] = useState(false);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+  const triggerRef = useRef<HTMLSpanElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const current = new Set(card.folder_ids ?? []);
+
+  useEffect(() => {
+    if (!open) return;
+    function handle(e: MouseEvent) {
+      if (popRef.current?.contains(e.target as Node)) return;
+      if (triggerRef.current?.contains(e.target as Node)) return;
+      setOpen(false);
+    }
+    function close() { setOpen(false); }
+    document.addEventListener('mousedown', handle);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      document.removeEventListener('mousedown', handle);
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [open]);
+
+  function openMenu(e: React.MouseEvent) {
+    e.stopPropagation();
+    e.preventDefault();
+    const r = triggerRef.current!.getBoundingClientRect();
+    const width = 224;
+    const estH = Math.min(folders.length * 38 + 14, 280);
+    const openUp = r.bottom + estH > window.innerHeight;
+    setPos({
+      top: openUp ? Math.max(8, r.top - estH - 4) : r.bottom + 4,
+      left: Math.max(8, Math.min(r.left, window.innerWidth - width - 8)),
+    });
+    setOpen(true);
+  }
+
+  function toggle(e: React.MouseEvent, fid: string) {
+    e.stopPropagation();
+    const next = new Set(current);
+    if (next.has(fid)) next.delete(fid);
+    else next.add(fid);
+    updateCard.mutate({ id: card.id, folder_ids: [...next] });
+  }
+
+  return (
+    <>
+      <span
+        ref={triggerRef}
+        role="button"
+        tabIndex={0}
+        onClick={openMenu}
+        className={variant === 'overlay'
+          ? 'inline-flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-black/55 text-white shadow-lg backdrop-blur-sm hover:bg-black/75'
+          : 'inline-flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] hover:bg-white/10 hover:text-white'}
+        title="Ranger dans un dossier"
+      >
+        <FolderIcon size={variant === 'overlay' ? 15 : 14} />
+      </span>
+      {open && pos && createPortal(
+        <div
+          ref={popRef}
+          style={{ position: 'fixed', top: pos.top, left: pos.left, width: 224 }}
+          className="z-[80] max-h-[280px] overflow-auto rounded-2xl border border-white/10 bg-[var(--bg-elevated)] p-1.5 shadow-2xl"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {folders.map((f) => {
+            const active = current.has(f.id);
+            return (
+              <button
+                key={f.id}
+                type="button"
+                onClick={(e) => toggle(e, f.id)}
+                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs font-semibold hover:bg-white/10"
+              >
+                <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${active ? 'border-[var(--accent)] bg-[var(--accent)] text-black' : 'border-white/20 text-transparent'}`}>
+                  <Check size={11} />
+                </span>
+                {f.emoji && <span>{f.emoji}</span>}
+                <span className="truncate text-white/90">{f.name}</span>
+              </button>
+            );
+          })}
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }
 
