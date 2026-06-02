@@ -937,7 +937,7 @@ export function CollectionView() {
   ];
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-[radial-gradient(circle_at_50%_-20%,_var(--accent-dim)_0%,_transparent_70%)]">
+    <div className="flex h-full flex-col overflow-hidden bg-[radial-gradient(circle_at_50%_-20%,_var(--accent-dim)_0%,_transparent_70%)]">
       {/* Toolbar */}
       <div className="flex flex-col gap-4 px-6 py-5 border-b border-white/5 bg-black/20 backdrop-blur-3xl shrink-0 relative z-40">
         {/* Row 1: status tabs + right controls */}
@@ -1125,7 +1125,7 @@ export function CollectionView() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto px-6 py-6">
+      <div className="min-h-0 flex-1 overflow-auto px-6 py-6">
         {!isLoading && filtered.length > 0 && (
           <div className="sticky top-0 z-20 -mx-6 mb-4 flex flex-wrap items-center justify-center gap-0.5 border-b border-white/5 bg-[var(--bg-primary)]/85 px-6 py-2 backdrop-blur-xl">
             {[...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''), '#'].map((letter) => {
