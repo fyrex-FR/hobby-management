@@ -1251,9 +1251,9 @@ export function CollectionView() {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto px-6 py-6">
+      <div className="min-h-0 flex-1 overflow-auto px-6 pb-6">
         {!isLoading && filtered.length > 0 && (
-          <div className="sticky top-0 z-20 -mx-6 mb-4 flex flex-wrap items-center justify-center gap-0.5 border-b border-white/5 bg-[var(--bg-primary)]/85 px-6 py-2 backdrop-blur-xl">
+          <div className="sticky top-0 z-20 -mx-6 mb-4 flex flex-wrap items-center justify-center gap-0.5 border-b border-white/5 bg-[var(--bg-primary)]/90 px-6 py-2.5 backdrop-blur-xl">
             {[...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''), '#'].map((letter) => {
               const has = availableInitials.has(letter);
               return (
