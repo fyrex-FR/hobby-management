@@ -19,6 +19,7 @@ import {
   Check,
   Smile,
   Folder as FolderIcon,
+  ArrowUpDown,
 } from 'lucide-react';
 import {
   createColumnHelper,
@@ -42,6 +43,62 @@ import { playerLastName, playerInitial } from '../../lib/playerName';
 
 type FilterTab = 'all' | 'a_vendre' | 'vendu';
 type GroupBy = 'none' | 'player' | 'team' | 'brand' | 'set_name' | 'year';
+type SortBy = 'recent' | 'player' | 'year_desc' | 'year_asc' | 'price_desc' | 'price_asc' | 'numbered';
+type ListingFilter = 'all' | 'online' | 'vinted' | 'ebay' | 'offline';
+
+const SORT_LABELS: Record<SortBy, string> = {
+  recent: 'Plus récentes',
+  player: 'Joueur A-Z',
+  year_desc: 'Année ↓',
+  year_asc: 'Année ↑',
+  price_desc: 'Prix ↓',
+  price_asc: 'Prix ↑',
+  numbered: 'Numérotation #',
+};
+
+const GROUP_BY_LABELS: Record<GroupBy, string> = {
+  none: 'Aucun',
+  player: 'Joueur',
+  team: 'Équipe',
+  brand: 'Marque',
+  set_name: 'Collection',
+  year: 'Année',
+};
+
+function seasonStart(year: string | null | undefined): number {
+  if (!year) return -1;
+  const match = year.match(/^(\d{4})/);
+  return match ? parseInt(match[1], 10) : -1;
+}
+
+function numberedValue(numbered: string | null | undefined): number {
+  if (!numbered) return Number.POSITIVE_INFINITY;
+  const match = numbered.match(/(\d+)/);
+  return match ? parseInt(match[1], 10) : Number.POSITIVE_INFINITY;
+}
+
+function sortCards(list: Card[], sortBy: SortBy): Card[] {
+  if (sortBy === 'recent') return list;
+  return [...list].sort((a, b) => {
+    switch (sortBy) {
+      case 'player':
+        return playerLastName(a.player).localeCompare(playerLastName(b.player)) || (a.player ?? '').localeCompare(b.player ?? '');
+      case 'year_desc':
+        return seasonStart(b.year) - seasonStart(a.year);
+      case 'year_asc':
+        return seasonStart(a.year) - seasonStart(b.year);
+      case 'price_desc':
+        return (b.price ?? -1) - (a.price ?? -1);
+      case 'price_asc':
+        return (a.price ?? Number.POSITIVE_INFINITY) - (b.price ?? Number.POSITIVE_INFINITY);
+      case 'numbered':
+        return numberedValue(a.numbered) - numberedValue(b.numbered);
+      default:
+        return 0;
+    }
+  });
+}
+
 
 const TYPE_LABELS: Record<CardType, string> = {
   base: 'Base',
@@ -663,6 +720,8 @@ export function CollectionView() {
   const [yearFilter, setYearFilter] = useState<string | null>(drillFilter.year ?? null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [rookieOnly, setRookieOnly] = useState(false);
+  const [listingFilter, setListingFilter] = useState<ListingFilter>('all');
+  const [sortBy, setSortBy] = useState<SortBy>('recent');
   const [folderFilter, setFolderFilter] = useState<string | null>(null); // id de dossier, ou '__none__' pour Non classé
   const [manageFolders, setManageFolders] = useState(false);
   const [groupBy, setGroupBy] = useState<GroupBy>('none');
@@ -789,6 +848,14 @@ export function CollectionView() {
       if (yearFilter && c.year !== yearFilter) return false;
       if (typeFilter && c.card_type !== typeFilter) return false;
       if (rookieOnly && !c.is_rookie) return false;
+      if (listingFilter !== 'all') {
+        const hasV = !!c.vinted_url;
+        const hasE = !!c.ebay_url;
+        if (listingFilter === 'online' && !(hasV || hasE)) return false;
+        if (listingFilter === 'vinted' && !hasV) return false;
+        if (listingFilter === 'ebay' && !hasE) return false;
+        if (listingFilter === 'offline' && (hasV || hasE)) return false;
+      }
       if (folderFilter) {
         const fids = c.folder_ids ?? [];
         if (folderFilter === '__none__') {
@@ -807,7 +874,24 @@ export function CollectionView() {
       }
       return true;
     });
-  }, [cards, statusFilter, playerFilter, teamFilter, brandFilter, setFilter, yearFilter, typeFilter, rookieOnly, folderFilter, search]);
+  }, [cards, statusFilter, playerFilter, teamFilter, brandFilter, setFilter, yearFilter, typeFilter, rookieOnly, listingFilter, folderFilter, search]);
+
+  // Tri appliqué après filtrage (grille + tableau).
+  const sorted = useMemo(() => sortCards(filtered, sortBy), [filtered, sortBy]);
+
+  // Compteurs annonces.
+  const listingCounts = useMemo(() => {
+    let online = 0, vinted = 0, ebay = 0, offline = 0;
+    cards.forEach((c) => {
+      if (c.status === 'draft') return;
+      const hasV = !!c.vinted_url, hasE = !!c.ebay_url;
+      if (hasV) vinted += 1;
+      if (hasE) ebay += 1;
+      if (hasV || hasE) online += 1;
+      else offline += 1;
+    });
+    return { online, vinted, ebay, offline };
+  }, [cards]);
 
   // Compteurs par dossier (cartes hors brouillon).
   const folderCounts = useMemo(() => {
@@ -850,9 +934,9 @@ export function CollectionView() {
 
   // Groupement
   const grouped = useMemo(() => {
-    if (groupBy === 'none') return { '': filtered };
+    if (groupBy === 'none') return { '': sorted };
     const groups: Record<string, Card[]> = {};
-    filtered.forEach((c) => {
+    sorted.forEach((c) => {
       const key = (c[groupBy] as string | null) ?? 'Inconnu';
       if (!groups[key]) groups[key] = [];
       groups[key].push(c);
@@ -864,7 +948,7 @@ export function CollectionView() {
             playerLastName(a).localeCompare(playerLastName(b)) || a.localeCompare(b)
         : ([a]: [string, Card[]], [b]: [string, Card[]]) => a.localeCompare(b);
     return Object.fromEntries(Object.entries(groups).sort(compare));
-  }, [filtered, groupBy]);
+  }, [sorted, groupBy]);
 
   // Répertoire alphabétique : initiales présentes + ancre (1er id de carte par initiale dans l'ordre affiché en grille).
   const availableInitials = useMemo(
@@ -892,7 +976,7 @@ export function CollectionView() {
   }
 
   const rookieCount = useMemo(() => cards.filter((c) => c.is_rookie).length, [cards]);
-  const activeFiltersCount = [playerFilter, teamFilter, brandFilter, setFilter, yearFilter, typeFilter, rookieOnly ? 'rookie' : null].filter(Boolean).length;
+  const activeFiltersCount = [playerFilter, teamFilter, brandFilter, setFilter, yearFilter, typeFilter, rookieOnly ? 'rookie' : null, listingFilter !== 'all' ? 'listing' : null].filter(Boolean).length;
 
   function exportCSV() {
     const CSV_COLS: { key: keyof Card; label: string }[] = [
@@ -937,7 +1021,7 @@ export function CollectionView() {
   );
 
   const table = useReactTable({
-    data: filtered,
+    data: sorted,
     columns,
     state: { sorting },
     onSortingChange: setSorting,
@@ -1046,6 +1130,17 @@ export function CollectionView() {
             <FilterDropdown label="Collection" items={sets} selected={setFilter} onSelect={setSetFilter} />
             <FilterDropdown label="Année" items={years} selected={yearFilter} onSelect={setYearFilter} />
             <FilterDropdown label="Type" items={types} selected={typeFilter} onSelect={setTypeFilter} />
+            <FilterDropdown
+              label="Annonce"
+              items={[
+                { value: 'online', label: 'En ligne', count: listingCounts.online },
+                { value: 'vinted', label: 'Vinted', count: listingCounts.vinted },
+                { value: 'ebay', label: 'eBay', count: listingCounts.ebay },
+                { value: 'offline', label: 'Hors ligne', count: listingCounts.offline },
+              ]}
+              selected={listingFilter === 'all' ? null : listingFilter}
+              onSelect={(v) => setListingFilter((v as ListingFilter) ?? 'all')}
+            />
 
             {rookieCount > 0 && (
               <button
@@ -1061,7 +1156,7 @@ export function CollectionView() {
 
             {activeFiltersCount > 0 && (
               <button
-                onClick={() => { setPlayerFilter(null); setTeamFilter(null); setBrandFilter(null); setSetFilter(null); setYearFilter(null); setTypeFilter(null); setRookieOnly(false); clearDrillFilter(); }}
+                onClick={() => { setPlayerFilter(null); setTeamFilter(null); setBrandFilter(null); setSetFilter(null); setYearFilter(null); setTypeFilter(null); setRookieOnly(false); setListingFilter('all'); clearDrillFilter(); }}
                 className="flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all active:scale-95"
                 style={{ color: 'var(--accent)', background: 'var(--accent-dim)', border: '1px solid var(--border-accent)' }}
               >
@@ -1072,22 +1167,38 @@ export function CollectionView() {
 
           <div className="flex-1" />
 
-          <div className="flex items-center gap-3 bg-white/5 border border-white/5 px-3 py-1.5 rounded-2xl">
-            <div className="flex items-center gap-2">
-              <Group size={12} className="text-white/20" />
+          <div className="flex items-center gap-3">
+            {/* Trier par (grille + tableau) */}
+            <div className="flex items-center gap-2 bg-white/5 border border-white/5 px-3 py-1.5 rounded-2xl">
+              <ArrowUpDown size={12} className="text-white/20" />
               <select
-                value={groupBy}
-                onChange={(e) => setGroupBy(e.target.value as GroupBy)}
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortBy)}
                 className="bg-transparent text-[10px] font-black uppercase tracking-[0.2em] outline-none cursor-pointer text-white/40 hover:text-white transition-colors appearance-none"
+                title="Trier par"
               >
-                <option value="none" className="bg-[#18181b]">ORGANISATION</option>
-                <option value="player" className="bg-[#18181b]">PAR JOUEUR</option>
-                <option value="team" className="bg-[#18181b]">PAR ÉQUIPE</option>
-                <option value="brand" className="bg-[#18181b]">PAR MARQUE</option>
-                <option value="set_name" className="bg-[#18181b]">PAR COLLECTION</option>
-                <option value="year" className="bg-[#18181b]">PAR ANNÉE</option>
+                {(Object.keys(SORT_LABELS) as SortBy[]).map((k) => (
+                  <option key={k} value={k} className="bg-[#18181b]">TRI : {SORT_LABELS[k].toUpperCase()}</option>
+                ))}
               </select>
             </div>
+
+            {/* Grouper par (grille uniquement) */}
+            {viewMode === 'grid' && (
+              <div className="flex items-center gap-2 bg-white/5 border border-white/5 px-3 py-1.5 rounded-2xl">
+                <Group size={12} className="text-white/20" />
+                <select
+                  value={groupBy}
+                  onChange={(e) => setGroupBy(e.target.value as GroupBy)}
+                  className="bg-transparent text-[10px] font-black uppercase tracking-[0.2em] outline-none cursor-pointer text-white/40 hover:text-white transition-colors appearance-none"
+                  title="Grouper par"
+                >
+                  {(Object.keys(GROUP_BY_LABELS) as GroupBy[]).map((k) => (
+                    <option key={k} value={k} className="bg-[#18181b]">GROUPE : {GROUP_BY_LABELS[k].toUpperCase()}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
         </div>
 
@@ -1172,7 +1283,7 @@ export function CollectionView() {
             <p className="text-[var(--text-muted)] text-sm">Aucune carte ne correspond.</p>
             {(activeFiltersCount > 0 || search) && (
               <button
-                onClick={() => { setPlayerFilter(null); setTeamFilter(null); setBrandFilter(null); setSetFilter(null); setYearFilter(null); setTypeFilter(null); setRookieOnly(false); setSearch(''); }}
+                onClick={() => { setPlayerFilter(null); setTeamFilter(null); setBrandFilter(null); setSetFilter(null); setYearFilter(null); setTypeFilter(null); setRookieOnly(false); setListingFilter('all'); setSearch(''); }}
                 className="text-xs text-[var(--accent)] hover:opacity-80"
               >
                 Effacer les filtres
