@@ -861,14 +861,24 @@ export function StudioView() {
                       />
                       <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
                         <div
-                          className="relative rounded-[1.4rem] border-2 border-[var(--accent)]/80 shadow-[0_0_0_9999px_rgba(0,0,0,0.35)]"
+                          className="relative rounded-[1.4rem] border-2 border-[var(--accent)] shadow-[0_0_0_2px_rgba(0,0,0,0.65),0_0_0_9999px_rgba(0,0,0,0.5)]"
                           style={{
                             height: `${GUIDE_HEIGHT_FRAC * 100}%`,
                             aspectRatio: String(GUIDE_ASPECT),
                             maxWidth: '95%',
                           }}
                         >
-                          <div className="absolute inset-2 rounded-[1.1rem] border border-dashed border-white/30" />
+                          {[
+                            'left-2 top-2 border-l-[3px] border-t-[3px] rounded-tl-[0.9rem]',
+                            'right-2 top-2 border-r-[3px] border-t-[3px] rounded-tr-[0.9rem]',
+                            'left-2 bottom-2 border-l-[3px] border-b-[3px] rounded-bl-[0.9rem]',
+                            'right-2 bottom-2 border-r-[3px] border-b-[3px] rounded-br-[0.9rem]',
+                          ].map((c) => (
+                            <div
+                              key={c}
+                              className={`absolute h-6 w-6 border-[var(--accent)] drop-shadow-[0_0_2px_rgba(0,0,0,0.9)] ${c}`}
+                            />
+                          ))}
                         </div>
                       </div>
                     </div>
