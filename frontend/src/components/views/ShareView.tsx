@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import type { Card } from '../../types';
 import { RookieBadge } from '../shared/RookieBadge';
+import { playerLastName } from '../../lib/playerName';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
@@ -120,13 +121,13 @@ function sortCards(list: Card[], sortBy: SortBy): Card[] {
     switch (sortBy) {
       case 'year_desc': return parseSeasonStart(b.year) - parseSeasonStart(a.year);
       case 'year_asc': return parseSeasonStart(a.year) - parseSeasonStart(b.year);
-      case 'player': return (a.player ?? '').localeCompare(b.player ?? '');
+      case 'player': return playerLastName(a.player).localeCompare(playerLastName(b.player)) || (a.player ?? '').localeCompare(b.player ?? '');
       case 'brand': return (a.brand ?? '').localeCompare(b.brand ?? '') || (a.set_name ?? '').localeCompare(b.set_name ?? '');
       case 'set': return (a.set_name ?? '').localeCompare(b.set_name ?? '') || (a.player ?? '').localeCompare(b.player ?? '');
       case 'price_desc': return (b.price ?? -1) - (a.price ?? -1);
       case 'price_asc': return (a.price ?? Number.POSITIVE_INFINITY) - (b.price ?? Number.POSITIVE_INFINITY);
       case 'numbered': return parseNumberedValue(a.numbered) - parseNumberedValue(b.numbered);
-      case 'rookie_first': return Number(b.is_rookie ?? false) - Number(a.is_rookie ?? false) || (a.player ?? '').localeCompare(b.player ?? '');
+      case 'rookie_first': return Number(b.is_rookie ?? false) - Number(a.is_rookie ?? false) || playerLastName(a.player).localeCompare(playerLastName(b.player));
       case 'recent':
       default: return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     }
@@ -470,7 +471,11 @@ export function ShareView({ token }: { token: string }) {
       map.get(key)!.push(card);
     });
     return [...map.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
+      .sort(([a], [b]) =>
+        groupBy === 'player'
+          ? playerLastName(a).localeCompare(playerLastName(b)) || a.localeCompare(b)
+          : a.localeCompare(b),
+      )
       .map(([label, groupCards]) => ({ key: label, label, cards: groupCards }));
   }, [filtered, groupBy]);
 
