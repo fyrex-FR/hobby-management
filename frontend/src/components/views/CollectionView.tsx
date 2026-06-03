@@ -721,7 +721,7 @@ export function CollectionView() {
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const [rookieOnly, setRookieOnly] = useState(false);
   const [listingFilter, setListingFilter] = useState<ListingFilter>('all');
-  const [sortBy, setSortBy] = useState<SortBy>('recent');
+  const [sortBy, setSortBy] = useState<SortBy>('player');
   const [folderFilter, setFolderFilter] = useState<string | null>(null); // id de dossier, ou '__none__' pour Non classé
   const [manageFolders, setManageFolders] = useState(false);
   const [groupBy, setGroupBy] = useState<GroupBy>('none');
