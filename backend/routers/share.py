@@ -6,6 +6,7 @@ from typing import Optional
 import httpx
 
 from .auth import current_user
+from .cards import fetch_all_rows
 
 router = APIRouter()
 
@@ -133,15 +134,7 @@ async def view_share(token: str):
         params["status"] = "neq.draft"
 
     async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            f"{SUPABASE_URL}/rest/v1/cards",
-            headers=supabase_headers(),
-            params=params,
-        )
-    if resp.status_code != 200:
-        raise HTTPException(status_code=500, detail="Erreur lors de la récupération des cartes")
-
-    cards = resp.json()
+        cards = await fetch_all_rows(client, f"{SUPABASE_URL}/rest/v1/cards", params)
 
     # 3. Masquer les prix si nécessaire
     if not show_prices:

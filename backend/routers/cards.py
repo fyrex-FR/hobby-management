@@ -30,6 +30,27 @@ def supabase_headers() -> dict:
     }
 
 
+async def fetch_all_rows(client: httpx.AsyncClient, url: str, params: dict, page: int = 1000) -> list:
+    """Récupère toutes les lignes en paginant (PostgREST plafonne le nombre de lignes par requête)."""
+    rows: list = []
+    offset = 0
+    while True:
+        resp = await client.get(
+            url,
+            headers=supabase_headers(),
+            params={**params, "limit": str(page), "offset": str(offset)},
+        )
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        batch = resp.json()
+        rows.extend(batch)
+        if len(batch) < page:
+            break
+        offset += page
+    return rows
+
+
+
 class CardCreate(BaseModel):
     player: Optional[str] = None
     team: Optional[str] = None
@@ -106,14 +127,11 @@ class CardUpdate(BaseModel):
 async def list_cards(user: dict = Depends(current_user), x_impersonate: Optional[str] = Header(default=None)):
     user_id = resolve_user_id(user, x_impersonate)
     async with httpx.AsyncClient() as client:
-        resp = await client.get(
+        return await fetch_all_rows(
+            client,
             f"{SUPABASE_URL}/rest/v1/cards",
-            headers=supabase_headers(),
-            params={"user_id": f"eq.{user_id}", "order": "created_at.desc"},
+            {"user_id": f"eq.{user_id}", "order": "created_at.desc"},
         )
-    if resp.status_code != 200:
-        raise HTTPException(status_code=resp.status_code, detail=resp.text)
-    return resp.json()
 
 
 @router.post("/cards", status_code=201)
