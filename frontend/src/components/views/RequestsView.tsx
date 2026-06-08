@@ -122,10 +122,14 @@ function RequestCard({
             >
               {STATUS_LABEL[req.status]}
             </span>
+            {total > 0 && (
+              <span className="rounded-md bg-[var(--accent)] px-2 py-0.5 text-[10px] font-black text-black">
+                Total {total.toFixed(0)}€
+              </span>
+            )}
           </div>
           <div className="mt-1 flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
             <Clock size={11} /> {date} · {ids.length} carte{ids.length > 1 ? 's' : ''}
-            {total > 0 && <span className="font-black text-[var(--accent)]">· {total.toFixed(0)}€</span>}
           </div>
         </div>
         <div className="flex shrink-0 gap-1.5">
