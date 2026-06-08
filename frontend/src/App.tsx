@@ -15,11 +15,13 @@ import {
   LogOut,
   Key,
   Share2,
+  Inbox,
   ChevronDown
 } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
 import { useAppStore } from './stores/appStore';
 import { useCards } from './hooks/useCards';
+import { useRequests } from './hooks/useRequests';
 import { useImpersonateStore } from './stores/impersonateStore';
 import { apiFetch } from './api/client';
 import { LoginView } from './components/views/LoginView';
@@ -33,6 +35,7 @@ import { SalesView } from './components/views/SalesView';
 import { CompareView } from './components/views/CompareView';
 import { PlayersView } from './components/views/PlayersView';
 import { GradingView } from './components/views/GradingView';
+import { RequestsView } from './components/views/RequestsView';
 import { ShareView } from './components/views/ShareView';
 import { ShareModal } from './components/shared/ShareModal';
 import { ResetPasswordView } from './components/views/ResetPasswordView';
@@ -212,6 +215,8 @@ function Header({ onShare, isAdmin }: { onShare: () => void; isAdmin: boolean })
   const { activeView, setActiveView } = useAppStore();
   const { data: cards = [] } = useCards();
   const draftCount = cards.filter((c) => c.status === 'draft').length;
+  const { data: shareRequests = [] } = useRequests();
+  const newRequests = shareRequests.filter((r) => r.status === 'new').length;
   const [toolsOpen, setToolsOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -219,6 +224,7 @@ function Header({ onShare, isAdmin }: { onShare: () => void; isAdmin: boolean })
     { id: 'dashboard', label: 'Vue d\'ensemble', icon: LayoutDashboard },
     { id: 'collection', label: 'Collection', icon: Library },
     { id: 'sales', label: 'Ventes', icon: TrendingUp },
+    { id: 'requests', label: 'Demandes', icon: Inbox },
   ] as const;
 
   const toolNav = [
@@ -274,6 +280,11 @@ function Header({ onShare, isAdmin }: { onShare: () => void; isAdmin: boolean })
             >
               <item.icon size={16} className={activeView === item.id ? 'text-[var(--accent)]' : 'text-current'} />
               <span>{item.label}</span>
+              {item.id === 'requests' && newRequests > 0 && (
+                <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[10px] font-black text-black">
+                  {newRequests}
+                </span>
+              )}
               {activeView === item.id && (
                 <motion.div
                   layoutId="nav-active"
@@ -558,6 +569,7 @@ function AppShell() {
             {activeView === 'compare' && isAdmin && <CompareView />}
             {activeView === 'players' && <PlayersView />}
             {activeView === 'grading' && <GradingView />}
+            {activeView === 'requests' && <RequestsView />}
           </motion.div>
         </AnimatePresence>
       </main>

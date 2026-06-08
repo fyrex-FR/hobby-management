@@ -15,7 +15,9 @@ import {
   Layers,
   Star,
   Hash,
-  RefreshCw
+  RefreshCw,
+  Heart,
+  Send
 } from 'lucide-react';
 import type { Card } from '../../types';
 import { RookieBadge } from '../shared/RookieBadge';
@@ -328,7 +330,7 @@ function CardModal({ card, showPrice, onClose }: { card: Card; showPrice: boolea
   );
 }
 
-function SharedCard({ card, showPrice, onClick }: { card: Card; showPrice: boolean; onClick: () => void }) {
+function SharedCard({ card, showPrice, onClick, interested, onToggleInterest }: { card: Card; showPrice: boolean; onClick: () => void; interested?: boolean; onToggleInterest?: () => void }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -337,6 +339,19 @@ function SharedCard({ card, showPrice, onClick }: { card: Card; showPrice: boole
       onClick={onClick}
     >
       <div className="relative aspect-[3/4] rounded-[2rem] overflow-hidden bg-black/20">
+        {onToggleInterest && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleInterest(); }}
+            className="absolute top-3 right-3 z-20 flex h-9 w-9 items-center justify-center rounded-full border backdrop-blur-md transition-all active:scale-90"
+            style={interested
+              ? { background: 'rgba(244,63,94,0.9)', borderColor: 'transparent', color: '#fff' }
+              : { background: 'rgba(0,0,0,0.5)', borderColor: 'rgba(255,255,255,0.15)', color: '#fff' }}
+            title={interested ? 'Retirer de ma sélection' : 'Ça m\u2019intéresse'}
+            aria-label="Ça m'intéresse"
+          >
+            <Heart size={16} fill={interested ? 'currentColor' : 'none'} />
+          </button>
+        )}
         {card.image_front_url ? (
           <img src={card.image_front_url} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
         ) : (
@@ -402,6 +417,45 @@ export function ShareView({ token }: { token: string }) {
   const [vintedOnly, setVintedOnly] = useState(initialSearch.get('vinted') === '1');
   const [groupBy, setGroupBy] = useState<GroupBy>((initialSearch.get('group') as GroupBy) || 'none');
   const [sortBy, setSortBy] = useState<SortBy>((initialSearch.get('sort') as SortBy) || 'recent');
+
+  // ── Sélection « Ça m'intéresse » ──
+  const [interest, setInterest] = useState<Set<string>>(new Set());
+  const [submitOpen, setSubmitOpen] = useState(false);
+  const [handle, setHandle] = useState('');
+  const [reqMessage, setReqMessage] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  function toggleInterest(id: string) {
+    setInterest((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function submitInterest() {
+    const h = handle.trim();
+    if (!h) return;
+    setSubmitting(true);
+    try {
+      const resp = await fetch(`${API_BASE}/api/share/${token}/interest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ viewer_handle: h, message: reqMessage.trim() || null, card_ids: [...interest] }),
+      });
+      if (!resp.ok) throw new Error('Échec de l\u2019envoi');
+      setSubmitted(true);
+      setSubmitOpen(false);
+      setInterest(new Set());
+      setReqMessage('');
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Erreur');
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   useEffect(() => {
     fetch(`${API_BASE}/api/share/${token}/view`)
@@ -656,7 +710,7 @@ export function ShareView({ token }: { token: string }) {
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6">
                       {section.cards.map((card) => (
-                        <SharedCard key={`${section.key}-${card.id}`} card={card} showPrice={data.show_prices} onClick={() => setSelected(card)} />
+                        <SharedCard key={`${section.key}-${card.id}`} card={card} showPrice={data.show_prices} onClick={() => setSelected(card)} interested={interest.has(card.id)} onToggleInterest={() => toggleInterest(card.id)} />
                       ))}
                     </div>
                   </div>
@@ -676,7 +730,7 @@ export function ShareView({ token }: { token: string }) {
                 )}
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-6 sm:gap-8">
                   {group.cards.map((card) => (
-                    <SharedCard key={card.id} card={card} showPrice={data.show_prices} onClick={() => setSelected(card)} />
+                    <SharedCard key={card.id} card={card} showPrice={data.show_prices} onClick={() => setSelected(card)} interested={interest.has(card.id)} onToggleInterest={() => toggleInterest(card.id)} />
                   ))}
                 </div>
               </div>
@@ -699,6 +753,84 @@ export function ShareView({ token }: { token: string }) {
 
       <AnimatePresence>
         {selected && <CardModal card={selected} showPrice={data.show_prices} onClose={() => setSelected(null)} />}
+      </AnimatePresence>
+
+      {/* Barre de sélection « Ça m'intéresse » */}
+      {interest.size > 0 && !submitOpen && (
+        <div className="fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-4">
+          <button
+            onClick={() => setSubmitOpen(true)}
+            className="flex items-center gap-3 rounded-full bg-[#f43f5e] px-6 py-3.5 text-sm font-black text-white shadow-2xl shadow-rose-900/40 transition-all hover:brightness-110 active:scale-95"
+          >
+            <Heart size={18} fill="currentColor" />
+            {interest.size} carte{interest.size > 1 ? 's' : ''} — Envoyer ma sélection
+          </button>
+        </div>
+      )}
+
+      {/* Modale d'envoi */}
+      <AnimatePresence>
+        {submitOpen && (
+          <motion.div
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+            onClick={() => setSubmitOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-md rounded-3xl border border-white/10 bg-[#18181b] p-6 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="mb-1 text-lg font-black text-white">Envoyer ma sélection</h3>
+              <p className="mb-5 text-xs text-white/50">{interest.size} carte{interest.size > 1 ? 's' : ''} sélectionnée{interest.size > 1 ? 's' : ''}. Laisse ton pseudo pour qu'on te recontacte.</p>
+              <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-white/50">Pseudo Insta / Discord *</label>
+              <input
+                value={handle}
+                onChange={(e) => setHandle(e.target.value)}
+                placeholder="@ton_pseudo"
+                className="mb-4 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-[var(--accent)]/50"
+              />
+              <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-white/50">Message (optionnel)</label>
+              <textarea
+                value={reqMessage}
+                onChange={(e) => setReqMessage(e.target.value)}
+                rows={3}
+                placeholder="Une offre, une question…"
+                className="mb-5 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-[var(--accent)]/50"
+              />
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setSubmitOpen(false)}
+                  className="flex-1 rounded-xl border border-white/10 bg-white/5 py-3 text-sm font-bold text-white/70 hover:bg-white/10"
+                >
+                  Annuler
+                </button>
+                <button
+                  onClick={submitInterest}
+                  disabled={submitting || !handle.trim()}
+                  className="flex-[2] inline-flex items-center justify-center gap-2 rounded-xl bg-[#f43f5e] py-3 text-sm font-black text-white hover:brightness-110 disabled:opacity-40"
+                >
+                  <Send size={15} /> {submitting ? 'Envoi…' : 'Envoyer'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Toast de confirmation */}
+      <AnimatePresence>
+        {submitted && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+            className="fixed inset-x-0 bottom-6 z-50 flex justify-center px-4"
+            onAnimationComplete={() => setTimeout(() => setSubmitted(false), 3500)}
+          >
+            <div className="flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/15 px-5 py-3 text-sm font-bold text-emerald-300 backdrop-blur-xl">
+              <Heart size={16} fill="currentColor" /> Sélection envoyée, merci ! Le vendeur te recontactera.
+            </div>
+          </motion.div>
+        )}
       </AnimatePresence>
     </div>
   );

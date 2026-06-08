@@ -53,6 +53,19 @@ export interface Folder {
   created_at: string;
 }
 
+export type ShareRequestStatus = 'new' | 'contacted' | 'archived';
+
+export interface ShareRequest {
+  id: string;
+  user_id: string;
+  share_token: string | null;
+  viewer_handle: string;
+  message: string | null;
+  card_ids: string[] | null;
+  status: ShareRequestStatus;
+  created_at: string;
+}
+
 export interface AIIdentificationResult {
   player: string;
   team: string;
