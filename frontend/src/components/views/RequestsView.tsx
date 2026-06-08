@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Inbox, Check, Archive, Trash2, MessageSquare, Clock } from 'lucide-react';
 import { useRequests, useUpdateRequest, useDeleteRequest } from '../../hooks/useRequests';
 import { useCards } from '../../hooks/useCards';
+import { CardDetail } from '../shared/CardDetail';
 import type { Card, ShareRequest, ShareRequestStatus } from '../../types';
 
 const STATUS_TABS: { key: ShareRequestStatus | 'all'; label: string }[] = [
@@ -23,6 +24,7 @@ export function RequestsView() {
   const updateRequest = useUpdateRequest();
   const deleteRequest = useDeleteRequest();
   const [tab, setTab] = useState<ShareRequestStatus | 'all'>('new');
+  const [openCard, setOpenCard] = useState<Card | null>(null);
 
   const cardById = useMemo(() => new Map(cards.map((c) => [c.id, c])), [cards]);
 
@@ -80,6 +82,7 @@ export function RequestsView() {
                 key={req.id}
                 req={req}
                 cardById={cardById}
+                onOpenCard={setOpenCard}
                 onStatus={(status) => updateRequest.mutate({ id: req.id, status })}
                 onDelete={() => { if (confirm('Supprimer cette demande ?')) deleteRequest.mutate(req.id); }}
               />
@@ -87,6 +90,7 @@ export function RequestsView() {
           </div>
         )}
       </div>
+      {openCard && <CardDetail card={openCard} onClose={() => setOpenCard(null)} />}
     </div>
   );
 }
@@ -94,11 +98,13 @@ export function RequestsView() {
 function RequestCard({
   req,
   cardById,
+  onOpenCard,
   onStatus,
   onDelete,
 }: {
   req: ShareRequest;
   cardById: Map<string, Card>;
+  onOpenCard: (c: Card) => void;
   onStatus: (s: ShareRequestStatus) => void;
   onDelete: () => void;
 }) {
@@ -165,7 +171,13 @@ function RequestCard({
         {ids.map((id) => {
           const c = cardById.get(id);
           return (
-            <div key={id} className="flex w-[88px] flex-col gap-1">
+            <button
+              key={id}
+              type="button"
+              onClick={() => c && onOpenCard(c)}
+              disabled={!c}
+              className={`flex w-[88px] flex-col gap-1 rounded-xl text-left transition-all ${c ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
+            >
               <div className="aspect-[3/4] overflow-hidden rounded-xl border border-white/10 bg-black/20">
                 {c?.image_front_url
                   ? <img src={c.image_front_url} alt="" className="h-full w-full object-cover" />
@@ -175,7 +187,7 @@ function RequestCard({
                 {c?.player ?? 'Carte supprimée'}
               </span>
               {c?.price != null && <span className="text-[10px] font-black text-[var(--accent)]">{c.price}€</span>}
-            </div>
+            </button>
           );
         })}
       </div>
