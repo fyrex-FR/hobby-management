@@ -435,6 +435,11 @@ export function ShareView({ token }: { token: string }) {
     });
   }
 
+  const interestTotal = useMemo(
+    () => (data?.cards ?? []).filter((c) => interest.has(c.id)).reduce((sum, c) => sum + (c.price ?? 0), 0),
+    [data, interest],
+  );
+
   async function submitInterest() {
     const h = handle.trim();
     if (!h) return;
@@ -763,7 +768,11 @@ export function ShareView({ token }: { token: string }) {
             className="flex items-center gap-3 rounded-full bg-[#f43f5e] px-6 py-3.5 text-sm font-black text-white shadow-2xl shadow-rose-900/40 transition-all hover:brightness-110 active:scale-95"
           >
             <Heart size={18} fill="currentColor" />
-            {interest.size} carte{interest.size > 1 ? 's' : ''} — Envoyer ma sélection
+            {interest.size} carte{interest.size > 1 ? 's' : ''}
+            {data.show_prices && interestTotal > 0 && (
+              <span className="rounded-full bg-black/20 px-2.5 py-0.5 text-xs font-black">{interestTotal.toFixed(0)}€</span>
+            )}
+            <span className="opacity-80">— Envoyer ma sélection</span>
           </button>
         </div>
       )}
@@ -782,7 +791,7 @@ export function ShareView({ token }: { token: string }) {
               onClick={(e) => e.stopPropagation()}
             >
               <h3 className="mb-1 text-lg font-black text-white">Envoyer ma sélection</h3>
-              <p className="mb-5 text-xs text-white/50">{interest.size} carte{interest.size > 1 ? 's' : ''} sélectionnée{interest.size > 1 ? 's' : ''}. Laisse ton pseudo pour qu'on te recontacte.</p>
+              <p className="mb-5 text-xs text-white/50">{interest.size} carte{interest.size > 1 ? 's' : ''} sélectionnée{interest.size > 1 ? 's' : ''}{data.show_prices && interestTotal > 0 ? ` · total ${interestTotal.toFixed(0)}€` : ''}. Laisse ton pseudo pour qu'on te recontacte.</p>
               <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-white/50">Pseudo Insta / Discord *</label>
               <input
                 value={handle}

@@ -104,6 +104,7 @@ function RequestCard({
 }) {
   const ids = req.card_ids ?? [];
   const date = new Date(req.created_at).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const total = ids.reduce((sum, id) => sum + (cardById.get(id)?.price ?? 0), 0);
 
   return (
     <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
@@ -124,6 +125,7 @@ function RequestCard({
           </div>
           <div className="mt-1 flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
             <Clock size={11} /> {date} · {ids.length} carte{ids.length > 1 ? 's' : ''}
+            {total > 0 && <span className="font-black text-[var(--accent)]">· {total.toFixed(0)}€</span>}
           </div>
         </div>
         <div className="flex shrink-0 gap-1.5">
