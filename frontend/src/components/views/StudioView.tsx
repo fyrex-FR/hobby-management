@@ -17,7 +17,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { compressImage } from '../../lib/storage';
-import { captureRotatedCrop, DEFAULT_CROP_RECT, clampNormRect, type NormRect } from '../../lib/guideCrop';
+import { DEFAULT_CROP_RECT, clampNormRect, type NormRect } from '../../lib/guideCrop';
 import { useCreateCard, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { useIdentify } from '../../hooks/useIdentify';
 import { useAppStore } from '../../stores/appStore';
@@ -381,14 +381,69 @@ export function StudioView() {
 
   // Capture la photo. Si le rognage auto est activé, on rogne sur la zone exacte
   // du cadre-guide. Le zoom numérique est appliqué dans les deux cas.
+  // Capture EXACTEMENT ce qui est affiché : on redessine la scène (vidéo
+  // tournée + zoomée pour remplir la boîte d'aperçu) puis on découpe la zone
+  // du cadre orange telle qu'elle apparaît à l'écran. WYSIWYG garanti.
+  async function captureFramed(side: CaptureSide, rect: NormRect | null): Promise<File> {
+    const video = videoRef.current;
+    const box = frameBoxRef.current;
+    if (!video || !box) throw new Error('Flux caméra indisponible');
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (!vw || !vh) throw new Error('Flux caméra indisponible');
+
+    const bw = box.clientWidth || 1;
+    const bh = box.clientHeight || 1;
+    const K = Math.min(4, Math.max(1, Math.max(vw, vh) / Math.max(bw, bh)));
+
+    const scene = document.createElement('canvas');
+    scene.width = Math.round(bw * K);
+    scene.height = Math.round(bh * K);
+    const ctx = scene.getContext('2d');
+    if (!ctx) throw new Error('Canvas context indisponible');
+    ctx.scale(K, K);
+    ctx.translate(bw / 2, bh / 2);
+    ctx.scale(zoom, zoom);
+    ctx.rotate((rotation * Math.PI) / 180);
+    const dw = rotated90 ? bh : bw;
+    const dh = rotated90 ? bw : bh;
+    ctx.drawImage(video, -dw / 2, -dh / 2, dw, dh);
+
+    // Rectangle du cadre tel qu'affiché (mis à l'échelle du zoom, centré).
+    const r = rect ? clampNormRect(rect) : { x: 0, y: 0, w: 1, h: 1 };
+    const xn = 0.5 + (r.x - 0.5) * zoom;
+    const yn = 0.5 + (r.y - 0.5) * zoom;
+    const wn = r.w * zoom;
+    const hn = r.h * zoom;
+    const sx = Math.max(0, Math.round(xn * bw * K));
+    const sy = Math.max(0, Math.round(yn * bh * K));
+    const sw = Math.max(1, Math.min(scene.width - sx, Math.round(wn * bw * K)));
+    const sh = Math.max(1, Math.min(scene.height - sy, Math.round(hn * bh * K)));
+
+    const out = document.createElement('canvas');
+    out.width = sw;
+    out.height = sh;
+    const octx = out.getContext('2d');
+    if (!octx) throw new Error('Canvas context indisponible');
+    octx.drawImage(scene, sx, sy, sw, sh, 0, 0, sw, sh);
+
+    const blob = await new Promise<Blob>((resolve, reject) =>
+      out.toBlob(
+        (value) => (value ? resolve(value) : reject(new Error('Capture impossible'))),
+        'image/jpeg',
+        0.95,
+      ),
+    );
+    return new File([blob], `${side}-${Date.now()}.jpg`, { type: 'image/jpeg' });
+  }
+
   async function capturePhoto(side: CaptureSide): Promise<File> {
     const video = videoRef.current;
     if (video && AUTO_CROP_AVAILABLE && autoCropEnabled) {
-      // cropRect est en coords image (le zoom n'est qu'un agrandisseur d'aperçu).
-      return captureRotatedCrop(video, side, rotation, cropRect, 1);
+      return captureFramed(side, cropRect);
     }
     if (video && (rotation !== 0 || zoom > 1)) {
-      return captureRotatedCrop(video, side, rotation, null, zoom);
+      return captureFramed(side, null);
     }
     return takePhoto(side);
   }
