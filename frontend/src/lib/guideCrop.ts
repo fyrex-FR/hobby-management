@@ -13,15 +13,10 @@ export type Rect = { x: number; y: number; w: number; h: number };
 export type NormRect = { x: number; y: number; w: number; h: number };
 
 /**
- * Cadre par défaut (centré), dérivé du guide historique pour un flux 4/3 :
- * hauteur 90% du cadre, ratio carte ~0.72.
+ * Cadre par défaut centré avec des marges propres (ne touche pas les bords
+ * arrondis de l'aperçu). L'utilisateur l'ajuste ensuite à sa carte.
  */
-export const DEFAULT_CROP_RECT: NormRect = (() => {
-  const h = GUIDE_HEIGHT_FRAC; // 0.9
-  // largeur normalisée = (ratio * hauteurPx) / largeurPx, pour un cadre 4/3
-  const w = Math.min(0.95, (GUIDE_ASPECT * h) / (4 / 3));
-  return { x: (1 - w) / 2, y: (1 - h) / 2, w, h };
-})();
+export const DEFAULT_CROP_RECT: NormRect = { x: 0.24, y: 0.1, w: 0.52, h: 0.8 };
 
 export function clampNormRect(r: NormRect): NormRect {
   const w = Math.min(1, Math.max(0.05, r.w));
