@@ -181,7 +181,7 @@ export function StudioView() {
   const [backIndex, setBackIndex] = useState(0);
 
   const [autoCropEnabled, setAutoCropEnabled] = useState(
-    () => localStorage.getItem('studio_autocrop') === '1',
+    () => localStorage.getItem('studio_autocrop') !== '0',
   );
   const [zoom, setZoom] = useState(1);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
