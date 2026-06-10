@@ -17,7 +17,7 @@ import {
   Upload,
 } from 'lucide-react';
 import { compressImage } from '../../lib/storage';
-import { captureRotatedCrop, captureZoomedFull, DEFAULT_CROP_RECT, clampNormRect, type NormRect } from '../../lib/guideCrop';
+import { captureRotatedCrop, DEFAULT_CROP_RECT, clampNormRect, type NormRect } from '../../lib/guideCrop';
 import { useCreateCard, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { useIdentify } from '../../hooks/useIdentify';
 import { useAppStore } from '../../stores/appStore';
@@ -185,7 +185,10 @@ export function StudioView() {
   const [autoCropEnabled, setAutoCropEnabled] = useState(
     () => localStorage.getItem('studio_autocrop') !== '0',
   );
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(() => {
+    const v = Number(localStorage.getItem('studio_zoom'));
+    return v >= 1 && v <= 3 ? v : 1;
+  });
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
   // Cadre de rognage réglable + mémorisé (pour un support de scan fixe).
@@ -211,12 +214,11 @@ export function StudioView() {
     localStorage.setItem('studio_rotation', String(rotation));
   }, [rotation]);
 
-  const rotated90 = rotation === 90 || rotation === 270;
-
-  // Pendant le réglage du cadre on force zoom=1 (mapping écran <-> image 1:1).
   useEffect(() => {
-    if (adjustingFrame) setZoom(1);
-  }, [adjustingFrame]);
+    localStorage.setItem('studio_zoom', String(zoom));
+  }, [zoom]);
+
+  const rotated90 = rotation === 90 || rotation === 270;
 
   function startFrameDrag(
     e: React.PointerEvent,
@@ -375,13 +377,10 @@ export function StudioView() {
   async function capturePhoto(side: CaptureSide): Promise<File> {
     const video = videoRef.current;
     if (video && AUTO_CROP_AVAILABLE && autoCropEnabled) {
-      return captureRotatedCrop(video, side, rotation, cropRect);
+      return captureRotatedCrop(video, side, rotation, cropRect, zoom);
     }
-    if (video && rotation !== 0) {
-      return captureRotatedCrop(video, side, rotation, null);
-    }
-    if (video && zoom > 1) {
-      return captureZoomedFull(video, side, zoom);
+    if (video && (rotation !== 0 || zoom > 1)) {
+      return captureRotatedCrop(video, side, rotation, null, zoom);
     }
     return takePhoto(side);
   }
@@ -1081,7 +1080,7 @@ export function StudioView() {
                         Initialisation caméra…
                       </div>
                     )}
-                    {cameraReady && !autoCropEnabled && (
+                    {cameraReady && (
                       <div className="flex items-center gap-3 rounded-full border border-white/10 bg-black/55 px-4 py-2 backdrop-blur-xl">
                         <span className="text-[10px] font-black uppercase tracking-widest text-white/60">Zoom</span>
                         <input

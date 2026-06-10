@@ -99,7 +99,8 @@ export async function cropVideoToRect(
 
 /**
  * Capture en appliquant une rotation (0/90/180/270°, sens horaire) puis en
- * rognant sur un rectangle normalisé exprimé dans l'image APRÈS rotation.
+ * rognant sur un rectangle normalisé exprimé dans l'image APRÈS rotation et
+ * APRÈS zoom numérique (la vue affichée montre la fenêtre centrale 1/zoom).
  * Permet un support de scan où le téléphone est monté en travers.
  */
 export async function captureRotatedCrop(
@@ -107,6 +108,7 @@ export async function captureRotatedCrop(
   side: 'front' | 'back',
   rotation: number,
   rect: NormRect | null,
+  zoom = 1,
 ): Promise<File> {
   const w = video.videoWidth;
   const h = video.videoHeight;
@@ -128,11 +130,20 @@ export async function captureRotatedCrop(
   fctx.drawImage(video, -w / 2, -h / 2, w, h);
   fctx.restore();
 
-  const r = rect ? clampNormRect(rect) : { x: 0, y: 0, w: 1, h: 1 };
-  const cx = Math.round(r.x * fw);
-  const cy = Math.round(r.y * fh);
-  const cw = Math.max(1, Math.round(r.w * fw));
-  const ch = Math.max(1, Math.round(r.h * fh));
+  // Rectangle (dans la vue affichée) -> coords image, en tenant compte du zoom
+  // central : v = 0.5 + (r - 0.5) / zoom, dimension /= zoom.
+  const base = rect ? clampNormRect(rect) : { x: 0, y: 0, w: 1, h: 1 };
+  const z = Math.max(1, zoom);
+  const mapped = clampNormRect({
+    x: 0.5 + (base.x - 0.5) / z,
+    y: 0.5 + (base.y - 0.5) / z,
+    w: base.w / z,
+    h: base.h / z,
+  });
+  const cx = Math.round(mapped.x * fw);
+  const cy = Math.round(mapped.y * fh);
+  const cw = Math.max(1, Math.round(mapped.w * fw));
+  const ch = Math.max(1, Math.round(mapped.h * fh));
 
   const out = document.createElement('canvas');
   out.width = cw;
