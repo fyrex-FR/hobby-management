@@ -170,6 +170,9 @@ export function StudioView() {
   const [saveError, setSaveError] = useState('');
   const [saveMessage, setSaveMessage] = useState('');
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
+  const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
+  const [activeDeviceId, setActiveDeviceId] = useState<string | null>(null);
   const [currentSession, setCurrentSession] = useState<StudioSessionSummary | null>(null);
   const [sessionHistory, setSessionHistory] = useState<StudioSessionSummary[]>([]);
   const [captureMode, setCaptureMode] = useState<CaptureMode>('per_card');
@@ -205,13 +208,18 @@ export function StudioView() {
 
       try {
         streamRef.current?.getTracks().forEach((track) => track.stop());
+        const videoConstraints: MediaTrackConstraints = {
+          width: { ideal: 4096 },
+          height: { ideal: 3072 },
+          aspectRatio: { ideal: 4 / 3 },
+        };
+        if (selectedDeviceId) {
+          videoConstraints.deviceId = { exact: selectedDeviceId };
+        } else {
+          videoConstraints.facingMode = facingMode;
+        }
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode,
-            width: { ideal: 4096 },
-            height: { ideal: 3072 },
-            aspectRatio: { ideal: 4 / 3 },
-          },
+          video: videoConstraints,
           audio: false,
         });
 
@@ -225,7 +233,16 @@ export function StudioView() {
           videoRef.current.srcObject = stream;
           await videoRef.current.play();
         }
+        setActiveDeviceId(stream.getVideoTracks()[0]?.getSettings().deviceId ?? null);
         setCameraReady(true);
+
+        // Les labels ne sont dispo qu'après autorisation.
+        try {
+          const all = await navigator.mediaDevices.enumerateDevices();
+          if (!cancelled) setDevices(all.filter((d) => d.kind === 'videoinput'));
+        } catch {
+          /* ignore */
+        }
       } catch (error) {
         setCameraError((error as Error).message || 'Impossible d’accéder à la caméra');
       }
@@ -237,7 +254,20 @@ export function StudioView() {
       cancelled = true;
       streamRef.current?.getTracks().forEach((track) => track.stop());
     };
-  }, [facingMode]);
+  }, [facingMode, selectedDeviceId]);
+
+  // Rafraîchit la liste quand une caméra est branchée/débranchée (ex. Continuity Camera iPhone).
+  useEffect(() => {
+    if (!navigator.mediaDevices?.addEventListener) return;
+    const refresh = () => {
+      navigator.mediaDevices
+        .enumerateDevices()
+        .then((all) => setDevices(all.filter((d) => d.kind === 'videoinput')))
+        .catch(() => {});
+    };
+    navigator.mediaDevices.addEventListener('devicechange', refresh);
+    return () => navigator.mediaDevices.removeEventListener('devicechange', refresh);
+  }, []);
 
   function resetCurrentPair() {
     setFrontFile(null);
@@ -808,13 +838,29 @@ export function StudioView() {
               </button>
             </div>
 
+            {devices.length > 1 && (
+              <select
+                value={selectedDeviceId ?? activeDeviceId ?? ''}
+                onChange={(e) => setSelectedDeviceId(e.target.value || null)}
+                disabled={isBusy}
+                title="Choisir la caméra (ex. iPhone via Continuity Camera)"
+                className="max-w-[220px] truncate rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm font-semibold text-white outline-none transition-all hover:bg-white/10 disabled:opacity-40"
+              >
+                {devices.map((d, i) => (
+                  <option key={d.deviceId || i} value={d.deviceId} className="bg-[#1a1a1d] text-white">
+                    {d.label || `Caméra ${i + 1}`}
+                  </option>
+                ))}
+              </select>
+            )}
+
             <button
-              onClick={() => setFacingMode((value) => (value === 'environment' ? 'user' : 'environment'))}
+              onClick={() => { setSelectedDeviceId(null); setFacingMode((value) => (value === 'environment' ? 'user' : 'environment')); }}
               className="inline-flex items-center justify-center gap-2 self-start sm:self-auto rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-white/10"
               disabled={isBusy}
             >
               <RefreshCw size={16} />
-              Changer caméra
+              Avant / Arrière
             </button>
           </div>
         </div>
@@ -830,8 +876,10 @@ export function StudioView() {
                   </div>
                 )}
               </div>
-              <div className="shrink-0 rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] sm:text-xs font-bold text-white/70">
-                {facingMode === 'environment' ? 'Caméra arrière' : 'Caméra avant'}
+              <div className="shrink-0 max-w-[200px] truncate rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] sm:text-xs font-bold text-white/70">
+                {selectedDeviceId
+                  ? (devices.find((d) => d.deviceId === selectedDeviceId)?.label || 'Caméra choisie')
+                  : facingMode === 'environment' ? 'Caméra arrière' : 'Caméra avant'}
               </div>
             </div>
 
