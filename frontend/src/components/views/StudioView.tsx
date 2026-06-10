@@ -175,6 +175,7 @@ export function StudioView() {
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
   const [activeDeviceId, setActiveDeviceId] = useState<string | null>(null);
+  const [videoAspect, setVideoAspect] = useState(4 / 3);
   const [currentSession, setCurrentSession] = useState<StudioSessionSummary | null>(null);
   const [sessionHistory, setSessionHistory] = useState<StudioSessionSummary[]>([]);
   const [captureMode, setCaptureMode] = useState<CaptureMode>('per_card');
@@ -303,7 +304,11 @@ export function StudioView() {
           videoRef.current.srcObject = stream;
           await videoRef.current.play();
         }
-        setActiveDeviceId(stream.getVideoTracks()[0]?.getSettings().deviceId ?? null);
+        const vtrack = stream.getVideoTracks()[0];
+        setActiveDeviceId(vtrack?.getSettings().deviceId ?? null);
+        const vw = videoRef.current?.videoWidth || vtrack?.getSettings().width;
+        const vh = videoRef.current?.videoHeight || vtrack?.getSettings().height;
+        if (vw && vh) setVideoAspect(vw / vh);
         setCameraReady(true);
 
         // Les labels ne sont dispo qu'après autorisation.
@@ -1007,7 +1012,7 @@ export function StudioView() {
                     <div
                       ref={frameBoxRef}
                       className="relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-black shadow-2xl"
-                      style={{ height: '100%', maxWidth: '100%', aspectRatio: rotated90 ? '3 / 4' : '4 / 3', containerType: 'size' }}
+                      style={{ height: '100%', maxWidth: '100%', aspectRatio: rotated90 ? 1 / videoAspect : videoAspect, containerType: 'size' }}
                     >
                       <video
                         ref={videoRef}
@@ -1021,6 +1026,10 @@ export function StudioView() {
                         autoPlay
                         muted
                         playsInline
+                        onLoadedMetadata={(e) => {
+                          const v = e.currentTarget;
+                          if (v.videoWidth && v.videoHeight) setVideoAspect(v.videoWidth / v.videoHeight);
+                        }}
                       />
                       <div className="absolute inset-0">
                         <div
