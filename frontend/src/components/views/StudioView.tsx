@@ -234,8 +234,10 @@ export function StudioView() {
     const base = { ...cropRect };
 
     function onMove(ev: PointerEvent) {
-      const dx = (ev.clientX - start.x) / rectPx.width;
-      const dy = (ev.clientY - start.y) / rectPx.height;
+      // Le cadre est affiché à l'échelle du zoom : une distance écran
+      // correspond à (distance / zoom) dans l'espace image.
+      const dx = (ev.clientX - start.x) / rectPx.width / zoom;
+      const dy = (ev.clientY - start.y) / rectPx.height / zoom;
       let next: NormRect;
       if (mode === 'move') {
         next = { ...base, x: base.x + dx, y: base.y + dy };
@@ -382,7 +384,8 @@ export function StudioView() {
   async function capturePhoto(side: CaptureSide): Promise<File> {
     const video = videoRef.current;
     if (video && AUTO_CROP_AVAILABLE && autoCropEnabled) {
-      return captureRotatedCrop(video, side, rotation, cropRect, zoom);
+      // cropRect est en coords image (le zoom n'est qu'un agrandisseur d'aperçu).
+      return captureRotatedCrop(video, side, rotation, cropRect, 1);
     }
     if (video && (rotation !== 0 || zoom > 1)) {
       return captureRotatedCrop(video, side, rotation, null, zoom);
@@ -1035,10 +1038,10 @@ export function StudioView() {
                         <div
                           className={`absolute rounded-[1.4rem] border-2 border-[var(--accent)] shadow-[0_0_0_2px_rgba(0,0,0,0.65),0_0_0_9999px_rgba(0,0,0,0.5)] ${adjustingFrame ? 'cursor-move touch-none' : 'pointer-events-none'}`}
                           style={{
-                            left: `${cropRect.x * 100}%`,
-                            top: `${cropRect.y * 100}%`,
-                            width: `${cropRect.w * 100}%`,
-                            height: `${cropRect.h * 100}%`,
+                            left: `${(0.5 + (cropRect.x - 0.5) * zoom) * 100}%`,
+                            top: `${(0.5 + (cropRect.y - 0.5) * zoom) * 100}%`,
+                            width: `${cropRect.w * zoom * 100}%`,
+                            height: `${cropRect.h * zoom * 100}%`,
                           }}
                           onPointerDown={adjustingFrame ? (e) => startFrameDrag(e, 'move') : undefined}
                         >
