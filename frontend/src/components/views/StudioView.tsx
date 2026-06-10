@@ -394,13 +394,19 @@ export function StudioView() {
 
     const bw = box.clientWidth || 1;
     const bh = box.clientHeight || 1;
-    const K = Math.min(4, Math.max(1, Math.max(vw, vh) / Math.max(bw, bh)));
+    // On rend la scène à la résolution native de la caméra (plafonnée), pas à
+    // la taille de l'aperçu : drawImage échantillonne le flux natif -> aucune
+    // perte de qualité notable par rapport au capteur.
+    const targetLong = Math.min(4096, Math.max(vw, vh));
+    const K = Math.max(1, targetLong / Math.max(bw, bh));
 
     const scene = document.createElement('canvas');
     scene.width = Math.round(bw * K);
     scene.height = Math.round(bh * K);
     const ctx = scene.getContext('2d');
     if (!ctx) throw new Error('Canvas context indisponible');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.scale(K, K);
     ctx.translate(bw / 2, bh / 2);
     ctx.scale(zoom, zoom);
