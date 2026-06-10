@@ -33,6 +33,7 @@ import { useIdentify } from '../../hooks/useIdentify';
 import { EbaySoldItems } from './EbaySoldItems';
 import { supabase } from '../../lib/supabase';
 import { compressImage } from '../../lib/storage';
+import { cdnImg } from '../../lib/cdn';
 import { RookieBadge } from './RookieBadge';
 import { normalizeParallelName } from '../../lib/cardQuality';
 
@@ -356,8 +357,10 @@ export function CardDetail({ card, onClose }: Props) {
               >
                 {card.image_front_url ? (
                   <img
-                    src={card.image_front_url}
+                    src={cdnImg(card.image_front_url)}
                     alt="Face"
+                    loading="lazy"
+                    decoding="async"
                     className={`h-full w-full object-cover transition-transform duration-500 ${editing ? 'group-hover:scale-105 opacity-80' : 'group-hover:scale-110'}`}
                   />
                 ) : (
@@ -395,8 +398,10 @@ export function CardDetail({ card, onClose }: Props) {
               >
                 {card.image_back_url ? (
                   <img
-                    src={card.image_back_url}
+                    src={cdnImg(card.image_back_url)}
                     alt="Dos"
+                    loading="lazy"
+                    decoding="async"
                     className={`h-full w-full object-cover transition-transform duration-500 ${editing ? 'group-hover:scale-105 opacity-50' : 'opacity-40 group-hover:scale-110 group-hover:opacity-60'}`}
                   />
                 ) : (
@@ -806,8 +811,9 @@ export function CardDetail({ card, onClose }: Props) {
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            src={currentUrl ?? ''}
+            src={cdnImg(currentUrl) ?? ''}
             alt=""
+            decoding="async"
             className="max-h-[90vh] max-w-[80vw] object-contain rounded-2xl shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           />

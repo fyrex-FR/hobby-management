@@ -22,6 +22,7 @@ import {
 import type { Card } from '../../types';
 import { RookieBadge } from '../shared/RookieBadge';
 import { playerLastName } from '../../lib/playerName';
+import { cdnImg } from '../../lib/cdn';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
@@ -239,12 +240,12 @@ function CardModal({ card, showPrice, onClose }: { card: Card; showPrice: boolea
             <div className="relative group perspective">
               {card.image_front_url ? (
                 <img
-                  src={card.image_front_url}
+                  src={cdnImg(card.image_front_url)}
                   alt=""
                   loading="lazy"
                   decoding="async"
                   className="max-h-[350px] w-auto rounded-3xl object-contain shadow-2xl cursor-zoom-in transition-transform duration-700 hover:scale-105"
-                  onClick={() => setLightboxUrl(card.image_front_url!)}
+                  onClick={() => setLightboxUrl(cdnImg(card.image_front_url)!)}
                 />
               ) : (
                 <div className="w-48 h-64 rounded-3xl bg-white/5 border border-white/5 flex flex-col items-center justify-center gap-4 opacity-20">
@@ -255,7 +256,7 @@ function CardModal({ card, showPrice, onClose }: { card: Card; showPrice: boolea
             </div>
             {card.image_back_url && (
               <button
-                onClick={() => setLightboxUrl(card.image_back_url!)}
+                onClick={() => setLightboxUrl(cdnImg(card.image_back_url)!)}
                 className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-[10px] font-black uppercase tracking-widest text-white/40 hover:text-white transition-all"
               >
                 <Maximize2 size={12} /> Voir le Verso
@@ -355,7 +356,7 @@ function SharedCard({ card, showPrice, onClick, interested, onToggleInterest }: 
           </button>
         )}
         {card.image_front_url ? (
-          <img src={card.image_front_url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+          <img src={cdnImg(card.image_front_url)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
         ) : (
           <div className="w-full h-full flex items-center justify-center opacity-10"><Globe size={32} /></div>
         )}

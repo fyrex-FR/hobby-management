@@ -17,6 +17,7 @@ import { useCards } from '../../hooks/useCards';
 import { useAppStore } from '../../stores/appStore';
 import type { Card } from '../../types';
 import { CardDetail } from '../shared/CardDetail';
+import { cdnImg } from '../../lib/cdn';
 
 interface PlayerStats {
   player: string;
@@ -104,7 +105,7 @@ function PlayerRow({ stats, onClick }: { stats: PlayerStats; onClick: () => void
       {/* Photo */}
       <div className="w-12 h-16 rounded-xl bg-white/5 border border-white/5 overflow-hidden shrink-0">
         {stats.topCard?.image_front_url ? (
-          <img src={stats.topCard.image_front_url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+          <img src={cdnImg(stats.topCard.image_front_url)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
         ) : (
           <div className="w-full h-full flex items-center justify-center opacity-20"><UserIcon size={18} /></div>
         )}
@@ -204,7 +205,7 @@ function PlayerModal({ stats, onClose }: { stats: PlayerStats; onClose: () => vo
                 className="group relative aspect-[3/4] rounded-xl overflow-hidden bg-white/5 border border-white/5 hover:border-white/20 transition-all"
               >
                 {card.image_front_url ? (
-                  <img src={card.image_front_url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                  <img src={cdnImg(card.image_front_url)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center opacity-10"><Library size={18} /></div>
                 )}

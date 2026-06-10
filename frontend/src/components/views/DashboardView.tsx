@@ -13,6 +13,7 @@ import {
 import { useCards } from '../../hooks/useCards';
 import { useAppStore } from '../../stores/appStore';
 import type { Card } from '../../types';
+import { cdnImg } from '../../lib/cdn';
 import { GradingBadge } from '../shared/GradingBadge';
 import { RookieBadge } from '../shared/RookieBadge';
 
@@ -191,7 +192,7 @@ function CardRow({ card, onClick }: { card: Card; onClick: () => void }) {
     >
       <div className="relative shrink-0">
         {card.image_front_url ? (
-          <img src={card.image_front_url} alt="" loading="lazy" decoding="async" className="w-9 h-12 object-cover rounded-lg shadow-2xl transition-transform group-hover:scale-110 group-hover:-rotate-2" />
+          <img src={cdnImg(card.image_front_url)} alt="" loading="lazy" decoding="async" className="w-9 h-12 object-cover rounded-lg shadow-2xl transition-transform group-hover:scale-110 group-hover:-rotate-2" />
         ) : (
           <div className="w-9 h-12 rounded-lg shrink-0 flex items-center justify-center text-lg bg-[var(--bg-elevated)] border border-white/5">
             🃏

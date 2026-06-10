@@ -36,6 +36,7 @@ import type { Card, CardStatus, CardType, Folder } from '../../types';
 import { GradingBadge } from '../shared/GradingBadge';
 import { StatusBadge } from '../shared/StatusBadge';
 import { CardDetail } from '../shared/CardDetail';
+import { cdnImg } from '../../lib/cdn';
 import { RookieBadge } from '../shared/RookieBadge';
 
 import { normalizeParallelName } from '../../lib/cardQuality';
@@ -307,7 +308,7 @@ function buildColumns(
         return (
           <div className="flex items-center gap-3">
             {card.image_front_url
-              ? <img src={card.image_front_url} alt="" loading="lazy" decoding="async" className="w-10 h-14 object-contain rounded-md shrink-0" />
+              ? <img src={cdnImg(card.image_front_url)} alt="" loading="lazy" decoding="async" className="w-10 h-14 object-contain rounded-md shrink-0" />
               : <div className="w-10 h-14 rounded-md shrink-0 flex items-center justify-center text-sm" style={{ background: 'var(--bg-elevated)' }}>🃏</div>
             }
             <div>
@@ -457,7 +458,7 @@ function GridCard({
         )}
         {card.image_front_url ? (
           <img
-            src={card.image_front_url}
+            src={cdnImg(card.image_front_url)}
             alt={card.player ?? ''}
             loading="lazy"
             decoding="async"

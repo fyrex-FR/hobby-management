@@ -20,6 +20,7 @@ import {
 import { useCards, useUpdateCard } from '../../hooks/useCards';
 import type { Card } from '../../types';
 import { CardDetail } from '../shared/CardDetail';
+import { cdnImg } from '../../lib/cdn';
 
 type SalesTab = 'stats' | 'a_traiter' | 'pret' | 'en_ligne' | 'vendu';
 
@@ -240,7 +241,7 @@ function SalesCard({ card, tab, onUpdate, onClick }: { card: Card; tab: SalesTab
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="panel p-4 rounded-[32px] bg-white/[0.02] border border-white/5 hover:bg-white/[0.05] hover:border-white/10 transition-all group active:scale-[0.99] flex items-center gap-5">
       <button onClick={onClick} className="w-16 h-20 rounded-2xl bg-white/5 border border-white/5 overflow-hidden shrink-0 relative">
         {card.image_front_url ? (
-          <img src={card.image_front_url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+          <img src={cdnImg(card.image_front_url)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
         ) : (
           <div className="w-full h-full flex items-center justify-center opacity-20"><PackageOpen size={24} /></div>
         )}

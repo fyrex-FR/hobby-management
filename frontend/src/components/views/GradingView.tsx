@@ -12,6 +12,7 @@ import {
 import { useCards, useUpdateCard } from '../../hooks/useCards';
 import type { Card, GradingCompany, GradingStatus } from '../../types';
 import { CardDetail } from '../shared/CardDetail';
+import { cdnImg } from '../../lib/cdn';
 
 const GRADING_COMPANIES: GradingCompany[] = ['PSA', 'BGS', 'SGC', 'CGC', 'HGA'];
 
@@ -69,7 +70,7 @@ function GradingRow({
         onClick={() => onOpenCard(card)}
       >
         {card.image_front_url ? (
-          <img src={card.image_front_url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+          <img src={cdnImg(card.image_front_url)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
         ) : (
           <div className="w-full h-full flex items-center justify-center opacity-20"><CreditCard size={20} /></div>
         )}
