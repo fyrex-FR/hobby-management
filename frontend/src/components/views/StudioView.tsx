@@ -6,16 +6,18 @@ import {
   CameraOff,
   CheckCircle2,
   ChevronLeft,
+  Crop,
   ImagePlus,
   RefreshCw,
   RotateCcw,
+  RotateCw,
   ScanLine,
   Sparkles,
   Trash2,
   Upload,
 } from 'lucide-react';
 import { compressImage } from '../../lib/storage';
-import { cropVideoToGuide, captureZoomedFull, GUIDE_ASPECT, GUIDE_HEIGHT_FRAC } from '../../lib/guideCrop';
+import { captureRotatedCrop, captureZoomedFull, DEFAULT_CROP_RECT, clampNormRect, type NormRect } from '../../lib/guideCrop';
 import { useCreateCard, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { useIdentify } from '../../hooks/useIdentify';
 import { useAppStore } from '../../stores/appStore';
@@ -186,6 +188,72 @@ export function StudioView() {
   const [zoom, setZoom] = useState(1);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
+  // Cadre de rognage réglable + mémorisé (pour un support de scan fixe).
+  const frameBoxRef = useRef<HTMLDivElement>(null);
+  const [adjustingFrame, setAdjustingFrame] = useState(false);
+  const [rotation, setRotation] = useState<number>(() => {
+    const v = Number(localStorage.getItem('studio_rotation'));
+    return [0, 90, 180, 270].includes(v) ? v : 0;
+  });
+  const [cropRect, setCropRect] = useState<NormRect>(() => {
+    try {
+      const raw = localStorage.getItem('studio_crop_rect');
+      if (raw) return clampNormRect(JSON.parse(raw));
+    } catch { /* ignore */ }
+    return DEFAULT_CROP_RECT;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('studio_crop_rect', JSON.stringify(cropRect));
+  }, [cropRect]);
+
+  useEffect(() => {
+    localStorage.setItem('studio_rotation', String(rotation));
+  }, [rotation]);
+
+  const rotated90 = rotation === 90 || rotation === 270;
+
+  // Pendant le réglage du cadre on force zoom=1 (mapping écran <-> image 1:1).
+  useEffect(() => {
+    if (adjustingFrame) setZoom(1);
+  }, [adjustingFrame]);
+
+  function startFrameDrag(
+    e: React.PointerEvent,
+    mode: 'move' | 'nw' | 'ne' | 'sw' | 'se',
+  ) {
+    e.preventDefault();
+    e.stopPropagation();
+    const box = frameBoxRef.current;
+    if (!box) return;
+    const rectPx = box.getBoundingClientRect();
+    const start = { x: e.clientX, y: e.clientY };
+    const base = { ...cropRect };
+
+    function onMove(ev: PointerEvent) {
+      const dx = (ev.clientX - start.x) / rectPx.width;
+      const dy = (ev.clientY - start.y) / rectPx.height;
+      let next: NormRect;
+      if (mode === 'move') {
+        next = { ...base, x: base.x + dx, y: base.y + dy };
+      } else {
+        let { x, y, w, h } = base;
+        if (mode === 'nw') { x = base.x + dx; y = base.y + dy; w = base.w - dx; h = base.h - dy; }
+        if (mode === 'ne') { y = base.y + dy; w = base.w + dx; h = base.h - dy; }
+        if (mode === 'sw') { x = base.x + dx; w = base.w - dx; h = base.h + dy; }
+        if (mode === 'se') { w = base.w + dx; h = base.h + dy; }
+        next = { x, y, w, h };
+      }
+      setCropRect(clampNormRect(next));
+    }
+    function onUp() {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    }
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  }
+
   useEffect(() => {
     localStorage.setItem('studio_autocrop', autoCropEnabled ? '1' : '0');
   }, [autoCropEnabled]);
@@ -307,7 +375,10 @@ export function StudioView() {
   async function capturePhoto(side: CaptureSide): Promise<File> {
     const video = videoRef.current;
     if (video && AUTO_CROP_AVAILABLE && autoCropEnabled) {
-      return cropVideoToGuide(video, side, zoom);
+      return captureRotatedCrop(video, side, rotation, cropRect);
+    }
+    if (video && rotation !== 0) {
+      return captureRotatedCrop(video, side, rotation, null);
     }
     if (video && zoom > 1) {
       return captureZoomedFull(video, side, zoom);
@@ -838,6 +909,32 @@ export function StudioView() {
               </button>
             </div>
 
+            {autoCropEnabled && (
+              <div className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
+                <button
+                  onClick={() => setAdjustingFrame((v) => !v)}
+                  disabled={isBusy}
+                  title="Régler la zone de rognage pour ton support de scan (mémorisé)"
+                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
+                    adjustingFrame ? 'bg-[var(--accent)] text-[#0d0c0b]' : 'text-white/60 hover:text-white'
+                  }`}
+                >
+                  <Crop size={14} />
+                  {adjustingFrame ? 'Terminer le réglage' : 'Ajuster le cadre'}
+                </button>
+                {adjustingFrame && (
+                  <button
+                    onClick={() => setCropRect(DEFAULT_CROP_RECT)}
+                    title="Réinitialiser le cadre par défaut"
+                    className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold text-white/60 transition-all hover:text-white"
+                  >
+                    <RotateCcw size={14} />
+                    Réinitialiser
+                  </button>
+                )}
+              </div>
+            )}
+
             {devices.length > 1 && (
               <select
                 value={selectedDeviceId ?? activeDeviceId ?? ''}
@@ -861,6 +958,16 @@ export function StudioView() {
             >
               <RefreshCw size={16} />
               Avant / Arrière
+            </button>
+
+            <button
+              onClick={() => setRotation((r) => (r + 90) % 360)}
+              className="inline-flex items-center justify-center gap-2 self-start sm:self-auto rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-white/10"
+              disabled={isBusy}
+              title="Tourne l'aperçu et la photo de 90° (support de scan en travers)"
+            >
+              <RotateCw size={16} />
+              Pivoter 90°{rotation ? ` (${rotation}°)` : ''}
             </button>
           </div>
         </div>
@@ -898,23 +1005,34 @@ export function StudioView() {
                 <>
                   <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(0,0,0,0.30),transparent_20%,transparent_80%,rgba(0,0,0,0.35))]" />
                   <div className="absolute inset-0 flex items-center justify-center p-3 sm:p-5">
-                    <div className="relative inline-flex max-h-full max-w-full overflow-hidden rounded-[1.75rem] border border-white/10 bg-black shadow-2xl">
+                    <div
+                      ref={frameBoxRef}
+                      className="relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-black shadow-2xl"
+                      style={{ height: '100%', maxWidth: '100%', aspectRatio: rotated90 ? '3 / 4' : '4 / 3', containerType: 'size' }}
+                    >
                       <video
                         ref={videoRef}
-                        className="block h-auto w-auto max-h-full max-w-full object-contain transition-transform"
-                        style={{ transform: `scale(${zoom})` }}
+                        className="absolute left-1/2 top-1/2 object-contain transition-transform"
+                        style={{
+                          width: rotated90 ? '100cqh' : '100cqw',
+                          height: rotated90 ? '100cqw' : '100cqh',
+                          transform: `translate(-50%, -50%) rotate(${rotation}deg) scale(${zoom})`,
+                          transformOrigin: 'center',
+                        }}
                         autoPlay
                         muted
                         playsInline
                       />
-                      <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                      <div className="absolute inset-0">
                         <div
-                          className="relative rounded-[1.4rem] border-2 border-[var(--accent)] shadow-[0_0_0_2px_rgba(0,0,0,0.65),0_0_0_9999px_rgba(0,0,0,0.5)]"
+                          className={`absolute rounded-[1.4rem] border-2 border-[var(--accent)] shadow-[0_0_0_2px_rgba(0,0,0,0.65),0_0_0_9999px_rgba(0,0,0,0.5)] ${adjustingFrame ? 'cursor-move touch-none' : 'pointer-events-none'}`}
                           style={{
-                            height: `${GUIDE_HEIGHT_FRAC * 100}%`,
-                            aspectRatio: String(GUIDE_ASPECT),
-                            maxWidth: '95%',
+                            left: `${cropRect.x * 100}%`,
+                            top: `${cropRect.y * 100}%`,
+                            width: `${cropRect.w * 100}%`,
+                            height: `${cropRect.h * 100}%`,
                           }}
+                          onPointerDown={adjustingFrame ? (e) => startFrameDrag(e, 'move') : undefined}
                         >
                           {[
                             'left-2 top-2 border-l-[3px] border-t-[3px] rounded-tl-[0.9rem]',
@@ -927,6 +1045,18 @@ export function StudioView() {
                               className={`absolute h-6 w-6 border-[var(--accent)] drop-shadow-[0_0_2px_rgba(0,0,0,0.9)] ${c}`}
                             />
                           ))}
+                          {adjustingFrame && ([
+                            ['nw', '-left-2.5 -top-2.5 cursor-nwse-resize'],
+                            ['ne', '-right-2.5 -top-2.5 cursor-nesw-resize'],
+                            ['sw', '-left-2.5 -bottom-2.5 cursor-nesw-resize'],
+                            ['se', '-right-2.5 -bottom-2.5 cursor-nwse-resize'],
+                          ] as const).map(([pos, cls]) => (
+                            <div
+                              key={pos}
+                              onPointerDown={(e) => startFrameDrag(e, pos)}
+                              className={`absolute h-5 w-5 touch-none rounded-full border-2 border-black bg-[var(--accent)] shadow-lg ${cls}`}
+                            />
+                          ))}
                         </div>
                       </div>
                     </div>
@@ -934,7 +1064,9 @@ export function StudioView() {
                   {autoCropEnabled && (
                     <div className="pointer-events-none absolute inset-x-0 bottom-16 sm:bottom-20 flex justify-center px-4">
                       <div className="rounded-full border border-[var(--accent)]/30 bg-black/60 px-4 py-1.5 text-[10px] sm:text-xs font-bold text-[var(--accent)] backdrop-blur-xl">
-                        Rognage auto — aligne la carte dans le cadre
+                        {adjustingFrame
+                          ? 'Déplace le cadre et tire les coins pour matcher ta carte'
+                          : 'Rognage auto — aligne la carte dans le cadre'}
                       </div>
                     </div>
                   )}
@@ -949,7 +1081,7 @@ export function StudioView() {
                         Initialisation caméra…
                       </div>
                     )}
-                    {cameraReady && (
+                    {cameraReady && !autoCropEnabled && (
                       <div className="flex items-center gap-3 rounded-full border border-white/10 bg-black/55 px-4 py-2 backdrop-blur-xl">
                         <span className="text-[10px] font-black uppercase tracking-widest text-white/60">Zoom</span>
                         <input
