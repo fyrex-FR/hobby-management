@@ -180,7 +180,7 @@ function RequestCard({
             >
               <div className="aspect-[3/4] overflow-hidden rounded-xl border border-white/10 bg-black/20">
                 {c?.image_front_url
-                  ? <img src={c.image_front_url} alt="" className="h-full w-full object-cover" />
+                  ? <img src={c.image_front_url} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
                   : <div className="flex h-full items-center justify-center text-[10px] text-white/20">—</div>}
               </div>
               <span className="truncate text-[10px] font-semibold text-white/70" title={c?.player ?? 'Carte supprimée'}>

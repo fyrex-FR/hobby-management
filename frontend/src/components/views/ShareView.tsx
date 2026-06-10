@@ -241,6 +241,8 @@ function CardModal({ card, showPrice, onClose }: { card: Card; showPrice: boolea
                 <img
                   src={card.image_front_url}
                   alt=""
+                  loading="lazy"
+                  decoding="async"
                   className="max-h-[350px] w-auto rounded-3xl object-contain shadow-2xl cursor-zoom-in transition-transform duration-700 hover:scale-105"
                   onClick={() => setLightboxUrl(card.image_front_url!)}
                 />
@@ -353,7 +355,7 @@ function SharedCard({ card, showPrice, onClick, interested, onToggleInterest }: 
           </button>
         )}
         {card.image_front_url ? (
-          <img src={card.image_front_url} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
+          <img src={card.image_front_url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
         ) : (
           <div className="w-full h-full flex items-center justify-center opacity-10"><Globe size={32} /></div>
         )}

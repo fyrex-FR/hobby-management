@@ -69,7 +69,7 @@ function GradingRow({
         onClick={() => onOpenCard(card)}
       >
         {card.image_front_url ? (
-          <img src={card.image_front_url} alt="" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
+          <img src={card.image_front_url} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
         ) : (
           <div className="w-full h-full flex items-center justify-center opacity-20"><CreditCard size={20} /></div>
         )}
