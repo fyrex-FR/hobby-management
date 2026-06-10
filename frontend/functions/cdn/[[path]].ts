@@ -11,6 +11,10 @@ interface Env {
   SUPABASE_PUBLIC_URL?: string;
 }
 
+// Public Supabase project URL (not a secret — also present in the client bundle).
+// Can be overridden by the SUPABASE_PUBLIC_URL Pages environment variable.
+const DEFAULT_SUPABASE_URL = 'https://ybiphrhtpqsjwmmhajdu.supabase.co';
+
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   const { request, env, params, waitUntil } = context;
 
@@ -18,8 +22,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const path = Array.isArray(raw) ? raw.join('/') : raw;
   if (!path) return new Response('Not found', { status: 404 });
 
-  const base = (env.SUPABASE_PUBLIC_URL || '').replace(/\/$/, '');
-  if (!base) return new Response('CDN misconfigured: missing SUPABASE_PUBLIC_URL', { status: 500 });
+  const base = (env.SUPABASE_PUBLIC_URL || DEFAULT_SUPABASE_URL).replace(/\/$/, '');
 
   const cache = caches.default;
   const cacheKey = new Request(new URL(request.url).toString(), { method: 'GET' });
