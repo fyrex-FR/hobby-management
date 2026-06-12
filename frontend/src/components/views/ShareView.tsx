@@ -457,33 +457,24 @@ export function ShareView({ token }: { token: string }) {
       base: 'Base', insert: 'Insert', parallel: 'Parallèle', numbered: 'Numérotée',
       auto: 'Autographe', patch: 'Patch/Memorabilia', auto_patch: 'Auto + Patch',
     };
-    const blocks = submittedCards.map((c, i) => {
-      const rows: string[] = [];
-      const add = (label: string, val: unknown) => {
-        if (val === null || val === undefined || val === '' || val === false) return;
-        rows.push(`  ${label}: ${val}`);
-      };
-      add('Équipe', c.team);
-      add('Année', c.year);
-      add('Marque', c.brand);
-      add('Set', c.set_name);
-      add('Insert', c.insert_name);
-      add('Parallèle', c.parallel_name);
-      add('N° carte', c.card_number);
-      add('Numérotée', c.numbered ? `/${c.numbered}` : null);
-      add('Type', c.card_type ? (typeLabel[c.card_type] ?? c.card_type) : null);
-      if (c.is_rookie) add('Rookie', 'Oui');
-      if (c.grading_company) add('Grading', `${c.grading_company}${c.grading_grade ? ` ${c.grading_grade}` : ''}${c.grading_cert ? ` (cert ${c.grading_cert})` : ''}`);
-      if (c.quantity && c.quantity > 1) add('Quantité', c.quantity);
-      if (showPrice && c.price != null) add('Prix', `${c.price}€`);
-      add('Vinted', c.vinted_url);
-      add('eBay', c.ebay_url);
-      return `${i + 1}. ${c.player ?? 'Carte'}\n${rows.join('\n')}`;
+    const lines = submittedCards.map((c) => {
+      const parts: string[] = [];
+      if (c.team) parts.push(c.team);
+      if (c.year) parts.push(c.year);
+      if (c.brand) parts.push(c.brand);
+      if (c.set_name) parts.push(c.set_name);
+      if (c.parallel_name) parts.push(c.parallel_name);
+      if (c.card_number) parts.push(`N°${c.card_number}`);
+      if (c.numbered) parts.push(`/${c.numbered}`);
+      if (c.card_type) parts.push(typeLabel[c.card_type] ?? c.card_type);
+      if (c.is_rookie) parts.push('Rookie');
+      if (showPrice && c.price != null) parts.push(`${c.price}€`);
+      return `- ${c.player ?? 'Carte'}${parts.length ? ` — ${parts.join(' · ')}` : ''}`;
     });
     const total = submittedCards.reduce((s, c) => s + (c.price ?? 0), 0);
     const header = `Ma sélection — ${submittedCards.length} carte${submittedCards.length > 1 ? 's' : ''}`;
     const totalLine = showPrice && total > 0 ? `\n\nTotal : ${total.toFixed(0)}€` : '';
-    return `${header}\n\n${blocks.join('\n\n')}${totalLine}`;
+    return `${header}\n${lines.join('\n')}${totalLine}`;
   }, [submittedCards, data]);
 
   async function submitInterest() {
