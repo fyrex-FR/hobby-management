@@ -17,7 +17,8 @@ import {
   Hash,
   RefreshCw,
   Heart,
-  Send
+  Send,
+  Copy
 } from 'lucide-react';
 import type { Card } from '../../types';
 import { RookieBadge } from '../shared/RookieBadge';
@@ -428,6 +429,8 @@ export function ShareView({ token }: { token: string }) {
   const [reqMessage, setReqMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [submittedCards, setSubmittedCards] = useState<Card[]>([]);
+  const [copied, setCopied] = useState(false);
 
   function toggleInterest(id: string) {
     setInterest((prev) => {
@@ -448,6 +451,20 @@ export function ShareView({ token }: { token: string }) {
     [data, interest],
   );
 
+  const recapText = useMemo(() => {
+    const showPrice = data?.show_prices;
+    const lines = submittedCards.map((c) => {
+      const info = [c.year, c.brand, c.set_name].filter(Boolean).join(' ');
+      const num = c.numbered ? ` /${c.numbered}` : '';
+      const price = showPrice && c.price != null ? ` — ${c.price}€` : '';
+      return `- ${c.player ?? 'Carte'}${info ? ` (${info}${num})` : num}${price}`;
+    });
+    const total = submittedCards.reduce((s, c) => s + (c.price ?? 0), 0);
+    const header = `Ma sélection — ${submittedCards.length} carte${submittedCards.length > 1 ? 's' : ''}`;
+    const totalLine = showPrice && total > 0 ? `\nTotal : ${total.toFixed(0)}€` : '';
+    return `${header}\n${lines.join('\n')}${totalLine}`;
+  }, [submittedCards, data]);
+
   async function submitInterest() {
     const h = handle.trim();
     if (!h) return;
@@ -459,7 +476,9 @@ export function ShareView({ token }: { token: string }) {
         body: JSON.stringify({ viewer_handle: h, message: reqMessage.trim() || null, card_ids: [...interest] }),
       });
       if (!resp.ok) throw new Error('Échec de l\u2019envoi');
+      setSubmittedCards(interestCards);
       setSubmitted(true);
+      setCopied(false);
       setSubmitOpen(false);
       setInterest(new Set());
       setReqMessage('');
@@ -870,17 +889,55 @@ export function ShareView({ token }: { token: string }) {
         )}
       </AnimatePresence>
 
-      {/* Toast de confirmation */}
+      {/* Récap après envoi (copiable) */}
       <AnimatePresence>
         {submitted && (
           <motion.div
-            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
-            className="fixed inset-x-0 bottom-6 z-50 flex justify-center px-4"
-            onAnimationComplete={() => setTimeout(() => setSubmitted(false), 3500)}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+            onClick={() => setSubmitted(false)}
           >
-            <div className="flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/15 px-5 py-3 text-sm font-bold text-emerald-300 backdrop-blur-xl">
-              <Heart size={16} fill="currentColor" /> Sélection envoyée, merci ! Le vendeur te recontactera.
-            </div>
+            <motion.div
+              initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0 }}
+              className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-3xl border border-white/10 bg-[#18181b] p-6 shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="mb-3 flex items-center gap-2 text-emerald-300">
+                <Heart size={18} fill="currentColor" />
+                <h3 className="text-lg font-black text-white">Sélection envoyée, merci !</h3>
+              </div>
+              <p className="mb-4 text-xs text-white/50">Le vendeur va te recontacter. Tu peux aussi copier ta liste et la lui envoyer en message.</p>
+
+              <textarea
+                readOnly
+                value={recapText}
+                className="mb-3 h-44 w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs text-white/80 outline-none"
+                onFocus={(e) => e.currentTarget.select()}
+              />
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setSubmitted(false)}
+                  className="flex-1 rounded-xl border border-white/10 bg-white/5 py-3 text-sm font-bold text-white/70 hover:bg-white/10"
+                >
+                  Fermer
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(recapText);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    } catch {
+                      /* clipboard indispo : le textarea reste sélectionnable */
+                    }
+                  }}
+                  className="flex-[2] inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--accent)] py-3 text-sm font-black text-black hover:brightness-110"
+                >
+                  <Copy size={15} /> {copied ? 'Copié !' : 'Copier la liste'}
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
