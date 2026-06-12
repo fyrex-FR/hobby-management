@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
-import { Inbox, Check, Archive, Trash2, MessageSquare, Clock, Download } from 'lucide-react';
+import { Inbox, Check, Archive, Trash2, MessageSquare, Clock, Download, ShoppingBag } from 'lucide-react';
 import { useRequests, useUpdateRequest, useDeleteRequest } from '../../hooks/useRequests';
-import { useCards } from '../../hooks/useCards';
+import { useCards, useUpdateCard } from '../../hooks/useCards';
 import { CardDetail } from '../shared/CardDetail';
 import { cdnImg } from '../../lib/cdn';
 import type { Card, ShareRequest, ShareRequestStatus } from '../../types';
@@ -24,6 +24,7 @@ export function RequestsView() {
   const { data: cards = [] } = useCards();
   const updateRequest = useUpdateRequest();
   const deleteRequest = useDeleteRequest();
+  const updateCard = useUpdateCard();
   const [tab, setTab] = useState<ShareRequestStatus | 'all'>('new');
   const [openCard, setOpenCard] = useState<Card | null>(null);
 
@@ -85,6 +86,18 @@ export function RequestsView() {
                 cardById={cardById}
                 onOpenCard={setOpenCard}
                 onStatus={(status) => updateRequest.mutate({ id: req.id, status })}
+                onMarkSold={async (soldIds) => {
+                  await Promise.all(soldIds.map((id) => {
+                    const c = cardById.get(id);
+                    if (!c) return Promise.resolve();
+                    // Quantité > 1 : on retire un exemplaire. Sinon : vendu.
+                    if ((c.quantity ?? 1) > 1) {
+                      return updateCard.mutateAsync({ id, quantity: (c.quantity ?? 1) - 1 });
+                    }
+                    return updateCard.mutateAsync({ id, status: 'vendu' });
+                  }));
+                  if (req.status === 'new') updateRequest.mutate({ id: req.id, status: 'contacted' });
+                }}
                 onDelete={() => { if (confirm('Supprimer cette demande ?')) deleteRequest.mutate(req.id); }}
               />
             ))}
@@ -101,16 +114,21 @@ function RequestCard({
   cardById,
   onOpenCard,
   onStatus,
+  onMarkSold,
   onDelete,
 }: {
   req: ShareRequest;
   cardById: Map<string, Card>;
   onOpenCard: (c: Card) => void;
   onStatus: (s: ShareRequestStatus) => void;
+  onMarkSold: (ids: string[]) => Promise<void> | void;
   onDelete: () => void;
 }) {
   const ids = req.card_ids ?? [];
   const date = new Date(req.created_at).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+  const [markingSold, setMarkingSold] = useState(false);
+  // Cartes encore présentes et pas déjà vendues.
+  const sellableIds = ids.filter((id) => { const c = cardById.get(id); return c && c.status !== 'vendu'; });
   const total = ids.reduce((sum, id) => sum + (cardById.get(id)?.price ?? 0), 0);
 
   function exportCsv() {
@@ -174,7 +192,21 @@ function RequestCard({
             <Clock size={11} /> {date} · {ids.length} carte{ids.length > 1 ? 's' : ''}
           </div>
         </div>
-        <div className="flex shrink-0 gap-1.5">
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+          {sellableIds.length > 0 && (
+            <button
+              onClick={async () => {
+                if (!confirm(`Passer ${sellableIds.length} carte(s) en vendu ?\n(les cartes en plusieurs exemplaires seront décrémentées de 1)`)) return;
+                setMarkingSold(true);
+                try { await onMarkSold(sellableIds); } finally { setMarkingSold(false); }
+              }}
+              disabled={markingSold}
+              title="Marquer ces cartes comme vendues (décrémente les multi-exemplaires)"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-2.5 py-2 text-xs font-bold text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-50"
+            >
+              <ShoppingBag size={14} /> {markingSold ? '…' : 'Tout vendu'}
+            </button>
+          )}
           <button onClick={exportCsv} title="Exporter la liste (CSV)" className="rounded-lg border border-white/10 bg-white/5 p-2 text-white/70 hover:bg-white/10">
             <Download size={15} />
           </button>
