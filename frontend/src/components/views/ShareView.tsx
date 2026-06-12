@@ -443,6 +443,11 @@ export function ShareView({ token }: { token: string }) {
     [data, interest],
   );
 
+  const interestCards = useMemo(
+    () => (data?.cards ?? []).filter((c) => interest.has(c.id)),
+    [data, interest],
+  );
+
   async function submitInterest() {
     const h = handle.trim();
     if (!h) return;
@@ -792,11 +797,39 @@ export function ShareView({ token }: { token: string }) {
           >
             <motion.div
               initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0 }}
-              className="w-full max-w-md rounded-3xl border border-white/10 bg-[#18181b] p-6 shadow-2xl"
+              className="flex max-h-[88vh] w-full max-w-md flex-col rounded-3xl border border-white/10 bg-[#18181b] p-6 shadow-2xl"
               onClick={(e) => e.stopPropagation()}
             >
               <h3 className="mb-1 text-lg font-black text-white">Envoyer ma sélection</h3>
-              <p className="mb-5 text-xs text-white/50">{interest.size} carte{interest.size > 1 ? 's' : ''} sélectionnée{interest.size > 1 ? 's' : ''}{data.show_prices && interestTotal > 0 ? ` · total ${interestTotal.toFixed(0)}€` : ''}. Laisse ton pseudo pour qu'on te recontacte.</p>
+              <p className="mb-4 text-xs text-white/50">{interest.size} carte{interest.size > 1 ? 's' : ''} sélectionnée{interest.size > 1 ? 's' : ''}{data.show_prices && interestTotal > 0 ? ` · total ${interestTotal.toFixed(0)}€` : ''}. Laisse ton pseudo pour qu'on te recontacte.</p>
+
+              {/* Aperçu des cartes sélectionnées */}
+              <div className="mb-4 -mx-1 max-h-52 overflow-y-auto px-1">
+                <div className="grid grid-cols-3 gap-2">
+                  {interestCards.map((c) => (
+                    <div key={c.id} className="relative">
+                      <div className="aspect-[3/4] overflow-hidden rounded-xl border border-white/10 bg-black/30">
+                        {c.image_front_url
+                          ? <img src={cdnImg(c.image_front_url)} alt="" loading="lazy" className="h-full w-full object-cover" />
+                          : <div className="flex h-full items-center justify-center text-white/20"><Globe size={18} /></div>}
+                      </div>
+                      <button
+                        onClick={() => toggleInterest(c.id)}
+                        className="absolute -right-1.5 -top-1.5 flex h-6 w-6 items-center justify-center rounded-full border border-black/40 bg-[#f43f5e] text-white shadow-lg hover:brightness-110"
+                        title="Retirer"
+                        aria-label="Retirer"
+                      >
+                        <X size={13} />
+                      </button>
+                      <div className="mt-1 truncate text-[10px] font-semibold text-white/70" title={c.player ?? ''}>{c.player ?? '—'}</div>
+                      {data.show_prices && c.price != null && (
+                        <div className="text-[10px] font-black text-[var(--accent)]">{c.price}€</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-white/50">Pseudo Insta / Discord *</label>
               <input
                 value={handle}
@@ -812,7 +845,7 @@ export function ShareView({ token }: { token: string }) {
                 placeholder="Une offre, une question…"
                 className="mb-5 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-[var(--accent)]/50"
               />
-              <div className="flex gap-3">
+              <div className="mt-auto flex gap-3">
                 <button
                   onClick={() => setSubmitOpen(false)}
                   className="flex-1 rounded-xl border border-white/10 bg-white/5 py-3 text-sm font-bold text-white/70 hover:bg-white/10"
@@ -821,7 +854,7 @@ export function ShareView({ token }: { token: string }) {
                 </button>
                 <button
                   onClick={submitInterest}
-                  disabled={submitting || !handle.trim()}
+                  disabled={submitting || !handle.trim() || interest.size === 0}
                   className="flex-[2] inline-flex items-center justify-center gap-2 rounded-xl bg-[#f43f5e] py-3 text-sm font-black text-white hover:brightness-110 disabled:opacity-40"
                 >
                   <Send size={15} /> {submitting ? 'Envoi…' : 'Envoyer'}
