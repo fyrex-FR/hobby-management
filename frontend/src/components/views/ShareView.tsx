@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import type { Card } from '../../types';
 import { RookieBadge } from '../shared/RookieBadge';
-import { playerLastName } from '../../lib/playerName';
+import { playerLastName, stripDiacritics } from '../../lib/playerName';
 import { cdnImg } from '../../lib/cdn';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
@@ -515,8 +515,10 @@ export function ShareView({ token }: { token: string }) {
       if (gradedOnly && !c.grading_company) return false;
       if (vintedOnly && !c.vinted_url) return false;
       if (search) {
-        const q = search.toLowerCase();
-        const hay = [c.player, c.team, c.brand, c.set_name, c.insert_name, c.parallel_name, c.year].filter(Boolean).join(' ').toLowerCase();
+        const q = stripDiacritics(search).toLowerCase();
+        const hay = stripDiacritics(
+          [c.player, c.team, c.brand, c.set_name, c.insert_name, c.parallel_name, c.year].filter(Boolean).join(' '),
+        ).toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;

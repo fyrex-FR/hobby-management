@@ -40,7 +40,7 @@ import { cdnImg } from '../../lib/cdn';
 import { RookieBadge } from '../shared/RookieBadge';
 
 import { normalizeParallelName } from '../../lib/cardQuality';
-import { playerLastName, playerInitial, playerNameKey, buildPlayerCanonical } from '../../lib/playerName';
+import { playerLastName, playerInitial, playerNameKey, buildPlayerCanonical, stripDiacritics } from '../../lib/playerName';
 
 type FilterTab = 'all' | 'a_vendre' | 'vendu';
 type GroupBy = 'none' | 'player' | 'team' | 'brand' | 'set_name' | 'year';
@@ -868,11 +868,12 @@ export function CollectionView() {
         }
       }
       if (search) {
-        const q = search.toLowerCase();
-        const haystack = [c.player, c.team, c.brand, c.set_name, c.insert_name, c.parallel_name, c.year]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase();
+        const q = stripDiacritics(search).toLowerCase();
+        const haystack = stripDiacritics(
+          [c.player, c.team, c.brand, c.set_name, c.insert_name, c.parallel_name, c.year]
+            .filter(Boolean)
+            .join(' '),
+        ).toLowerCase();
         if (!haystack.includes(q)) return false;
       }
       return true;
