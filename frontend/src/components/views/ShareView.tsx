@@ -453,16 +453,37 @@ export function ShareView({ token }: { token: string }) {
 
   const recapText = useMemo(() => {
     const showPrice = data?.show_prices;
-    const lines = submittedCards.map((c) => {
-      const info = [c.year, c.brand, c.set_name].filter(Boolean).join(' ');
-      const num = c.numbered ? ` /${c.numbered}` : '';
-      const price = showPrice && c.price != null ? ` — ${c.price}€` : '';
-      return `- ${c.player ?? 'Carte'}${info ? ` (${info}${num})` : num}${price}`;
+    const typeLabel: Record<string, string> = {
+      base: 'Base', insert: 'Insert', parallel: 'Parallèle', numbered: 'Numérotée',
+      auto: 'Autographe', patch: 'Patch/Memorabilia', auto_patch: 'Auto + Patch',
+    };
+    const blocks = submittedCards.map((c, i) => {
+      const rows: string[] = [];
+      const add = (label: string, val: unknown) => {
+        if (val === null || val === undefined || val === '' || val === false) return;
+        rows.push(`  ${label}: ${val}`);
+      };
+      add('Équipe', c.team);
+      add('Année', c.year);
+      add('Marque', c.brand);
+      add('Set', c.set_name);
+      add('Insert', c.insert_name);
+      add('Parallèle', c.parallel_name);
+      add('N° carte', c.card_number);
+      add('Numérotée', c.numbered ? `/${c.numbered}` : null);
+      add('Type', c.card_type ? (typeLabel[c.card_type] ?? c.card_type) : null);
+      if (c.is_rookie) add('Rookie', 'Oui');
+      if (c.grading_company) add('Grading', `${c.grading_company}${c.grading_grade ? ` ${c.grading_grade}` : ''}${c.grading_cert ? ` (cert ${c.grading_cert})` : ''}`);
+      if (c.quantity && c.quantity > 1) add('Quantité', c.quantity);
+      if (showPrice && c.price != null) add('Prix', `${c.price}€`);
+      add('Vinted', c.vinted_url);
+      add('eBay', c.ebay_url);
+      return `${i + 1}. ${c.player ?? 'Carte'}\n${rows.join('\n')}`;
     });
     const total = submittedCards.reduce((s, c) => s + (c.price ?? 0), 0);
     const header = `Ma sélection — ${submittedCards.length} carte${submittedCards.length > 1 ? 's' : ''}`;
-    const totalLine = showPrice && total > 0 ? `\nTotal : ${total.toFixed(0)}€` : '';
-    return `${header}\n${lines.join('\n')}${totalLine}`;
+    const totalLine = showPrice && total > 0 ? `\n\nTotal : ${total.toFixed(0)}€` : '';
+    return `${header}\n\n${blocks.join('\n\n')}${totalLine}`;
   }, [submittedCards, data]);
 
   async function submitInterest() {
@@ -911,7 +932,7 @@ export function ShareView({ token }: { token: string }) {
               <textarea
                 readOnly
                 value={recapText}
-                className="mb-3 h-44 w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs text-white/80 outline-none"
+                className="mb-3 h-64 w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs leading-relaxed text-white/80 outline-none"
                 onFocus={(e) => e.currentTarget.select()}
               />
 
