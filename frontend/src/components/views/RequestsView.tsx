@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Inbox, Check, Archive, Trash2, MessageSquare, Clock } from 'lucide-react';
+import { Inbox, Check, Archive, Trash2, MessageSquare, Clock, Download } from 'lucide-react';
 import { useRequests, useUpdateRequest, useDeleteRequest } from '../../hooks/useRequests';
 import { useCards } from '../../hooks/useCards';
 import { CardDetail } from '../shared/CardDetail';
@@ -113,6 +113,41 @@ function RequestCard({
   const date = new Date(req.created_at).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
   const total = ids.reduce((sum, id) => sum + (cardById.get(id)?.price ?? 0), 0);
 
+  function exportCsv() {
+    const esc = (v: unknown) => {
+      const s = v == null ? '' : String(v);
+      return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const headers = ['Joueur', 'Annee', 'Marque', 'Set', 'Insert', 'Parallele', 'Numerote', 'Type', 'Prix', 'Vinted', 'eBay'];
+    const rows = ids.map((id) => {
+      const c = cardById.get(id);
+      return [
+        c?.player ?? 'Carte supprimee',
+        c?.year ?? '',
+        c?.brand ?? '',
+        c?.set_name ?? '',
+        c?.insert_name ?? '',
+        c?.parallel_name ?? '',
+        c?.numbered ?? '',
+        c?.card_type ?? '',
+        c?.price ?? '',
+        c?.vinted_url ?? '',
+        c?.ebay_url ?? '',
+      ].map(esc).join(';');
+    });
+    const csv = '\uFEFF' + [headers.join(';'), ...rows].join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const safeHandle = (req.viewer_handle || 'demande').replace(/[^\w.-]+/g, '_').slice(0, 40);
+    a.href = url;
+    a.download = `selection-${safeHandle}-${req.created_at.slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
       <div className="mb-3 flex items-start justify-between gap-3">
@@ -140,6 +175,9 @@ function RequestCard({
           </div>
         </div>
         <div className="flex shrink-0 gap-1.5">
+          <button onClick={exportCsv} title="Exporter la liste (CSV)" className="rounded-lg border border-white/10 bg-white/5 p-2 text-white/70 hover:bg-white/10">
+            <Download size={15} />
+          </button>
           {req.status !== 'contacted' && (
             <button onClick={() => onStatus('contacted')} title="Marquer contacté" className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-2 text-emerald-300 hover:bg-emerald-500/20">
               <Check size={15} />
