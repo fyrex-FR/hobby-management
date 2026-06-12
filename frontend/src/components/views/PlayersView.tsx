@@ -18,6 +18,7 @@ import { useAppStore } from '../../stores/appStore';
 import type { Card } from '../../types';
 import { CardDetail } from '../shared/CardDetail';
 import { cdnImg } from '../../lib/cdn';
+import { buildPlayerCanonical, playerNameKey } from '../../lib/playerName';
 
 interface PlayerStats {
   player: string;
@@ -34,10 +35,12 @@ interface PlayerStats {
 }
 
 function buildStats(cards: Card[]): PlayerStats[] {
+  // Fusionne les variantes accentuées/non accentuées (Jokić = Jokic).
+  const canonical = buildPlayerCanonical(cards.filter((c) => c.status !== 'draft').map((c) => c.player));
   const map = new Map<string, Card[]>();
   cards.forEach((c) => {
     if (c.status === 'draft') return;
-    const key = c.player ?? 'Inconnu';
+    const key = c.player ? (canonical.get(playerNameKey(c.player)) ?? c.player) : 'Inconnu';
     if (!map.has(key)) map.set(key, []);
     map.get(key)!.push(c);
   });

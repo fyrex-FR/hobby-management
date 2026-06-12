@@ -40,7 +40,7 @@ import { cdnImg } from '../../lib/cdn';
 import { RookieBadge } from '../shared/RookieBadge';
 
 import { normalizeParallelName } from '../../lib/cardQuality';
-import { playerLastName, playerInitial } from '../../lib/playerName';
+import { playerLastName, playerInitial, playerNameKey, buildPlayerCanonical } from '../../lib/playerName';
 
 type FilterTab = 'all' | 'a_vendre' | 'vendu';
 type GroupBy = 'none' | 'player' | 'team' | 'brand' | 'set_name' | 'year';
@@ -844,7 +844,7 @@ export function CollectionView() {
     return cards.filter((c) => {
       if (c.status === 'draft') return false;
       if (statusFilter !== 'all' && c.status !== (statusFilter as CardStatus)) return false;
-      if (playerFilter && c.player !== playerFilter) return false;
+      if (playerFilter && playerNameKey(c.player) !== playerNameKey(playerFilter)) return false;
       if (teamFilter && c.team !== teamFilter) return false;
       if (brandFilter && c.brand !== brandFilter) return false;
       if (setFilter && c.set_name !== setFilter) return false;
@@ -920,7 +920,19 @@ export function CollectionView() {
       .map(([value, count]) => ({ value, count }));
   }, [cards]);
 
-  const players = useMemo(() => facets('player'), [facets]);
+  const players = useMemo(() => {
+    // Fusionne les variantes accentuées (Jokić = Jokic) dans le filtre.
+    const canonical = buildPlayerCanonical(cards.map((c) => c.player));
+    const counts: Record<string, number> = {};
+    cards.forEach((c) => {
+      if (!c.player) return;
+      const label = canonical.get(playerNameKey(c.player)) ?? c.player;
+      counts[label] = (counts[label] ?? 0) + 1;
+    });
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([value, count]) => ({ value, count }));
+  }, [cards]);
   const teams = useMemo(() => facets('team'), [facets]);
   const brands = useMemo(() => facets('brand'), [facets]);
   const sets = useMemo(() => facets('set_name'), [facets]);
@@ -938,9 +950,17 @@ export function CollectionView() {
   // Groupement
   const grouped = useMemo(() => {
     if (groupBy === 'none') return { '': sorted };
+    // Pour le regroupement par joueur, on fusionne les variantes accentuées.
+    const canonical =
+      groupBy === 'player' ? buildPlayerCanonical(sorted.map((c) => c.player)) : null;
     const groups: Record<string, Card[]> = {};
     sorted.forEach((c) => {
-      const key = (c[groupBy] as string | null) ?? 'Inconnu';
+      let key: string;
+      if (groupBy === 'player') {
+        key = c.player ? (canonical!.get(playerNameKey(c.player)) ?? c.player) : 'Inconnu';
+      } else {
+        key = (c[groupBy] as string | null) ?? 'Inconnu';
+      }
       if (!groups[key]) groups[key] = [];
       groups[key].push(c);
     });
