@@ -154,50 +154,80 @@ async def migration_start(_: dict = Depends(require_admin)):
     return {"message": "Migration started"}
 
 
-@router.get("/admin/migration/verify")
-async def migration_verify(_: dict = Depends(require_admin)):
-    """Check that every image URL in the cards table exists in R2."""
-    s3 = _get_s3()
+_verify_state = {
+    "status": "idle",  # idle | running | done | error
+    "checked": 0,
+    "total": 0,
+    "missing": [],
+}
 
-    # Get all image URLs from the cards table
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(
-            f"{SUPABASE_URL}/rest/v1/cards",
-            headers={**HEADERS, "Content-Type": "application/json"},
-            params={"select": "id,image_front_url,image_back_url"},
-            timeout=30,
-        )
-        resp.raise_for_status()
-        cards = resp.json()
 
-    old_prefix = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET}/"
-    missing = []
-    checked = 0
+async def _run_verify():
+    global _verify_state
+    _verify_state = {"status": "running", "checked": 0, "total": 0, "missing": []}
 
-    for card in cards:
-        for field in ("image_front_url", "image_back_url"):
-            url = card.get(field)
-            if not url:
-                continue
-            # Extract the path from the URL
-            if url.startswith(old_prefix):
-                path = url[len(old_prefix):]
-            elif R2_PUBLIC_URL and url.startswith(f"{R2_PUBLIC_URL}/"):
-                path = url[len(f"{R2_PUBLIC_URL}/"):]
-            else:
-                continue
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{SUPABASE_URL}/rest/v1/cards",
+                headers={**HEADERS, "Content-Type": "application/json"},
+                params={"select": "id,image_front_url,image_back_url"},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            cards = resp.json()
 
+        old_prefix = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET}/"
+        paths_to_check = []
+
+        for card in cards:
+            for field in ("image_front_url", "image_back_url"):
+                url = card.get(field)
+                if not url:
+                    continue
+                if url.startswith(old_prefix):
+                    path = url[len(old_prefix):]
+                elif R2_PUBLIC_URL and url.startswith(f"{R2_PUBLIC_URL}/"):
+                    path = url[len(f"{R2_PUBLIC_URL}/"):]
+                else:
+                    continue
+                paths_to_check.append({"card_id": card["id"], "field": field, "path": path})
+
+        _verify_state["total"] = len(paths_to_check)
+        s3 = _get_s3()
+
+        for item in paths_to_check:
             try:
-                s3.head_object(Bucket=R2_BUCKET_NAME, Key=path)
+                s3.head_object(Bucket=R2_BUCKET_NAME, Key=item["path"])
             except Exception:
-                missing.append({"card_id": card["id"], "field": field, "path": path})
-            checked += 1
+                _verify_state["missing"].append(item)
+            _verify_state["checked"] += 1
+            if _verify_state["checked"] % 50 == 0:
+                await asyncio.sleep(0)
 
+        _verify_state["status"] = "done"
+    except Exception as e:
+        _verify_state["status"] = "error"
+        _verify_state["missing"].append({"card_id": "_global", "field": "error", "path": str(e)})
+
+
+@router.post("/admin/migration/verify")
+async def migration_verify_start(_: dict = Depends(require_admin)):
+    if _verify_state["status"] == "running":
+        raise HTTPException(status_code=409, detail="Verification already running")
+    asyncio.create_task(_run_verify())
+    return {"message": "Verification started"}
+
+
+@router.get("/admin/migration/verify")
+async def migration_verify_status(_: dict = Depends(require_admin)):
     return {
-        "checked": checked,
-        "missing": len(missing),
-        "all_good": len(missing) == 0,
-        "missing_files": missing[:50],
+        "status": _verify_state["status"],
+        "checked": _verify_state["checked"],
+        "total": _verify_state["total"],
+        "missing": len(_verify_state["missing"]),
+        "all_good": _verify_state["status"] == "done" and len(_verify_state["missing"]) == 0,
+        "missing_files": _verify_state["missing"][:50],
     }
 
 

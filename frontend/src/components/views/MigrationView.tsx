@@ -24,7 +24,9 @@ interface UpdateUrlsResult {
 }
 
 interface VerifyResult {
+  status: 'idle' | 'running' | 'done' | 'error';
   checked: number;
+  total: number;
   missing: number;
   all_good: boolean;
   missing_files: { card_id: string; field: string; path: string }[];
@@ -105,13 +107,28 @@ export default function MigrationView() {
   const handleVerify = async () => {
     setLoading('verify');
     setError('');
+    setVerifyResult(null);
     try {
-      const data = await apiFetch<VerifyResult>('/admin/migration/verify');
-      setVerifyResult(data);
+      await apiFetch('/admin/migration/verify', { method: 'POST' });
+      // Poll until done
+      const poll = setInterval(async () => {
+        try {
+          const data = await apiFetch<VerifyResult>('/admin/migration/verify');
+          setVerifyResult(data);
+          if (data.status === 'done' || data.status === 'error') {
+            clearInterval(poll);
+            setLoading('');
+          }
+        } catch (e: any) {
+          clearInterval(poll);
+          setError(e.message);
+          setLoading('');
+        }
+      }, 2000);
     } catch (e: any) {
       setError(e.message);
+      setLoading('');
     }
-    setLoading('');
   };
 
   const progress = status?.total ? Math.round((status.migrated / status.total) * 100) : 0;
@@ -232,14 +249,34 @@ export default function MigrationView() {
           className="rounded-2xl p-5 space-y-2"
           style={{
             background: 'var(--bg-card)',
-            border: `1px solid ${verifyResult.all_good ? '#22c55e' : 'rgba(239,68,68,0.5)'}`,
+            border: `1px solid ${verifyResult.status === 'done' && verifyResult.all_good ? '#22c55e' : verifyResult.status === 'running' ? 'var(--border)' : 'rgba(239,68,68,0.5)'}`,
           }}
         >
-          <h2 className="text-sm font-medium" style={{ color: verifyResult.all_good ? '#22c55e' : '#ef4444' }}>
-            {verifyResult.all_good
-              ? `Tout est bon — ${verifyResult.checked} fichiers vérifiés dans R2`
-              : `${verifyResult.missing} fichier(s) manquant(s) sur ${verifyResult.checked} vérifiés`}
-          </h2>
+          {verifyResult.status === 'running' && (
+            <>
+              <h2 className="text-sm font-medium" style={{ color: 'var(--accent)' }}>
+                Vérification en cours... {verifyResult.checked}/{verifyResult.total}
+              </h2>
+              {verifyResult.total > 0 && (
+                <div className="w-full h-2 rounded-full overflow-hidden" style={{ background: 'var(--bg-elevated)' }}>
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{ background: 'var(--accent)', width: `${Math.round((verifyResult.checked / verifyResult.total) * 100)}%` }}
+                  />
+                </div>
+              )}
+            </>
+          )}
+          {verifyResult.status === 'done' && (
+            <h2 className="text-sm font-medium" style={{ color: verifyResult.all_good ? '#22c55e' : '#ef4444' }}>
+              {verifyResult.all_good
+                ? `Tout est bon — ${verifyResult.checked} fichiers vérifiés dans R2`
+                : `${verifyResult.missing} fichier(s) manquant(s) sur ${verifyResult.checked} vérifiés`}
+            </h2>
+          )}
+          {verifyResult.status === 'error' && (
+            <h2 className="text-sm font-medium" style={{ color: '#ef4444' }}>Erreur lors de la vérification</h2>
+          )}
           {verifyResult.missing_files.length > 0 && (
             <div className="text-xs space-y-1 max-h-40 overflow-y-auto" style={{ color: 'var(--text-muted)' }}>
               {verifyResult.missing_files.map((f, i) => (
