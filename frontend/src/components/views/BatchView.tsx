@@ -25,9 +25,10 @@ import type { AIIdentificationResult, CardType } from '../../types';
 
 interface QuotaInfo {
   used: number;
-  limit: number;
-  remaining: number;
+  limit: number | null;
+  remaining: number | null;
   pct: number;
+  disabled?: boolean;
 }
 
 async function fetchQuota(token: string): Promise<QuotaInfo | null> {
@@ -41,6 +42,8 @@ async function fetchQuota(token: string): Promise<QuotaInfo | null> {
 }
 
 function QuotaBar({ quota }: { quota: QuotaInfo }) {
+  if (quota.disabled || quota.limit === null || quota.remaining === null) return null;
+
   const danger = quota.remaining < 50;
   const warn = quota.remaining < 150;
   const color = danger ? '#ef4444' : warn ? 'var(--accent)' : '#10b981';
