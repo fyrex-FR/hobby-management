@@ -162,20 +162,44 @@ _verify_state = {
 }
 
 
+async def _fetch_all_cards_images() -> list[dict]:
+    """Fetch all cards with image URLs, handling PostgREST pagination."""
+    rows = []
+    offset = 0
+    page_size = 1000
+    headers = {
+        "apikey": SUPABASE_SERVICE_KEY,
+        "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation",
+    }
+    async with httpx.AsyncClient() as client:
+        while True:
+            resp = await client.get(
+                f"{SUPABASE_URL}/rest/v1/cards",
+                headers=headers,
+                params={
+                    "select": "id,image_front_url,image_back_url",
+                    "limit": str(page_size),
+                    "offset": str(offset),
+                },
+                timeout=30,
+            )
+            resp.raise_for_status()
+            batch = resp.json()
+            rows.extend(batch)
+            if len(batch) < page_size:
+                break
+            offset += page_size
+    return rows
+
+
 async def _run_verify():
     global _verify_state
     _verify_state = {"status": "running", "checked": 0, "total": 0, "missing": []}
 
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{SUPABASE_URL}/rest/v1/cards",
-                headers={**HEADERS, "Content-Type": "application/json"},
-                params={"select": "id,image_front_url,image_back_url"},
-                timeout=30,
-            )
-            resp.raise_for_status()
-            cards = resp.json()
+        cards = await _fetch_all_cards_images()
 
         old_prefix = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET}/"
         paths_to_check = []
