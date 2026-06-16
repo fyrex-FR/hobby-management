@@ -154,6 +154,53 @@ async def migration_start(_: dict = Depends(require_admin)):
     return {"message": "Migration started"}
 
 
+@router.get("/admin/migration/verify")
+async def migration_verify(_: dict = Depends(require_admin)):
+    """Check that every image URL in the cards table exists in R2."""
+    s3 = _get_s3()
+
+    # Get all image URLs from the cards table
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(
+            f"{SUPABASE_URL}/rest/v1/cards",
+            headers={**HEADERS, "Content-Type": "application/json"},
+            params={"select": "id,image_front_url,image_back_url"},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        cards = resp.json()
+
+    old_prefix = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET}/"
+    missing = []
+    checked = 0
+
+    for card in cards:
+        for field in ("image_front_url", "image_back_url"):
+            url = card.get(field)
+            if not url:
+                continue
+            # Extract the path from the URL
+            if url.startswith(old_prefix):
+                path = url[len(old_prefix):]
+            elif R2_PUBLIC_URL and url.startswith(f"{R2_PUBLIC_URL}/"):
+                path = url[len(f"{R2_PUBLIC_URL}/"):]
+            else:
+                continue
+
+            try:
+                s3.head_object(Bucket=R2_BUCKET_NAME, Key=path)
+            except Exception:
+                missing.append({"card_id": card["id"], "field": field, "path": path})
+            checked += 1
+
+    return {
+        "checked": checked,
+        "missing": len(missing),
+        "all_good": len(missing) == 0,
+        "missing_files": missing[:50],
+    }
+
+
 @router.post("/admin/migration/update-urls")
 async def migration_update_urls(_: dict = Depends(require_admin)):
     old_prefix = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET}/"

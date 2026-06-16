@@ -23,10 +23,18 @@ interface UpdateUrlsResult {
   message: string;
 }
 
+interface VerifyResult {
+  checked: number;
+  missing: number;
+  all_good: boolean;
+  missing_files: { card_id: string; field: string; path: string }[];
+}
+
 export default function MigrationView() {
   const [status, setStatus] = useState<MigrationStatus | null>(null);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [urlResult, setUrlResult] = useState<UpdateUrlsResult | null>(null);
+  const [verifyResult, setVerifyResult] = useState<VerifyResult | null>(null);
   const [loading, setLoading] = useState('');
   const [error, setError] = useState('');
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -88,6 +96,18 @@ export default function MigrationView() {
     try {
       const data = await apiFetch<UpdateUrlsResult>('/admin/migration/update-urls', { method: 'POST' });
       setUrlResult(data);
+    } catch (e: any) {
+      setError(e.message);
+    }
+    setLoading('');
+  };
+
+  const handleVerify = async () => {
+    setLoading('verify');
+    setError('');
+    try {
+      const data = await apiFetch<VerifyResult>('/admin/migration/verify');
+      setVerifyResult(data);
     } catch (e: any) {
       setError(e.message);
     }
@@ -170,8 +190,18 @@ export default function MigrationView() {
           </button>
 
           <button
+            onClick={handleVerify}
+            disabled={loading === 'verify'}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-opacity disabled:opacity-50"
+            style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
+          >
+            <CheckCircle size={16} />
+            {loading === 'verify' ? 'Vérification...' : 'Vérifier R2'}
+          </button>
+
+          <button
             onClick={handleUpdateUrls}
-            disabled={loading === 'urls' || status?.status !== 'done'}
+            disabled={loading === 'urls' || !verifyResult?.all_good}
             className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-opacity disabled:opacity-50"
             style={{ background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border)' }}
           >
@@ -193,6 +223,30 @@ export default function MigrationView() {
             ))}
             {preview.total_files > 20 && <div>... et {preview.total_files - 20} autres</div>}
           </div>
+        </div>
+      )}
+
+      {/* Verify Result */}
+      {verifyResult && (
+        <div
+          className="rounded-2xl p-5 space-y-2"
+          style={{
+            background: 'var(--bg-card)',
+            border: `1px solid ${verifyResult.all_good ? '#22c55e' : 'rgba(239,68,68,0.5)'}`,
+          }}
+        >
+          <h2 className="text-sm font-medium" style={{ color: verifyResult.all_good ? '#22c55e' : '#ef4444' }}>
+            {verifyResult.all_good
+              ? `Tout est bon — ${verifyResult.checked} fichiers vérifiés dans R2`
+              : `${verifyResult.missing} fichier(s) manquant(s) sur ${verifyResult.checked} vérifiés`}
+          </h2>
+          {verifyResult.missing_files.length > 0 && (
+            <div className="text-xs space-y-1 max-h-40 overflow-y-auto" style={{ color: 'var(--text-muted)' }}>
+              {verifyResult.missing_files.map((f, i) => (
+                <div key={i} className="font-mono">{f.field}: {f.path}</div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
