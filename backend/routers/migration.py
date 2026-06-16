@@ -260,18 +260,6 @@ async def migration_update_urls(_: dict = Depends(require_admin)):
     old_prefix = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET}/"
     new_prefix = f"{R2_PUBLIC_URL}/"
 
-    async with httpx.AsyncClient() as client:
-        # Update front URLs
-        resp1 = await client.patch(
-            f"{SUPABASE_URL}/rest/v1/cards",
-            headers={**HEADERS, "Content-Type": "application/json", "Prefer": "return=minimal"},
-            params={"image_front_url": f"like.{old_prefix}*"},
-            json={"image_front_url": None},  # placeholder
-            timeout=30,
-        )
-
-    # Use SQL via Supabase's RPC or direct postgrest won't work for REPLACE.
-    # Instead, generate the SQL for manual execution and return it.
     sql = f"""UPDATE cards
 SET image_front_url = REPLACE(image_front_url, '{old_prefix}', '{new_prefix}')
 WHERE image_front_url LIKE '{old_prefix}%';
@@ -282,7 +270,6 @@ WHERE image_back_url LIKE '{old_prefix}%';"""
 
     # Execute via Supabase's pg endpoint (rpc)
     async with httpx.AsyncClient() as client:
-        # Try executing via rpc if available, otherwise return SQL
         resp = await client.post(
             f"{SUPABASE_URL}/rest/v1/rpc/exec_sql",
             headers={**HEADERS, "Content-Type": "application/json"},
@@ -290,7 +277,6 @@ WHERE image_back_url LIKE '{old_prefix}%';"""
             timeout=30,
         )
         if resp.status_code == 404:
-            # RPC not available — return SQL for manual execution
             return {"executed": False, "sql": sql, "message": "Exécutez ce SQL dans le SQL Editor de Supabase"}
 
     return {"executed": True, "message": "URLs mises à jour"}
