@@ -2,9 +2,7 @@ import os
 import asyncio
 import time
 
-import boto3
 import httpx
-from botocore.config import Config
 from fastapi import APIRouter, Depends, HTTPException
 
 from .admin import require_admin
@@ -37,6 +35,8 @@ HEADERS = {
 
 
 def _get_s3():
+    import boto3
+    from botocore.config import Config
     return boto3.client(
         "s3",
         endpoint_url=f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
