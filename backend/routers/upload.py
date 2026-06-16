@@ -1,13 +1,25 @@
 import os
-import httpx
+import boto3
+from botocore.config import Config
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from .auth import current_user
 
 router = APIRouter()
 
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
-SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
-BUCKET = "card-images"
+R2_ACCOUNT_ID = os.environ.get("R2_ACCOUNT_ID", "")
+R2_ACCESS_KEY_ID = os.environ.get("R2_ACCESS_KEY_ID", "")
+R2_SECRET_ACCESS_KEY = os.environ.get("R2_SECRET_ACCESS_KEY", "")
+R2_BUCKET_NAME = os.environ.get("R2_BUCKET_NAME", "card-images")
+R2_PUBLIC_URL = os.environ.get("R2_PUBLIC_URL", "")  # e.g. https://images.cardvaults.app
+
+s3 = boto3.client(
+    "s3",
+    endpoint_url=f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
+    aws_access_key_id=R2_ACCESS_KEY_ID,
+    aws_secret_access_key=R2_SECRET_ACCESS_KEY,
+    config=Config(signature_version="s3v4"),
+    region_name="auto",
+)
 
 
 @router.post("/upload")
@@ -21,20 +33,15 @@ async def upload_image(
     path = f"{user_id}/{card_id}_{side}.jpg"
     content = await file.read()
 
-    async with httpx.AsyncClient() as client:
-        resp = await client.post(
-            f"{SUPABASE_URL}/storage/v1/object/{BUCKET}/{path}",
-            headers={
-                "apikey": SUPABASE_SERVICE_KEY,
-                "Authorization": f"Bearer {SUPABASE_SERVICE_KEY}",
-                "Content-Type": "image/jpeg",
-                "x-upsert": "true",
-            },
-            content=content,
+    try:
+        s3.put_object(
+            Bucket=R2_BUCKET_NAME,
+            Key=path,
+            Body=content,
+            ContentType="image/jpeg",
         )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-    if resp.status_code not in (200, 201):
-        raise HTTPException(status_code=resp.status_code, detail=resp.text)
-
-    public_url = f"{SUPABASE_URL}/storage/v1/object/public/{BUCKET}/{path}"
+    public_url = f"{R2_PUBLIC_URL}/{path}"
     return {"url": public_url}

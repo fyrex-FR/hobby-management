@@ -6,7 +6,7 @@ load_dotenv()
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import auth, cards, identify, upload, compare, vinted, ebay, share, admin, folders
+from routers import auth, cards, identify, upload, compare, vinted, ebay, share, admin, folders, migration
 
 _debug = os.getenv("DEBUG", "false").lower() == "true"
 app = FastAPI(title="CardVaults API", docs_url="/docs" if _debug else None, redoc_url=None)
@@ -32,6 +32,7 @@ app.include_router(ebay.router, prefix="/api")
 app.include_router(share.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 app.include_router(folders.router, prefix="/api")
+app.include_router(migration.router, prefix="/api")
 
 
 @app.get("/api/health")

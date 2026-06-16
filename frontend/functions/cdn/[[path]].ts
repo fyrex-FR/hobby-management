@@ -1,19 +1,15 @@
 /**
- * CDN edge cache for public Supabase Storage card images.
+ * CDN edge cache for card images stored on Cloudflare R2.
  *
- * Requests to `/cdn/<path>` are proxied to
- * `${SUPABASE_PUBLIC_URL}/storage/v1/object/public/card-images/<path>`
- * and cached at the Cloudflare edge so Supabase only pays egress on the
- * first miss. Subsequent requests are served straight from Cloudflare.
+ * Requests to `/cdn/<path>` are proxied to the R2 public custom domain
+ * and cached at the Cloudflare edge.
  */
 
 interface Env {
-  SUPABASE_PUBLIC_URL?: string;
+  R2_PUBLIC_URL?: string;
 }
 
-// Public Supabase project URL (not a secret — also present in the client bundle).
-// Can be overridden by the SUPABASE_PUBLIC_URL Pages environment variable.
-const DEFAULT_SUPABASE_URL = 'https://ybiphrhtpqsjwmmhajdu.supabase.co';
+const DEFAULT_R2_URL = 'https://images.cardvaults.app';
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   const { request, env, params, waitUntil } = context;
@@ -22,7 +18,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const path = Array.isArray(raw) ? raw.join('/') : raw;
   if (!path) return new Response('Not found', { status: 404 });
 
-  const base = (env.SUPABASE_PUBLIC_URL || DEFAULT_SUPABASE_URL).replace(/\/$/, '');
+  const base = (env.R2_PUBLIC_URL || DEFAULT_R2_URL).replace(/\/$/, '');
 
   const cache = caches.default;
   const cacheKey = new Request(new URL(request.url).toString(), { method: 'GET' });
@@ -30,7 +26,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const hit = await cache.match(cacheKey);
   if (hit) return hit;
 
-  const origin = `${base}/storage/v1/object/public/card-images/${path}`;
+  const origin = `${base}/${path}`;
   const upstream = await fetch(origin, {
     cf: { cacheTtl: 86400, cacheEverything: true },
   });

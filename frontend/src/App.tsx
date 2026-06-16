@@ -10,6 +10,7 @@ import {
   ScanLine,
   Upload,
   Database,
+  HardDrive,
   Plus,
   User,
   LogOut,
@@ -39,6 +40,7 @@ import { RequestsView } from './components/views/RequestsView';
 import { ShareView } from './components/views/ShareView';
 import { ShareModal } from './components/shared/ShareModal';
 import { ResetPasswordView } from './components/views/ResetPasswordView';
+import MigrationView from './components/views/MigrationView';
 import { supabase } from './lib/supabase';
 
 const queryClient = new QueryClient();
@@ -233,6 +235,7 @@ function Header({ onShare, isAdmin }: { onShare: () => void; isAdmin: boolean })
     { id: 'studio', label: 'Studio photo', icon: ScanLine },
     { id: 'batch', label: 'Import lot', icon: Upload },
     ...(isAdmin ? [{ id: 'compare' as const, label: 'Comparer IA', icon: Database }] : []),
+    ...(isAdmin ? [{ id: 'migration' as const, label: 'Migration R2', icon: HardDrive }] : []),
   ] as const;
 
   // Auto-close tools when switching views
@@ -570,6 +573,7 @@ function AppShell() {
             {activeView === 'players' && <PlayersView />}
             {activeView === 'grading' && <GradingView />}
             {activeView === 'requests' && <RequestsView />}
+            {activeView === 'migration' && isAdmin && <MigrationView />}
           </motion.div>
         </AnimatePresence>
       </main>
