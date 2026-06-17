@@ -86,7 +86,8 @@ function buildPhotoFilename(card: Card, side: 'front' | 'back'): string {
 }
 
 async function downloadImage(url: string, filename: string): Promise<void> {
-  const res = await fetch(url);
+  const proxied = cdnImg(url) || url;
+  const res = await fetch(proxied);
   if (!res.ok) throw new Error('Téléchargement impossible');
   const blob = await res.blob();
   const objectUrl = URL.createObjectURL(blob);
