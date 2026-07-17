@@ -90,6 +90,8 @@ def _parse_items(html: str, max_results: int) -> tuple[list[dict], int]:
         if not title or title.lower() in ("shop on ebay", "new listing"):
             continue
         title = re.sub(r"^New Listing", "", title, flags=re.IGNORECASE).strip()
+        # eBay colle un libellé d'accessibilité invisible en fin de titre.
+        title = re.sub(r"\s*Opens in a new window or tab\s*$", "", title, flags=re.IGNORECASE).strip()
 
         # Prix
         price_el = li.select_one(".s-item__price") or li.select_one(".s-card__price")

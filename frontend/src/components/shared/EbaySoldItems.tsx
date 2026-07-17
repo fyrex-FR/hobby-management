@@ -63,15 +63,69 @@ async function urlToBase64(url: string): Promise<string> {
   return match[1];
 }
 
+interface MatchInfo {
+  year?: string | null;
+  cardNumber?: string | null;
+  numbered?: string | null;
+  setName?: string | null;
+}
+
+/** Vrai si `title` contient le nombre `n` isolé (pas 133 pour 33, pas 1490 pour 149). */
+function titleHasNumber(title: string, n: string): boolean {
+  const digits = n.replace(/[^0-9]/g, '');
+  if (!digits) return false;
+  return new RegExp(`(^|[^0-9])0*${digits}([^0-9]|$)`).test(title);
+}
+
+/** Ne garde que les ventes qui correspondent vraiment à la carte (n° + tirage + année). */
+function filterRelevant(results: EbayResult[], m?: MatchInfo): EbayResult[] {
+  if (!m) return results;
+  const preds: Array<(t: string) => boolean> = [];
+
+  const year4 = m.year ? (m.year.match(/\d{4}/)?.[0] ?? '') : '';
+  if (year4) preds.push((t) => titleHasNumber(t, year4));
+  if (m.cardNumber) preds.push((t) => titleHasNumber(t, m.cardNumber!));
+
+  // Tirage /149 : discriminant fort de parallèle. Sinon, on retombe sur le set.
+  const denom = m.numbered ? (m.numbered.match(/(\d+)\s*$/)?.[1] ?? '') : '';
+  if (denom) {
+    preds.push((t) => titleHasNumber(t, denom));
+  } else if (m.setName) {
+    const set = m.setName.toLowerCase();
+    preds.push((t) => t.toLowerCase().includes(set));
+  }
+
+  if (!preds.length) return results;
+  // Précision avant tout : si rien ne matche, on renvoie vide (le bouton
+  // « Voir tout » permet de retrouver l'ensemble non filtré).
+  return results.filter((r) => preds.every((p) => p(r.title)));
+}
+
+function computeStats(results: EbayResult[]) {
+  const prices = results.map((r) => r.price).filter((p) => p > 0).sort((a, b) => a - b);
+  if (!prices.length) return null;
+  const n = prices.length;
+  const median = n % 2 ? prices[(n - 1) / 2] : (prices[n / 2 - 1] + prices[n / 2]) / 2;
+  return {
+    count: n,
+    min: Math.round(prices[0] * 100) / 100,
+    max: Math.round(prices[n - 1] * 100) / 100,
+    median: Math.round(median * 100) / 100,
+  };
+}
+
 interface Props {
   query: string;
   /** URL de la photo recto — active la recherche visuelle eBay. */
   imageUrl?: string | null;
+  /** Attributs de la carte pour filtrer les ventes non pertinentes. */
+  match?: MatchInfo;
 }
 
-export function EbaySoldItems({ query, imageUrl }: Props) {
+export function EbaySoldItems({ query, imageUrl, match }: Props) {
   const [effectiveQuery, setEffectiveQuery] = useState(query);
   const [selectedTitle, setSelectedTitle] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
 
   // Recherche visuelle
   const [visual, setVisual] = useState<EbayData | null>(null);
@@ -134,6 +188,15 @@ export function EbaySoldItems({ query, imageUrl }: Props) {
 
   const current = tab === 'sold' ? sold : active;
   const hasPrices = sold != null || active != null;
+
+  // Filtrage de pertinence (n° + tirage + année) + stats recalculées dessus.
+  const soldShown = sold?.results ? (showAll ? sold.results : filterRelevant(sold.results, match)) : [];
+  const activeShown = active?.results ? (showAll ? active.results : filterRelevant(active.results, match)) : [];
+  const soldStats = computeStats(soldShown);
+  const activeStats = computeStats(activeShown);
+  const currentShown = tab === 'sold' ? soldShown : activeShown;
+  const currentRawCount = current?.results?.length ?? 0;
+  const filteredOut = !showAll && currentRawCount > currentShown.length;
 
   return (
     <div className="flex flex-col gap-2">
@@ -245,11 +308,11 @@ export function EbaySoldItems({ query, imageUrl }: Props) {
             </div>
           )}
 
-          {/* Médiane / min / max (onglet Vendues prioritaire) */}
+          {/* Médiane / min / max (onglet Vendues prioritaire), sur données filtrées */}
           {(() => {
-            const usingSold = sold?.median != null;
-            const stats = usingSold ? sold : active;
-            if (!stats || stats.median == null) return null;
+            const usingSold = soldStats != null;
+            const stats = usingSold ? soldStats : activeStats;
+            if (!stats) return null;
             // Libellé honnête : « ventes » seulement quand la donnée vient du vendu.
             const statsLabel = usingSold ? 'Médiane des ventes' : 'Médiane des annonces en cours';
             return (
@@ -283,8 +346,9 @@ export function EbaySoldItems({ query, imageUrl }: Props) {
           <div className="flex gap-2">
             {(['sold', 'active'] as const).map((t) => {
               const d = t === 'sold' ? sold : active;
+              const shownCount = t === 'sold' ? soldShown.length : activeShown.length;
               const label = t === 'sold' ? 'Vendues' : 'En vente';
-              const n = d?.count;
+              const n = d?.results ? shownCount : d?.count;
               const isActive = tab === t;
               return (
                 <button
@@ -302,6 +366,24 @@ export function EbaySoldItems({ query, imageUrl }: Props) {
             })}
           </div>
 
+          {/* Filtre pertinence : info + bascule */}
+          {(filteredOut || showAll) && currentRawCount > 0 && (
+            <div className="flex items-center justify-between">
+              <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                {showAll
+                  ? `Tout affiché (${currentRawCount})`
+                  : `${currentShown.length} pertinentes sur ${currentRawCount}`}
+              </span>
+              <button
+                onClick={() => setShowAll((v) => !v)}
+                className="text-[11px] font-semibold"
+                style={{ color: 'var(--accent)' }}
+              >
+                {showAll ? 'Filtrer' : 'Voir tout'}
+              </button>
+            </div>
+          )}
+
           {/* Contenu onglet */}
           {current?.needs_approval ? (
             <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
@@ -316,10 +398,14 @@ export function EbaySoldItems({ query, imageUrl }: Props) {
                 <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{current.detail}</p>
               )}
             </div>
-          ) : current?.count === 0 ? (
+          ) : currentShown.length === 0 ? (
             <div className="flex flex-col gap-1">
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Aucun résultat sur eBay.</p>
-              {current.detail && (
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                {filteredOut
+                  ? 'Aucune vente correspondant exactement à cette carte. Essaie « Voir tout ».'
+                  : 'Aucun résultat sur eBay.'}
+              </p>
+              {current?.detail && (
                 <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{current.detail}</p>
               )}
             </div>
@@ -330,7 +416,7 @@ export function EbaySoldItems({ query, imageUrl }: Props) {
                   Ventes réelles issues des annonces terminées eBay
                 </p>
               )}
-              {current?.results?.map((r, i) => (
+              {currentShown.map((r, i) => (
                 <a
                   key={i}
                   href={r.url}
