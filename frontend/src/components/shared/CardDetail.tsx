@@ -573,7 +573,7 @@ export function CardDetail({ card, onClose }: Props) {
                       </button>
                     </div>
 
-                    <EbaySoldItems query={buildPriceSearchText(card)} />
+                    <EbaySoldItems query={buildPriceSearchText(card)} imageUrl={card.image_front_url} />
 
                     <div className="flex gap-3">
                       {card.vinted_url ? (
