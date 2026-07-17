@@ -349,7 +349,40 @@ export function CardDetail({ card, onClose }: Props) {
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header images */}
-          <div className="flex flex-col sm:flex-row gap-6 p-6 border-b border-white/5 bg-white/5 relative">
+          <div className="flex flex-col gap-5 p-6 border-b border-white/5 bg-white/5">
+            {/* Barre d'actions */}
+            <div className="flex items-center justify-end gap-2">
+              {!editing && (card.image_front_url || card.image_back_url) && (
+                <button
+                  onClick={handleDownloadPhotos}
+                  disabled={downloadingPhotos}
+                  title="Télécharger les photos"
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border border-white/10 bg-white/5 text-white hover:bg-white/10 active:scale-95 disabled:opacity-50"
+                >
+                  {downloadingPhotos ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
+                  Photos
+                </button>
+              )}
+              <button
+                onClick={() => setEditing((v) => !v)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border group active:scale-95 ${editing
+                  ? 'bg-white/10 border-white/20 text-white hover:bg-white/20'
+                  : 'bg-[var(--accent)] border-[var(--border-accent)] text-[#09090B] shadow-lg shadow-[var(--accent-glow)]'
+                  }`}
+              >
+                {editing ? <X size={14} /> : <Edit2 size={14} className="group-hover:rotate-12 transition-transform" />}
+                {editing ? 'Annuler' : 'Modifier'}
+              </button>
+              <button
+                onClick={onClose}
+                className="w-9 h-9 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 text-[var(--text-muted)] hover:text-white hover:bg-white/10 transition-all active:scale-90"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Images + identité */}
+            <div className="flex flex-col sm:flex-row gap-6 items-start">
             <div className="flex gap-4">
               {/* Front image — drag & drop zone */}
               <div
@@ -467,40 +500,6 @@ export function CardDetail({ card, onClose }: Props) {
               </div>
             </div>
 
-            <div className="absolute top-6 right-6 flex items-center gap-2">
-              {!editing && (card.image_front_url || card.image_back_url) && (
-                <button
-                  onClick={handleDownloadPhotos}
-                  disabled={downloadingPhotos}
-                  title="Télécharger les photos"
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border border-white/10 bg-white/5 text-white hover:bg-white/10 active:scale-95 disabled:opacity-50"
-                >
-                  {downloadingPhotos ? (
-                    <RefreshCw size={14} className="animate-spin" />
-                  ) : (
-                    <Download size={14} />
-                  )}
-                  Photos
-                </button>
-              )}
-
-              <button
-                onClick={() => setEditing((v) => !v)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border group active:scale-95 ${editing
-                  ? 'bg-white/10 border-white/20 text-white hover:bg-white/20'
-                  : 'bg-[var(--accent)] border-[var(--border-accent)] text-[#09090B] shadow-lg shadow-[var(--accent-glow)]'
-                  }`}
-              >
-                {editing ? <X size={14} /> : <Edit2 size={14} className="group-hover:rotate-12 transition-transform" />}
-                {editing ? 'Annuler' : 'Modifier'}
-              </button>
-
-              <button
-                onClick={onClose}
-                className="w-9 h-9 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 text-[var(--text-muted)] hover:text-white hover:bg-white/10 transition-all active:scale-90"
-              >
-                <X size={18} />
-              </button>
             </div>
           </div>
 
