@@ -57,6 +57,40 @@ async def _get_access_token(scope: str = SCOPE_BASE) -> Optional[str]:
         return token
 
 
+async def _get_token_with_error(scope: str) -> tuple[Optional[str], Optional[str]]:
+    """Comme _get_access_token mais renvoie aussi le détail de l'erreur eBay,
+    pour diagnostiquer précisément un refus (ex : Marketplace Insights)."""
+    now = time.time()
+    cached = _token_cache.get(scope)
+    if cached and now < cached["expires_at"] - 60:
+        return cached["token"], None
+
+    credentials = base64.b64encode(
+        f"{EBAY_CLIENT_ID}:{EBAY_CLIENT_SECRET}".encode()
+    ).decode()
+
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                EBAY_TOKEN_URL,
+                headers={
+                    "Authorization": f"Basic {credentials}",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                },
+                data={"grant_type": "client_credentials", "scope": scope},
+            )
+    except Exception as e:
+        return None, f"token exception: {e}"
+
+    if resp.status_code != 200:
+        return None, f"token HTTP {resp.status_code}: {resp.text[:300]}"
+
+    data = resp.json()
+    token = data.get("access_token")
+    _token_cache[scope] = {"token": token, "expires_at": now + data.get("expires_in", 7200)}
+    return token, None
+
+
 def _summarize(prices: list[float]) -> dict:
     return {
         "count": len(prices),
@@ -187,13 +221,15 @@ async def search_ebay_sold(query: str, max_results: int = 20) -> dict:
     if not query or not query.strip():
         return {"error": "Requête vide", "results": []}
 
-    token = await _get_access_token(SCOPE_INSIGHTS)
+    token, token_err = await _get_token_with_error(SCOPE_INSIGHTS)
     if not token:
         # Le token pour le scope Insights n'a pas pu être obtenu : l'app n'est
         # très probablement pas encore approuvée pour ce Limited Release.
+        # On remonte le détail eBay exact pour lever le doute.
         return {
             "needs_approval": True,
-            "error": "Marketplace Insights non activé (application non approuvée par eBay).",
+            "error": "Marketplace Insights non activé (token refusé par eBay).",
+            "detail": token_err,
             "results": [],
         }
 
@@ -211,10 +247,15 @@ async def search_ebay_sold(query: str, max_results: int = 20) -> dict:
                 return {
                     "needs_approval": True,
                     "error": f"Accès Insights refusé (HTTP {resp.status_code}).",
+                    "detail": resp.text[:400],
                     "results": [],
                 }
             if resp.status_code != 200:
-                return {"error": f"Insights API {resp.status_code}: {resp.text[:500]}", "results": []}
+                return {
+                    "error": f"Insights API {resp.status_code}",
+                    "detail": resp.text[:400],
+                    "results": [],
+                }
 
             data = resp.json()
             items = data.get("itemSales", [])
