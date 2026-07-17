@@ -16,7 +16,6 @@ import {
   ChevronRight,
   Image as ImageIcon,
   AlertCircle,
-  Clock,
   Euro,
   Hash,
   Tag,
@@ -411,7 +410,7 @@ export function CardDetail({ card, onClose }: Props) {
                     alt="Dos"
                     loading="lazy"
                     decoding="async"
-                    className={`h-full w-full object-cover transition-transform duration-500 ${editing ? 'group-hover:scale-105 opacity-50' : 'opacity-40 group-hover:scale-110 group-hover:opacity-60'}`}
+                    className={`h-full w-full object-cover transition-transform duration-500 ${editing ? 'group-hover:scale-105 opacity-80' : 'group-hover:scale-110'}`}
                   />
                 ) : (
                   <div className="h-full w-full flex flex-col items-center justify-center gap-2 opacity-20 text-[var(--text-muted)]">
@@ -513,27 +512,34 @@ export function CardDetail({ card, onClose }: Props) {
                 animate={{ opacity: 1 }}
                 className="space-y-8"
               >
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-6">
+                <div className="rounded-2xl bg-white/[0.03] border border-white/5 overflow-hidden">
                   {[
-                    { label: 'Année', value: card.year, icon: Clock },
-                    { label: 'Marque', value: card.brand, icon: Tag },
-                    { label: 'Set', value: card.set_name, icon: Hash },
-                    { label: 'Insert', value: card.insert_name, icon: Star },
-                    { label: 'Parallel', value: normalizeParallelName(card.parallel_name), icon: Layers },
-                    { label: 'RC', value: card.is_rookie ? 'Rookie Card' : null, icon: Trophy },
-                    { label: 'N° carte', value: card.card_number, icon: Hash },
-                    { label: 'État', value: card.condition_notes || 'Mint / Near Mint', icon: Search },
-                    { label: 'Achat', value: card.purchase_price != null ? `${card.purchase_price} €` : null, icon: Euro },
-                    { label: 'Vente', value: card.price != null ? `${card.price} €` : null, icon: Tag },
+                    { label: 'Marque', value: card.brand, icon: Tag, highlight: false },
+                    { label: 'Set', value: card.set_name, icon: Hash, highlight: false },
+                    { label: 'Parallel', value: normalizeParallelName(card.parallel_name), icon: Layers, highlight: false },
+                    { label: 'Insert', value: card.insert_name, icon: Star, highlight: false },
+                    { label: 'N° carte', value: card.card_number, icon: Hash, highlight: false },
+                    { label: 'Rookie', value: card.is_rookie ? 'Oui' : null, icon: Trophy, highlight: false },
+                    { label: 'État', value: card.condition_notes || 'Mint / Near Mint', icon: Search, highlight: false },
+                    { label: 'Prix d’achat', value: card.purchase_price != null ? `${card.purchase_price} €` : null, icon: Euro, highlight: false },
+                    { label: 'Prix de vente', value: card.price != null ? `${card.price} €` : null, icon: Tag, highlight: true },
                   ]
                     .filter((item) => item.value)
-                    .map((item) => (
-                      <div key={item.label} className="flex flex-col gap-1.5 p-3 rounded-2xl bg-white/[0.03] border border-white/5">
-                        <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
-                          <item.icon size={12} className="opacity-50" />
+                    .map((item, idx) => (
+                      <div
+                        key={item.label}
+                        className={`flex items-center justify-between gap-4 px-4 py-3 ${idx > 0 ? 'border-t border-white/5' : ''}`}
+                      >
+                        <span className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-[var(--text-muted)]">
+                          <item.icon size={13} className="opacity-50" />
                           {item.label}
-                        </div>
-                        <div className="text-sm font-bold text-white truncate">{item.value}</div>
+                        </span>
+                        <span
+                          className="text-sm font-black text-right truncate"
+                          style={{ color: item.highlight ? 'var(--accent)' : 'white' }}
+                        >
+                          {item.value}
+                        </span>
                       </div>
                     ))}
                 </div>
@@ -590,6 +596,14 @@ export function CardDetail({ card, onClose }: Props) {
                         numbered: card.numbered,
                         setName: card.set_name || card.brand,
                       }}
+                      currentPrice={card.price}
+                      onApplyPrice={(eur) =>
+                        updateCard.mutateAsync({
+                          id: card.id,
+                          price: eur,
+                          status: card.status === 'draft' || card.status === 'collection' ? 'a_vendre' : card.status,
+                        })
+                      }
                     />
 
                     <div className="flex gap-3">

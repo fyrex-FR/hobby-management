@@ -114,18 +114,30 @@ function computeStats(results: EbayResult[]) {
   };
 }
 
+// Conversion approximative $→€ pour proposer un prix de vente à partir des
+// ventes eBay (libellées en USD) dans une app € (Vinted).
+const USD_TO_EUR = 0.92;
+function toEurPrice(usd: number): number {
+  return Math.max(1, Math.round(usd * USD_TO_EUR));
+}
+
 interface Props {
   query: string;
   /** URL de la photo recto — active la recherche visuelle eBay. */
   imageUrl?: string | null;
   /** Attributs de la carte pour filtrer les ventes non pertinentes. */
   match?: MatchInfo;
+  /** Prix de vente actuel de la carte (€). */
+  currentPrice?: number | null;
+  /** Applique un prix de vente (€) à la carte. */
+  onApplyPrice?: (eur: number) => void | Promise<unknown>;
 }
 
-export function EbaySoldItems({ query, imageUrl, match }: Props) {
+export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPrice }: Props) {
   const [effectiveQuery, setEffectiveQuery] = useState(query);
   const [selectedTitle, setSelectedTitle] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
+  const [appliedPrice, setAppliedPrice] = useState<number | null>(null);
 
   // Recherche visuelle
   const [visual, setVisual] = useState<EbayData | null>(null);
@@ -338,6 +350,42 @@ export function EbaySoldItems({ query, imageUrl, match }: Props) {
                     <div className="text-lg font-black" style={{ color: 'var(--red)' }}>${stats.max}</div>
                   </div>
                 </div>
+
+                {/* Définir le prix de vente à partir de la médiane */}
+                {usingSold && onApplyPrice && (
+                  <div className="flex flex-col gap-2 pt-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] uppercase font-black tracking-wide" style={{ color: 'var(--text-muted)' }}>
+                        Définir le prix de vente
+                      </span>
+                      {(appliedPrice ?? currentPrice) != null && (
+                        <span className="text-[11px]" style={{ color: appliedPrice != null ? 'var(--green)' : 'var(--text-muted)' }}>
+                          {appliedPrice != null ? '✓ ' : 'Actuel : '}{appliedPrice ?? currentPrice} €
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { label: 'Médiane', mult: 1 },
+                        { label: '+15%', mult: 1.15 },
+                        { label: '+20%', mult: 1.2 },
+                      ].map(({ label, mult }) => {
+                        const eur = toEurPrice(stats.median * mult);
+                        return (
+                          <button
+                            key={label}
+                            onClick={async () => { if (!onApplyPrice) return; setAppliedPrice(eur); await onApplyPrice(eur); }}
+                            className="flex flex-col items-center py-2 rounded-xl transition-all active:scale-95"
+                            style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)' }}
+                          >
+                            <span className="text-[10px] font-bold" style={{ color: 'var(--text-muted)' }}>{label}</span>
+                            <span className="text-sm font-black" style={{ color: 'var(--accent)' }}>{eur} €</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })()}
