@@ -306,14 +306,14 @@ function buildColumns(
       cell: (info) => {
         const card = info.row.original;
         return (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 min-w-0">
             {card.image_front_url
               ? <img src={cdnImg(card.image_front_url)} alt="" loading="lazy" decoding="async" className="w-10 h-14 object-contain rounded-md shrink-0" />
               : <div className="w-10 h-14 rounded-md shrink-0 flex items-center justify-center text-sm" style={{ background: 'var(--bg-elevated)' }}>🃏</div>
             }
-            <div>
-              <div className="font-medium text-sm whitespace-nowrap">{info.getValue() ?? '—'}</div>
-              <div className="text-xs whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{card.team ?? ''}</div>
+            <div className="min-w-0">
+              <div className="font-medium text-sm truncate">{info.getValue() ?? '—'}</div>
+              <div className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{card.team ?? ''}</div>
             </div>
           </div>
         );
@@ -658,7 +658,7 @@ function TableView({ table, onRowClick, selectMode, selectedIds, onToggleSelect 
   }
 
   return (
-    <div className="rounded-xl border border-white/5 overflow-hidden">
+    <div className="rounded-xl border border-white/5 overflow-x-auto">
       <table className="w-full text-sm border-collapse">
         <thead>
           {table.getHeaderGroups().map((hg) => (
