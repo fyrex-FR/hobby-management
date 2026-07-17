@@ -114,11 +114,10 @@ function computeStats(results: EbayResult[]) {
   };
 }
 
-// Conversion approximative $→€ pour proposer un prix de vente à partir des
-// ventes eBay (libellées en USD) dans une app € (Vinted).
-const USD_TO_EUR = 0.92;
+// Prix de vente proposé à partir des ventes eBay. Pas de conversion $→€
+// (1 $ = 1 €), juste un arrondi à l'euro pour un prix propre.
 function toEurPrice(usd: number): number {
-  return Math.max(1, Math.round(usd * USD_TO_EUR));
+  return Math.max(1, Math.round(usd));
 }
 
 interface Props {
