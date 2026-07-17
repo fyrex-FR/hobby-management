@@ -21,10 +21,25 @@ const TOKEN = process.env.FETCH_TOKEN || '';
 const PORT = process.env.PORT || 8899;
 const NAV_TIMEOUT = 30000;
 
+// Sortie via un proxy externe (résidentiel/mobile) si FETCH_PROXY_URL est
+// défini, ex. http://user:pass@host:port . Indispensable quand l'IP locale
+// d'openclaw est elle-même blacklistée par eBay.
+function proxyFromEnv() {
+  const raw = process.env.FETCH_PROXY_URL;
+  if (!raw) return undefined;
+  const u = new URL(raw);
+  const proxy = { server: `${u.protocol}//${u.host}` };
+  if (u.username) proxy.username = decodeURIComponent(u.username);
+  if (u.password) proxy.password = decodeURIComponent(u.password);
+  return proxy;
+}
+
 let browserPromise = null;
 async function getBrowser() {
   if (!browserPromise) {
-    browserPromise = chromium.launch({ headless: true });
+    const proxy = proxyFromEnv();
+    if (proxy) console.log(`sortie via proxy ${proxy.server}`);
+    browserPromise = chromium.launch({ headless: true, proxy });
   }
   return browserPromise;
 }
