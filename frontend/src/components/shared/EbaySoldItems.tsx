@@ -137,6 +137,7 @@ export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPri
   const [selectedTitle, setSelectedTitle] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [appliedPrice, setAppliedPrice] = useState<number | null>(null);
+  const [customPrice, setCustomPrice] = useState('');
 
   // Recherche visuelle
   const [visual, setVisual] = useState<EbayData | null>(null);
@@ -382,6 +383,35 @@ export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPri
                           </button>
                         );
                       })}
+                    </div>
+
+                    {/* Prix libre */}
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        min={0}
+                        placeholder="Autre prix (€)"
+                        value={customPrice}
+                        onChange={(e) => setCustomPrice(e.target.value)}
+                        className="flex-1 rounded-xl px-3 py-2 text-sm outline-none"
+                        style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                      />
+                      <button
+                        disabled={!customPrice || !(Number(customPrice) > 0)}
+                        onClick={async () => {
+                          if (!onApplyPrice) return;
+                          const v = Math.round(Number(customPrice));
+                          if (!(v > 0)) return;
+                          setAppliedPrice(v);
+                          setCustomPrice('');
+                          await onApplyPrice(v);
+                        }}
+                        className="px-4 py-2 rounded-xl text-sm font-black transition-all active:scale-95 disabled:opacity-40"
+                        style={{ background: 'var(--accent)', color: '#09090B' }}
+                      >
+                        OK
+                      </button>
                     </div>
                   </div>
                 )}

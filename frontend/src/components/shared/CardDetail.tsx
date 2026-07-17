@@ -485,6 +485,12 @@ export function CardDetail({ card, onClose }: Props) {
 
               <div className="flex flex-wrap gap-2">
                 <StatusBadge status={card.status} />
+                {card.price != null && (
+                  <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--accent)] text-[#09090B] text-[11px] font-black">
+                    <Euro size={11} strokeWidth={2.5} />
+                    {card.price} €
+                  </span>
+                )}
                 {card.is_rookie && <RookieBadge compact />}
                 {card.grading_company && <GradingBadge card={card} />}
 
@@ -494,9 +500,11 @@ export function CardDetail({ card, onClose }: Props) {
                     {card.numbered}
                   </span>
                 )}
-                <span className="px-3 py-1 rounded-full bg-white/5 text-[var(--text-muted)] text-[10px] font-black border border-white/10 uppercase tracking-widest">
-                  {card.card_type}
-                </span>
+                {card.card_type && !(card.card_type === 'numbered' && card.numbered) && (
+                  <span className="px-3 py-1 rounded-full bg-white/5 text-[var(--text-muted)] text-[10px] font-black border border-white/10 uppercase tracking-widest">
+                    {card.card_type}
+                  </span>
+                )}
               </div>
             </div>
 
@@ -521,7 +529,6 @@ export function CardDetail({ card, onClose }: Props) {
                     { label: 'Rookie', value: card.is_rookie ? 'Oui' : null, icon: Trophy, highlight: false },
                     { label: 'État', value: card.condition_notes || 'Mint / Near Mint', icon: Search, highlight: false },
                     { label: 'Prix d’achat', value: card.purchase_price != null ? `${card.purchase_price} €` : null, icon: Euro, highlight: false },
-                    { label: 'Prix de vente', value: card.price != null ? `${card.price} €` : null, icon: Tag, highlight: true },
                   ]
                     .filter((item) => item.value)
                     .map((item, idx) => (
