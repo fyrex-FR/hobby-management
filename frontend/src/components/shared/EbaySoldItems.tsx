@@ -245,8 +245,11 @@ export function EbaySoldItems({ query, imageUrl }: Props) {
 
           {/* Médiane / min / max (onglet Vendues prioritaire) */}
           {(() => {
-            const stats = sold?.median != null ? sold : active;
+            const usingSold = sold?.median != null;
+            const stats = usingSold ? sold : active;
             if (!stats || stats.median == null) return null;
+            // Libellé honnête : « ventes » seulement quand la donnée vient du vendu.
+            const statsLabel = usingSold ? 'Médiane des ventes' : 'Médiane des annonces en cours';
             return (
               <div className="flex flex-col gap-2">
                 <div
@@ -254,7 +257,7 @@ export function EbaySoldItems({ query, imageUrl }: Props) {
                   style={{ background: 'rgba(59,130,246,0.08)' }}
                 >
                   <div className="text-[10px] uppercase font-black tracking-wide" style={{ color: 'var(--text-muted)' }}>
-                    Médiane des ventes
+                    {statsLabel}
                   </div>
                   <div className="text-3xl font-black" style={{ color: 'var(--blue)' }}>
                     ${stats.median}
