@@ -23,6 +23,7 @@ interface EbayData {
   median?: number | null;
   results?: EbayResult[];
   error?: string;
+  detail?: string;
   needs_approval?: boolean;
 }
 
@@ -302,13 +303,27 @@ export function EbaySoldItems({ query, imageUrl }: Props) {
 
           {/* Contenu onglet */}
           {current?.needs_approval ? (
-            <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-              ⏳ Les ventes réelles arrivent via l'API eBay Marketplace Insights,
-              en attente d'approbation de l'application par eBay. En attendant,
-              l'onglet « En vente » affiche les annonces en cours.
-            </p>
+            <div className="flex flex-col gap-1.5">
+              <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                ⏳ Les ventes réelles arrivent via l'API eBay Marketplace Insights,
+                en attente d'approbation de l'application par eBay. En attendant,
+                l'onglet « En vente » affiche les annonces en cours.
+              </p>
+              {current.detail && (
+                <p className="text-[10px] font-mono break-all leading-tight px-2 py-1.5 rounded" style={{ background: 'var(--bg-primary)', color: 'var(--text-muted)' }}>
+                  {current.detail}
+                </p>
+              )}
+            </div>
           ) : current?.error ? (
-            <p className="text-xs" style={{ color: 'var(--red)' }}>{current.error}</p>
+            <div className="flex flex-col gap-1.5">
+              <p className="text-xs" style={{ color: 'var(--red)' }}>{current.error}</p>
+              {current.detail && (
+                <p className="text-[10px] font-mono break-all leading-tight px-2 py-1.5 rounded" style={{ background: 'var(--bg-primary)', color: 'var(--text-muted)' }}>
+                  {current.detail}
+                </p>
+              )}
+            </div>
           ) : current?.count === 0 ? (
             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Aucun résultat sur eBay.</p>
           ) : (
