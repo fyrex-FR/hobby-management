@@ -10,6 +10,12 @@ from bs4 import BeautifulSoup
 # Page publique des annonces terminées/vendues eBay US.
 EBAY_SOLD_URL = "https://www.ebay.com/sch/i.html"
 
+# API de scraping (sortie résidentielle + anti-bot) : si une clé est présente,
+# c'est le chemin prioritaire, car eBay bloque les IP datacenter (openclaw
+# inclus). Compatible ScraperAPI ; offre gratuite suffisante pour un usage hobby.
+SCRAPER_API_KEY = os.getenv("SCRAPER_API_KEY", "")
+SCRAPER_API_URL = "https://api.scraperapi.com/"
+
 # Proxy de fetch (openclaw) : si configuré, on récupère le HTML eBay via ce
 # service (vraie IP / navigateur) au lieu d'un GET direct bloqué par eBay.
 OPENCLAW_FETCH_URL = os.getenv("OPENCLAW_FETCH_URL", "")
@@ -167,8 +173,20 @@ async def _fetch_html(url: str) -> tuple[int, str, Optional[str], str]:
     """Récupère le HTML d'une URL. Passe par openclaw si configuré (vraie
     IP/navigateur, contourne le 403 anti-bot d'eBay), sinon GET direct.
 
-    Retourne (status_amont, html, erreur, source) où source ∈ {openclaw, scrape}.
+    Retourne (status_amont, html, erreur, source) où source ∈
+    {scraperapi, openclaw, scrape}.
     """
+    # 1) API de scraping (sortie résidentielle) — chemin prioritaire.
+    if SCRAPER_API_KEY:
+        params = {"api_key": SCRAPER_API_KEY, "url": url, "country_code": "us"}
+        try:
+            async with httpx.AsyncClient(timeout=70) as client:
+                resp = await client.get(SCRAPER_API_URL, params=params)
+        except Exception as e:
+            return 0, "", f"scraperapi injoignable: {e}", "scraperapi"
+        return resp.status_code, resp.text, None, "scraperapi"
+
+    # 2) Proxy openclaw (navigateur headless auto-hébergé).
     if OPENCLAW_FETCH_URL:
         try:
             async with httpx.AsyncClient(timeout=45) as client:
