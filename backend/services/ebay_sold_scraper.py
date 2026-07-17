@@ -1,12 +1,19 @@
+import os
 import re
 import statistics
 import urllib.parse
+from typing import Optional
 
 import httpx
 from bs4 import BeautifulSoup
 
 # Page publique des annonces terminées/vendues eBay US.
 EBAY_SOLD_URL = "https://www.ebay.com/sch/i.html"
+
+# Proxy de fetch (openclaw) : si configuré, on récupère le HTML eBay via ce
+# service (vraie IP / navigateur) au lieu d'un GET direct bloqué par eBay.
+OPENCLAW_FETCH_URL = os.getenv("OPENCLAW_FETCH_URL", "")
+OPENCLAW_TOKEN = os.getenv("OPENCLAW_TOKEN", "")
 
 HEADERS = {
     "User-Agent": (
@@ -124,38 +131,71 @@ async def scrape_ebay_sold(query: str, max_results: int = 20) -> dict:
     }
     url = f"{EBAY_SOLD_URL}?{urllib.parse.urlencode(params)}"
 
-    async with httpx.AsyncClient(follow_redirects=True, timeout=20) as client:
+    status, html, fetch_err, via = await _fetch_html(url)
+    if fetch_err:
+        return {"error": f"Fetch eBay Sold: {fetch_err}", "results": [], "source": via}
+    if status != 200:
+        return {
+            "error": f"eBay Sold {status}",
+            "detail": html[:200],
+            "results": [],
+            "source": via,
+        }
+
+    results, raw_count = _parse_items(html, max_results)
+    prices = [r["price"] for r in results]
+
+    if not prices:
+        return {
+            "count": 0,
+            "results": [],
+            "min": None,
+            "max": None,
+            "avg": None,
+            "median": None,
+            "source": via,
+            # Diagnostic : blocs détectés vs parsés + taille de page, pour
+            # distinguer un blocage (0 bloc / page minuscule) d'un décalage
+            # de sélecteurs (beaucoup de blocs, 0 parsé).
+            "detail": f"{via}: {len(results)}/{raw_count} blocs, {len(html)} octets",
+        }
+
+    return {**_summarize(prices), "results": results, "source": via}
+
+
+async def _fetch_html(url: str) -> tuple[int, str, Optional[str], str]:
+    """Récupère le HTML d'une URL. Passe par openclaw si configuré (vraie
+    IP/navigateur, contourne le 403 anti-bot d'eBay), sinon GET direct.
+
+    Retourne (status_amont, html, erreur, source) où source ∈ {openclaw, scrape}.
+    """
+    if OPENCLAW_FETCH_URL:
         try:
-            resp = await client.get(url, headers=HEADERS)
-            if resp.status_code != 200:
-                return {
-                    "error": f"eBay Sold {resp.status_code}",
-                    "detail": resp.text[:200],
-                    "results": [],
-                    "source": "scrape",
-                }
-
-            results, raw_count = _parse_items(resp.text, max_results)
-            prices = [r["price"] for r in results]
-
-            if not prices:
-                return {
-                    "count": 0,
-                    "results": [],
-                    "min": None,
-                    "max": None,
-                    "avg": None,
-                    "median": None,
-                    "source": "scrape",
-                    # Diagnostic : blocs détectés vs parsés + taille de page, pour
-                    # distinguer un blocage (0 bloc / page minuscule) d'un
-                    # décalage de sélecteurs (beaucoup de blocs, 0 parsé).
-                    "detail": f"scrape: {len(results)}/{raw_count} blocs, {len(resp.text)} octets",
-                }
-
-            return {**_summarize(prices), "results": results, "source": "scrape"}
-
-        except httpx.TimeoutException:
-            return {"error": "Timeout eBay Sold", "results": [], "source": "scrape"}
+            async with httpx.AsyncClient(timeout=45) as client:
+                resp = await client.post(
+                    OPENCLAW_FETCH_URL,
+                    headers={
+                        "X-Auth-Token": OPENCLAW_TOKEN,
+                        "Content-Type": "application/json",
+                    },
+                    json={"url": url},
+                )
         except Exception as e:
-            return {"error": str(e), "results": [], "source": "scrape"}
+            return 0, "", f"openclaw injoignable: {e}", "openclaw"
+        if resp.status_code != 200:
+            return 0, "", f"openclaw HTTP {resp.status_code}: {resp.text[:200]}", "openclaw"
+        try:
+            data = resp.json()
+        except Exception as e:
+            return 0, "", f"openclaw réponse invalide: {e}", "openclaw"
+        return int(data.get("status", 0)), data.get("html", "") or "", None, "openclaw"
+
+    # Fallback direct (probablement bloqué par eBay depuis une IP datacenter).
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=20) as client:
+            resp = await client.get(url, headers=HEADERS)
+    except httpx.TimeoutException:
+        return 0, "", "timeout", "scrape"
+    except Exception as e:
+        return 0, "", str(e), "scrape"
+    return resp.status_code, resp.text, None, "scrape"
