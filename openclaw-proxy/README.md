@@ -34,6 +34,11 @@ Une seule variable obligatoire :
 - `FETCH_TOKEN` : un secret aléatoire (ex. `openssl rand -hex 24`). Devra être
   recopié à l'identique dans la variable `OPENCLAW_TOKEN` du backend CardVaults.
 - `PORT` (optionnel, défaut `8899`).
+- `FETCH_PROXY_URL` (optionnel mais souvent nécessaire pour eBay) : fait sortir
+  le navigateur via un proxy externe résidentiel/mobile. Format complet avec
+  identifiants : `http://utilisateur:motdepasse@hote:port`. À utiliser quand
+  l'IP de sortie locale d'openclaw est blacklistée par eBay (403 même en
+  résidentiel). Sans cette variable, le navigateur sort par l'IP de la machine.
 
 ## Lancement
 
