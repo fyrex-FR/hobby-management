@@ -227,13 +227,15 @@ async def search_ebay_sold(query: str, max_results: int = 20) -> dict:
     if not official.get("needs_approval") and not official.get("error"):
         return official
 
-    # Sinon : fallback scraping. S'il aboutit (résultats ou vide légitime), on
-    # le renvoie ; s'il échoue aussi (blocage IP, timeout), on remonte l'état
-    # officiel, plus informatif (en attente d'approbation eBay).
+    # Sinon : fallback scraping. On renvoie toujours son résultat — succès,
+    # vide légitime, OU erreur (blocage IP, timeout) — pour que l'erreur du
+    # scraping soit visible au lieu d'être masquée par le message officiel.
+    # On conserve juste la note « en attente d'approbation » de la voie
+    # officielle en complément d'info.
     scraped = await scrape_ebay_sold(query, max_results)
-    if not scraped.get("error"):
-        return scraped
-    return official
+    if official.get("needs_approval"):
+        scraped.setdefault("insights", "needs_approval")
+    return scraped
 
 
 async def _search_sold_insights(query: str, max_results: int = 20) -> dict:
