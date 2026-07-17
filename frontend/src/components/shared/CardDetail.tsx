@@ -61,7 +61,15 @@ const CARD_TYPES: { value: CardType; label: string }[] = [
 ];
 
 function buildPriceSearchText(card: Card): string {
-  return [card.player, card.team, card.year, card.set_name || card.brand, card.insert_name, card.parallel_name, card.numbered]
+  return [
+    card.player,
+    card.year,
+    card.set_name || card.brand,
+    card.card_number ? `#${card.card_number}` : null,
+    card.insert_name,
+    card.parallel_name,
+    card.numbered,
+  ]
     .filter(Boolean)
     .join(' ')
     .replace(/\s+/g, ' ')
@@ -573,7 +581,16 @@ export function CardDetail({ card, onClose }: Props) {
                       </button>
                     </div>
 
-                    <EbaySoldItems query={buildPriceSearchText(card)} imageUrl={card.image_front_url} />
+                    <EbaySoldItems
+                      query={buildPriceSearchText(card)}
+                      imageUrl={card.image_front_url}
+                      match={{
+                        year: card.year,
+                        cardNumber: card.card_number,
+                        numbered: card.numbered,
+                        setName: card.set_name || card.brand,
+                      }}
+                    />
 
                     <div className="flex gap-3">
                       {card.vinted_url ? (
