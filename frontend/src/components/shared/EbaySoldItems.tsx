@@ -25,6 +25,7 @@ interface EbayData {
   error?: string;
   detail?: string;
   needs_approval?: boolean;
+  source?: string;
 }
 
 function formatDate(iso: string): string {
@@ -303,31 +304,32 @@ export function EbaySoldItems({ query, imageUrl }: Props) {
 
           {/* Contenu onglet */}
           {current?.needs_approval ? (
-            <div className="flex flex-col gap-1.5">
-              <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-                ⏳ Les ventes réelles arrivent via l'API eBay Marketplace Insights,
-                en attente d'approbation de l'application par eBay. En attendant,
-                l'onglet « En vente » affiche les annonces en cours.
-              </p>
-              {current.detail && (
-                <p className="text-[10px] font-mono break-all leading-tight px-2 py-1.5 rounded" style={{ background: 'var(--bg-primary)', color: 'var(--text-muted)' }}>
-                  {current.detail}
-                </p>
-              )}
-            </div>
+            <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+              ⏳ Les ventes réelles arrivent via l'API eBay Marketplace Insights,
+              en attente d'approbation de l'application par eBay. En attendant,
+              l'onglet « En vente » affiche les annonces en cours.
+            </p>
           ) : current?.error ? (
-            <div className="flex flex-col gap-1.5">
+            <div className="flex flex-col gap-1">
               <p className="text-xs" style={{ color: 'var(--red)' }}>{current.error}</p>
               {current.detail && (
-                <p className="text-[10px] font-mono break-all leading-tight px-2 py-1.5 rounded" style={{ background: 'var(--bg-primary)', color: 'var(--text-muted)' }}>
-                  {current.detail}
-                </p>
+                <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{current.detail}</p>
               )}
             </div>
           ) : current?.count === 0 ? (
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Aucun résultat sur eBay.</p>
+            <div className="flex flex-col gap-1">
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Aucun résultat sur eBay.</p>
+              {current.detail && (
+                <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{current.detail}</p>
+              )}
+            </div>
           ) : (
             <div className="flex flex-col gap-1.5 max-h-80 overflow-y-auto">
+              {tab === 'sold' && current?.source === 'scrape' && (
+                <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                  Ventes réelles issues des annonces terminées eBay
+                </p>
+              )}
               {current?.results?.map((r, i) => (
                 <a
                   key={i}

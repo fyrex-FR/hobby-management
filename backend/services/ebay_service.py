@@ -5,6 +5,8 @@ import httpx
 import statistics
 from typing import Optional
 
+from services.ebay_sold_scraper import scrape_ebay_sold
+
 EBAY_CLIENT_ID = os.getenv("EBAY_CLIENT_ID", "")
 EBAY_CLIENT_SECRET = os.getenv("EBAY_CLIENT_SECRET", "")
 
@@ -212,11 +214,33 @@ async def search_ebay_by_image(image_base64: str, max_results: int = 12) -> dict
 
 
 async def search_ebay_sold(query: str, max_results: int = 20) -> dict:
-    """Ventes RÉELLES (« Vendues ») via la Marketplace Insights API.
+    """Ventes RÉELLES (« Vendues »).
 
-    L'API est en Limited Release : tant que l'application n'est pas approuvée
-    par eBay pour le scope Insights, on renvoie {"needs_approval": True} pour
-    que l'UI affiche un état explicite plutôt qu'une erreur brute.
+    Essaie d'abord la Marketplace Insights API (officielle). Tant que l'app
+    n'est pas approuvée pour ce Limited Release, retombe automatiquement sur le
+    scraping des pages « Sold » eBay. Le jour où eBay accorde le scope, la voie
+    officielle prend le relais sans changement de code.
+    """
+    official = await _search_sold_insights(query, max_results)
+
+    # Voie officielle exploitable → on la privilégie.
+    if not official.get("needs_approval") and not official.get("error"):
+        return official
+
+    # Sinon : fallback scraping. S'il aboutit (résultats ou vide légitime), on
+    # le renvoie ; s'il échoue aussi (blocage IP, timeout), on remonte l'état
+    # officiel, plus informatif (en attente d'approbation eBay).
+    scraped = await scrape_ebay_sold(query, max_results)
+    if not scraped.get("error"):
+        return scraped
+    return official
+
+
+async def _search_sold_insights(query: str, max_results: int = 20) -> dict:
+    """Ventes réelles via la Marketplace Insights API (Limited Release).
+
+    Tant que l'application n'est pas approuvée pour le scope Insights, renvoie
+    {"needs_approval": True} pour que l'appelant gère le fallback.
     """
     if not query or not query.strip():
         return {"error": "Requête vide", "results": []}
