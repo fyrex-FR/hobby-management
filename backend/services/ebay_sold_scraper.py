@@ -10,9 +10,15 @@ from bs4 import BeautifulSoup
 # Page publique des annonces terminées/vendues eBay US.
 EBAY_SOLD_URL = "https://www.ebay.com/sch/i.html"
 
-# API de scraping (sortie résidentielle + anti-bot) : si une clé est présente,
-# c'est le chemin prioritaire, car eBay bloque les IP datacenter (openclaw
-# inclus). Compatible ScraperAPI ; offre gratuite suffisante pour un usage hobby.
+# Proxy résidentiel/mobile en sortie directe (le plus simple) : le backend fait
+# le GET eBay à travers ce proxy. Format : http://user:pass@host:port .
+# eBay bloque les IP datacenter ET certaines IP résidentielles grillées (Free…),
+# donc il faut une sortie propre — un GET suffit, les pages Sold sont rendues
+# côté serveur (pas besoin de navigateur).
+EBAY_PROXY_URL = os.getenv("EBAY_PROXY_URL", "")
+
+# API de scraping (alternative clé-en-main, sortie résidentielle + anti-bot).
+# Compatible ScraperAPI ; offre gratuite suffisante pour un usage hobby.
 SCRAPER_API_KEY = os.getenv("SCRAPER_API_KEY", "")
 SCRAPER_API_URL = "https://api.scraperapi.com/"
 
@@ -26,8 +32,16 @@ HEADERS = {
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
     ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Ch-Ua": '"Chromium";v="123", "Google Chrome";v="123", "Not.A/Brand";v="24"',
+    "Sec-Ch-Ua-Mobile": "?0",
+    "Sec-Ch-Ua-Platform": '"macOS"',
 }
 
 _PRICE_RE = re.compile(r"[\d,]+\.?\d*")
@@ -174,9 +188,20 @@ async def _fetch_html(url: str) -> tuple[int, str, Optional[str], str]:
     IP/navigateur, contourne le 403 anti-bot d'eBay), sinon GET direct.
 
     Retourne (status_amont, html, erreur, source) où source ∈
-    {scraperapi, openclaw, scrape}.
+    {proxy, scraperapi, openclaw, scrape}.
     """
-    # 1) API de scraping (sortie résidentielle) — chemin prioritaire.
+    # 1) GET direct via proxy résidentiel — le plus simple, aucun hop inutile.
+    if EBAY_PROXY_URL:
+        try:
+            async with httpx.AsyncClient(
+                proxy=EBAY_PROXY_URL, follow_redirects=True, timeout=30
+            ) as client:
+                resp = await client.get(url, headers=HEADERS)
+        except Exception as e:
+            return 0, "", f"proxy injoignable: {e}", "proxy"
+        return resp.status_code, resp.text, None, "proxy"
+
+    # 2) API de scraping (alternative clé-en-main).
     if SCRAPER_API_KEY:
         params = {"api_key": SCRAPER_API_KEY, "url": url, "country_code": "us"}
         try:
