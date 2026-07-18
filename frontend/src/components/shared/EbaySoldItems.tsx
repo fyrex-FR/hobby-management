@@ -79,6 +79,17 @@ function titleHasNumber(title: string, n: string): boolean {
   return new RegExp(`(^|[^0-9])0*${digits}([^0-9]|$)`).test(title);
 }
 
+/** Match du n° de carte, en gérant les numéros alphanumériques (ex. « CHR-KK »). */
+function titleHasCardNumber(title: string, num: string): boolean {
+  const n = num.trim();
+  if (!n) return true;
+  if (/[a-zA-Z]/.test(n)) {
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return norm(title).includes(norm(n));
+  }
+  return titleHasNumber(title, n);
+}
+
 /** Ne garde que les ventes qui correspondent vraiment à la carte (n° + tirage + année). */
 function filterRelevant(results: EbayResult[], m?: MatchInfo): EbayResult[] {
   if (!m) return results;
@@ -86,7 +97,7 @@ function filterRelevant(results: EbayResult[], m?: MatchInfo): EbayResult[] {
 
   const year4 = m.year ? (m.year.match(/\d{4}/)?.[0] ?? '') : '';
   if (year4) preds.push((t) => titleHasNumber(t, year4));
-  if (m.cardNumber) preds.push((t) => titleHasNumber(t, m.cardNumber!));
+  if (m.cardNumber) preds.push((t) => titleHasCardNumber(t, m.cardNumber!));
 
   // Tirage /149 : discriminant fort de parallèle. Sinon, on retombe sur le set.
   const denom = m.numbered ? (m.numbered.match(/(\d+)\s*$/)?.[1] ?? '') : '';
@@ -162,15 +173,21 @@ function SalesTrend({ sales }: { sales: EbayResult[] }) {
   const up = trendPct >= 0;
   const color = up ? 'var(--green)' : 'var(--red)';
 
-  const W = 300, H = 84, pad = 8;
+  const W = 320, H = 120;
+  const padL = 30, padR = 8, padT = 12, padB = 18;
   const pMin = Math.min(...ys), pMax = Math.max(...ys);
   const pRange = pMax - pMin || 1;
-  const cx = (x: number) => pad + (x / xMax) * (W - 2 * pad);
-  const cy = (p: number) => H - pad - ((p - pMin) / pRange) * (H - 2 * pad);
+  const median = [...ys].sort((a, b) => a - b)[Math.floor(n / 2)];
+  const cx = (x: number) => padL + (x / (xMax || 1)) * (W - padL - padR);
+  const cy = (p: number) => padT + (1 - (p - pMin) / pRange) * (H - padT - padB);
+  const yClamp = (p: number) => Math.max(padT, Math.min(H - padB, cy(p)));
+
+  const firstDate = new Date(pts[0].t).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+  const lastDate = new Date(pts[n - 1].t).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
 
   return (
     <div className="rounded-xl p-3" style={{ background: 'var(--bg-primary)' }}>
-      <div className="flex items-center justify-between mb-1.5">
+      <div className="flex items-center justify-between mb-1">
         <span className="text-[10px] uppercase font-black tracking-wide" style={{ color: 'var(--text-muted)' }}>
           Tendance · {n} ventes
         </span>
@@ -178,10 +195,20 @@ function SalesTrend({ sales }: { sales: EbayResult[] }) {
           {up ? '↗' : '↘'} {up ? '+' : ''}{trendPct.toFixed(0)} %
         </span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 64 }} preserveAspectRatio="none">
-        <line x1={cx(0)} y1={cy(startP)} x2={cx(xMax)} y2={cy(endP)} stroke={color} strokeWidth={2} vectorEffect="non-scaling-stroke" />
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto">
+        {/* Grille médiane */}
+        <line x1={padL} y1={cy(median)} x2={W - padR} y2={cy(median)} stroke="var(--border)" strokeWidth={1} strokeDasharray="3 3" />
+        {/* Labels prix */}
+        <text x={4} y={padT + 4} fontSize={9} fill="var(--text-muted)">${pMax}</text>
+        <text x={4} y={H - padB} fontSize={9} fill="var(--text-muted)">${pMin}</text>
+        {/* Dates */}
+        <text x={padL} y={H - 4} fontSize={9} fill="var(--text-muted)">{firstDate}</text>
+        <text x={W - padR} y={H - 4} fontSize={9} fill="var(--text-muted)" textAnchor="end">{lastDate}</text>
+        {/* Ligne de tendance */}
+        <line x1={cx(0)} y1={yClamp(startP)} x2={cx(xMax)} y2={yClamp(endP)} stroke={color} strokeWidth={2.5} strokeLinecap="round" />
+        {/* Points */}
         {pts.map((d, i) => (
-          <circle key={i} cx={cx(xs[i])} cy={cy(d.p)} r={3} fill="var(--accent)" />
+          <circle key={i} cx={cx(xs[i])} cy={cy(d.p)} r={3.5} fill="var(--accent)" opacity={0.85} />
         ))}
       </svg>
     </div>
@@ -258,8 +285,11 @@ export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPri
   const hasPrices = sold != null || active != null;
 
   // Filtrage de pertinence (n° + tirage + année) + stats recalculées dessus.
-  const soldShown = sold?.results ? (showAll ? sold.results : filterRelevant(sold.results, match)) : [];
-  const activeShown = active?.results ? (showAll ? active.results : filterRelevant(active.results, match)) : [];
+  // Si l'utilisateur a choisi une correspondance visuelle, on ne re-filtre pas
+  // (il a déjà validé la carte à l'œil ; les attributs IA peuvent être faux).
+  const effectiveMatch = selectedTitle ? undefined : match;
+  const soldShown = sold?.results ? (showAll ? sold.results : filterRelevant(sold.results, effectiveMatch)) : [];
+  const activeShown = active?.results ? (showAll ? active.results : filterRelevant(active.results, effectiveMatch)) : [];
   const soldStats = computeStats(soldShown);
   const activeStats = computeStats(activeShown);
   const currentShown = tab === 'sold' ? soldShown : activeShown;
