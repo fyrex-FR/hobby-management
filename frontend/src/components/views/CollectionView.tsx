@@ -20,6 +20,7 @@ import {
   Smile,
   Folder as FolderIcon,
   ArrowUpDown,
+  SlidersHorizontal,
 } from 'lucide-react';
 import {
   createColumnHelper,
@@ -728,6 +729,7 @@ export function CollectionView() {
   const [folderFilter, setFolderFilter] = useState<string | null>(null); // id de dossier, ou '__none__' pour Non classé
   const [manageFolders, setManageFolders] = useState(false);
   const [groupBy, setGroupBy] = useState<GroupBy>('none');
+  const [showFilters, setShowFilters] = useState(false);
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [sorting, setSorting] = useState<SortingState>([]);
   const [selectMode, setSelectMode] = useState(false);
@@ -1145,8 +1147,56 @@ export function CollectionView() {
             )}
           </div>
 
-          <div className="h-6 w-px bg-white/10 mx-1 hidden lg:block" />
+          {/* Bouton Filtres (replie les dropdowns) */}
+          <button
+            onClick={() => setShowFilters((v) => !v)}
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all active:scale-95 border shrink-0"
+            style={showFilters || activeFiltersCount > 0
+              ? { background: 'var(--accent-dim)', color: 'var(--accent)', borderColor: 'var(--border-accent)' }
+              : { background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)' }}
+          >
+            <SlidersHorizontal size={14} />
+            Filtres
+            {activeFiltersCount > 0 && (
+              <span className="px-1.5 py-0.5 rounded-lg text-[9px] font-black bg-[var(--accent)] text-black">{activeFiltersCount}</span>
+            )}
+          </button>
 
+          {/* Trier par */}
+          <div className="flex items-center gap-2 bg-white/5 border border-white/5 px-3 py-1.5 rounded-2xl shrink-0">
+            <ArrowUpDown size={12} className="text-white/20" />
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as SortBy)}
+              className="bg-transparent text-[10px] font-black uppercase tracking-[0.2em] outline-none cursor-pointer text-white/40 hover:text-white transition-colors appearance-none"
+              title="Trier par"
+            >
+              {(Object.keys(SORT_LABELS) as SortBy[]).map((k) => (
+                <option key={k} value={k} className="bg-[#18181b]">TRI : {SORT_LABELS[k].toUpperCase()}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Grouper par (grille uniquement) */}
+          {viewMode === 'grid' && (
+            <div className="flex items-center gap-2 bg-white/5 border border-white/5 px-3 py-1.5 rounded-2xl shrink-0">
+              <Group size={12} className="text-white/20" />
+              <select
+                value={groupBy}
+                onChange={(e) => setGroupBy(e.target.value as GroupBy)}
+                className="bg-transparent text-[10px] font-black uppercase tracking-[0.2em] outline-none cursor-pointer text-white/40 hover:text-white transition-colors appearance-none"
+                title="Grouper par"
+              >
+                {(Object.keys(GROUP_BY_LABELS) as GroupBy[]).map((k) => (
+                  <option key={k} value={k} className="bg-[#18181b]">GROUPE : {GROUP_BY_LABELS[k].toUpperCase()}</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
+
+        {/* Row 2b: dropdowns de filtres (repliables) */}
+        {showFilters && (
           <div className="flex items-center gap-2 flex-wrap">
             <FilterDropdown label="Joueur" items={players} selected={playerFilter} onSelect={setPlayerFilter} />
             <FilterDropdown label="Équipe" items={teams} selected={teamFilter} onSelect={setTeamFilter} />
@@ -1188,43 +1238,7 @@ export function CollectionView() {
               </button>
             )}
           </div>
-
-          <div className="flex-1" />
-
-          <div className="flex items-center gap-3">
-            {/* Trier par (grille + tableau) */}
-            <div className="flex items-center gap-2 bg-white/5 border border-white/5 px-3 py-1.5 rounded-2xl">
-              <ArrowUpDown size={12} className="text-white/20" />
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as SortBy)}
-                className="bg-transparent text-[10px] font-black uppercase tracking-[0.2em] outline-none cursor-pointer text-white/40 hover:text-white transition-colors appearance-none"
-                title="Trier par"
-              >
-                {(Object.keys(SORT_LABELS) as SortBy[]).map((k) => (
-                  <option key={k} value={k} className="bg-[#18181b]">TRI : {SORT_LABELS[k].toUpperCase()}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Grouper par (grille uniquement) */}
-            {viewMode === 'grid' && (
-              <div className="flex items-center gap-2 bg-white/5 border border-white/5 px-3 py-1.5 rounded-2xl">
-                <Group size={12} className="text-white/20" />
-                <select
-                  value={groupBy}
-                  onChange={(e) => setGroupBy(e.target.value as GroupBy)}
-                  className="bg-transparent text-[10px] font-black uppercase tracking-[0.2em] outline-none cursor-pointer text-white/40 hover:text-white transition-colors appearance-none"
-                  title="Grouper par"
-                >
-                  {(Object.keys(GROUP_BY_LABELS) as GroupBy[]).map((k) => (
-                    <option key={k} value={k} className="bg-[#18181b]">GROUPE : {GROUP_BY_LABELS[k].toUpperCase()}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-          </div>
-        </div>
+        )}
 
         {/* Row 3: dossiers */}
         <div className="flex items-center gap-2 flex-wrap">
@@ -1277,7 +1291,7 @@ export function CollectionView() {
 
       <div className="min-h-0 flex-1 overflow-auto px-6 pb-6">
         {!isLoading && filtered.length > 0 && (
-          <div className="sticky top-0 z-20 -mx-6 mb-4 flex flex-wrap items-center justify-center gap-0.5 border-b border-white/5 bg-[var(--bg-primary)]/90 px-6 py-2.5 backdrop-blur-xl">
+          <div className="sticky top-0 z-20 -mx-6 mb-4 flex flex-wrap items-center justify-center gap-0.5 border-b border-white/5 bg-[var(--bg-primary)]/90 px-6 py-1.5 backdrop-blur-xl">
             {[...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''), '#'].map((letter) => {
               const has = availableInitials.has(letter);
               return (
@@ -1285,10 +1299,10 @@ export function CollectionView() {
                   key={letter}
                   disabled={!has}
                   onClick={() => jumpToLetter(letter)}
-                  className={`h-6 w-6 rounded-md text-[11px] font-bold transition-colors ${
+                  className={`h-6 w-6 rounded-md text-[11px] font-black transition-colors ${
                     has
-                      ? 'text-[var(--text-secondary)] hover:bg-[var(--accent)] hover:text-black'
-                      : 'cursor-default text-[var(--text-muted)]/30'
+                      ? 'text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-black'
+                      : 'cursor-default text-white/15'
                   }`}
                 >
                   {letter}
