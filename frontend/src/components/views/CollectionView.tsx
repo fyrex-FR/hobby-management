@@ -1178,7 +1178,7 @@ export function CollectionView() {
         {/* Row 2: search + filters */}
         <div className="flex items-center gap-3 flex-wrap">
           {/* Search */}
-          <div className="relative group min-w-[200px]">
+          <div className="relative group flex-1 min-w-[160px]">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)] group-focus-within:text-[var(--accent)] transition-colors" size={14} />
             <input
               type="text"
@@ -1213,7 +1213,7 @@ export function CollectionView() {
           </button>
 
           {/* Trier par */}
-          <div className="flex items-center gap-2 bg-white/5 border border-white/5 px-3 py-1.5 rounded-2xl shrink-0">
+          <div className="flex items-center gap-2 bg-white/5 border border-white/5 px-3 py-1.5 rounded-2xl shrink-0 w-fit max-w-full">
             <ArrowUpDown size={12} className="text-white/20" />
             <select
               value={sortBy}
@@ -1229,7 +1229,7 @@ export function CollectionView() {
 
           {/* Grouper par (grille uniquement) */}
           {viewMode === 'grid' && (
-            <div className="flex items-center gap-2 bg-white/5 border border-white/5 px-3 py-1.5 rounded-2xl shrink-0">
+            <div className="flex items-center gap-2 bg-white/5 border border-white/5 px-3 py-1.5 rounded-2xl shrink-0 w-fit max-w-full">
               <Group size={12} className="text-white/20" />
               <select
                 value={groupBy}
