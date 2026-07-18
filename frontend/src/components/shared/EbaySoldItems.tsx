@@ -26,6 +26,8 @@ interface EbayData {
   detail?: string;
   needs_approval?: boolean;
   source?: string;
+  cached?: boolean;
+  fetched_at?: string;
 }
 
 function formatDate(iso: string): string {
@@ -130,6 +132,8 @@ interface Props {
   currentPrice?: number | null;
   /** Applique un prix de vente (€) à la carte. */
   onApplyPrice?: (eur: number) => void | Promise<unknown>;
+  /** Id de la carte — active le cache des ventes côté serveur. */
+  cardId?: string;
 }
 
 /** Mini-graphe SVG de la tendance des ventes (prix dans le temps) + %. */
@@ -184,7 +188,7 @@ function SalesTrend({ sales }: { sales: EbayResult[] }) {
   );
 }
 
-export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPrice }: Props) {
+export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPrice, cardId }: Props) {
   const [effectiveQuery, setEffectiveQuery] = useState(query);
   const [selectedTitle, setSelectedTitle] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
@@ -218,7 +222,7 @@ export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPri
     }
   }
 
-  async function fetchPrices(q: string) {
+  async function fetchPrices(q: string, refresh = false) {
     setPriceLoading(true);
     setSold(null);
     setActive(null);
@@ -226,7 +230,7 @@ export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPri
       const [soldRes, activeRes] = await Promise.all([
         apiFetch<EbayData>('/ebay/sold-items', {
           method: 'POST',
-          body: JSON.stringify({ query: q }),
+          body: JSON.stringify({ query: q, card_id: cardId, refresh }),
         }),
         apiFetch<EbayData>('/ebay/active-items', {
           method: 'POST',
@@ -540,6 +544,21 @@ export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPri
             </div>
           ) : (
             <div className="flex flex-col gap-2">
+              {tab === 'sold' && (
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                    {sold?.cached ? 'Depuis le cache' : ''}
+                  </span>
+                  <button
+                    onClick={() => fetchPrices(effectiveQuery, true)}
+                    disabled={priceLoading}
+                    className="text-[11px] font-semibold flex items-center gap-1 disabled:opacity-40"
+                    style={{ color: 'var(--accent)' }}
+                  >
+                    ↻ Actualiser
+                  </button>
+                </div>
+              )}
               {tab === 'sold' && <SalesTrend sales={soldShown} />}
               <div className="flex flex-col gap-1.5 max-h-80 overflow-y-auto">
               {tab === 'sold' && current?.source === 'scrape' && (
