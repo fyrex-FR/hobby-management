@@ -17,37 +17,34 @@ export function CornerCropEditor({ file, side, onDone, onCancel }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [dims, setDims] = useState<{ w: number; h: number } | null>(null);
   const [corners, setCorners] = useState<Corners | null>(null);
-  const [detecting, setDetecting] = useState(true);
+  const [autoBusy, setAutoBusy] = useState(false);
   const [warping, setWarping] = useState(false);
   const [note, setNote] = useState('');
   const dragIndex = useRef<number | null>(null);
 
   useEffect(() => () => URL.revokeObjectURL(url), [url]);
 
+  // Détection auto en arrière-plan (n'empêche jamais l'édition manuelle).
   async function runDetect(img: HTMLImageElement) {
-    setDetecting(true);
+    setAutoBusy(true);
     setNote('');
-    const w = img.naturalWidth, h = img.naturalHeight;
     try {
       const found = await detectCardCorners(img);
-      if (found) {
-        setCorners(found);
-      } else {
-        setCorners(defaultCorners(w, h));
-        setNote('Carte non détectée — ajuste les coins à la main.');
-      }
+      if (found) setCorners(found);
+      else setNote('Carte non détectée — ajuste les coins à la main.');
     } catch {
-      setCorners(defaultCorners(w, h));
-      setNote('Détection indisponible — ajuste les coins à la main.');
+      setNote('Détection auto indisponible — ajuste les coins à la main.');
     } finally {
-      setDetecting(false);
+      setAutoBusy(false);
     }
   }
 
   function onImgLoad() {
     const img = imgRef.current;
     if (!img) return;
-    setDims({ w: img.naturalWidth, h: img.naturalHeight });
+    const w = img.naturalWidth, h = img.naturalHeight;
+    setDims({ w, h });
+    setCorners(defaultCorners(w, h)); // éditable tout de suite
     void runDetect(img);
   }
 
@@ -57,10 +54,7 @@ export function CornerCropEditor({ file, side, onDone, onCancel }: Props) {
     const rect = svg.getBoundingClientRect();
     const x = ((clientX - rect.left) / rect.width) * dims.w;
     const y = ((clientY - rect.top) / rect.height) * dims.h;
-    return {
-      x: Math.max(0, Math.min(dims.w, x)),
-      y: Math.max(0, Math.min(dims.h, y)),
-    };
+    return { x: Math.max(0, Math.min(dims.w, x)), y: Math.max(0, Math.min(dims.h, y)) };
   }
 
   function startDrag(i: number, e: React.PointerEvent) {
@@ -94,12 +88,12 @@ export function CornerCropEditor({ file, side, onDone, onCancel }: Props) {
       const cropped = await warpCard(img, corners, side);
       onDone(cropped);
     } catch {
-      setNote('Redressement impossible — réessaie ou ajuste les coins.');
+      setNote('Redressement impossible — réessaie.');
       setWarping(false);
     }
   }
 
-  const handleR = dims ? Math.max(dims.w, dims.h) * 0.028 : 0;
+  const handleR = dims ? Math.max(dims.w, dims.h) * 0.03 : 0;
   const poly = corners ? corners.map((c) => `${c.x},${c.y}`).join(' ') : '';
 
   return (
@@ -114,11 +108,11 @@ export function CornerCropEditor({ file, side, onDone, onCancel }: Props) {
         </span>
         <button
           onClick={() => imgRef.current && runDetect(imgRef.current)}
-          disabled={detecting}
+          disabled={autoBusy}
           className="flex items-center gap-1.5 text-sm font-bold text-[var(--accent)] disabled:opacity-40"
           title="Relancer la détection auto"
         >
-          <Wand2 size={16} /> Auto
+          {autoBusy ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />} Auto
         </button>
       </div>
 
@@ -140,34 +134,14 @@ export function CornerCropEditor({ file, side, onDone, onCancel }: Props) {
               className="absolute inset-0 w-full h-full touch-none"
               preserveAspectRatio="none"
             >
-              <polygon
-                points={poly}
-                fill="rgba(245,166,35,0.12)"
-                stroke="var(--accent)"
-                strokeWidth={2}
-                vectorEffect="non-scaling-stroke"
-              />
+              <polygon points={poly} fill="rgba(245,166,35,0.12)" stroke="var(--accent)" strokeWidth={2} vectorEffect="non-scaling-stroke" />
               {corners.map((c, i) => (
                 <g key={i}>
-                  <circle cx={c.x} cy={c.y} r={handleR} fill="rgba(245,166,35,0.25)" stroke="var(--accent)" strokeWidth={2} vectorEffect="non-scaling-stroke" />
-                  <circle
-                    cx={c.x}
-                    cy={c.y}
-                    r={handleR * 2.2}
-                    fill="transparent"
-                    className="cursor-grab touch-none"
-                    onPointerDown={(e) => startDrag(i, e)}
-                  />
+                  <circle cx={c.x} cy={c.y} r={handleR} fill="rgba(245,166,35,0.3)" stroke="var(--accent)" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+                  <circle cx={c.x} cy={c.y} r={handleR * 2.4} fill="transparent" className="cursor-grab touch-none" onPointerDown={(e) => startDrag(i, e)} />
                 </g>
               ))}
             </svg>
-          )}
-          {detecting && (
-            <div className="absolute inset-0 flex items-center justify-center bg-black/40">
-              <div className="flex items-center gap-2 text-white text-sm font-bold">
-                <Loader2 size={18} className="animate-spin" /> Détection…
-              </div>
-            </div>
           )}
         </div>
       </div>
@@ -177,7 +151,7 @@ export function CornerCropEditor({ file, side, onDone, onCancel }: Props) {
         {note && <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>{note}</p>}
         <button
           onClick={validate}
-          disabled={detecting || warping || !corners}
+          disabled={warping || !corners}
           className="w-full py-3.5 rounded-2xl text-sm font-black flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
           style={{ background: 'var(--accent)', color: '#09090B' }}
         >
