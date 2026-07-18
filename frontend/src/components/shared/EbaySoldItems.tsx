@@ -132,6 +132,58 @@ interface Props {
   onApplyPrice?: (eur: number) => void | Promise<unknown>;
 }
 
+/** Mini-graphe SVG de la tendance des ventes (prix dans le temps) + %. */
+function SalesTrend({ sales }: { sales: EbayResult[] }) {
+  const pts = sales
+    .map((s) => ({ t: new Date(s.end_date).getTime(), p: s.price }))
+    .filter((d) => Number.isFinite(d.t) && d.p > 0)
+    .sort((a, b) => a.t - b.t);
+  if (pts.length < 3) return null;
+
+  const t0 = pts[0].t;
+  const xs = pts.map((d) => (d.t - t0) / 86400000); // jours
+  const ys = pts.map((d) => d.p);
+  const n = pts.length;
+  const sx = xs.reduce((s, v) => s + v, 0);
+  const sy = ys.reduce((s, v) => s + v, 0);
+  const sxx = xs.reduce((s, v) => s + v * v, 0);
+  const sxy = xs.reduce((s, v, i) => s + v * ys[i], 0);
+  const denom = n * sxx - sx * sx;
+  const a = denom !== 0 ? (n * sxy - sx * sy) / denom : 0;
+  const b = (sy - a * sx) / n;
+  const xMax = xs[n - 1] || 1;
+  const startP = b;
+  const endP = a * xMax + b;
+  const trendPct = startP > 0 ? ((endP - startP) / startP) * 100 : 0;
+  const up = trendPct >= 0;
+  const color = up ? 'var(--green)' : 'var(--red)';
+
+  const W = 300, H = 84, pad = 8;
+  const pMin = Math.min(...ys), pMax = Math.max(...ys);
+  const pRange = pMax - pMin || 1;
+  const cx = (x: number) => pad + (x / xMax) * (W - 2 * pad);
+  const cy = (p: number) => H - pad - ((p - pMin) / pRange) * (H - 2 * pad);
+
+  return (
+    <div className="rounded-xl p-3" style={{ background: 'var(--bg-primary)' }}>
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[10px] uppercase font-black tracking-wide" style={{ color: 'var(--text-muted)' }}>
+          Tendance · {n} ventes
+        </span>
+        <span className="text-xs font-black" style={{ color }}>
+          {up ? '↗' : '↘'} {up ? '+' : ''}{trendPct.toFixed(0)} %
+        </span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 64 }} preserveAspectRatio="none">
+        <line x1={cx(0)} y1={cy(startP)} x2={cx(xMax)} y2={cy(endP)} stroke={color} strokeWidth={2} vectorEffect="non-scaling-stroke" />
+        {pts.map((d, i) => (
+          <circle key={i} cx={cx(xs[i])} cy={cy(d.p)} r={3} fill="var(--accent)" />
+        ))}
+      </svg>
+    </div>
+  );
+}
+
 export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPrice }: Props) {
   const [effectiveQuery, setEffectiveQuery] = useState(query);
   const [selectedTitle, setSelectedTitle] = useState<string | null>(null);
@@ -487,7 +539,9 @@ export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPri
               )}
             </div>
           ) : (
-            <div className="flex flex-col gap-1.5 max-h-80 overflow-y-auto">
+            <div className="flex flex-col gap-2">
+              {tab === 'sold' && <SalesTrend sales={soldShown} />}
+              <div className="flex flex-col gap-1.5 max-h-80 overflow-y-auto">
               {tab === 'sold' && current?.source === 'scrape' && (
                 <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
                   Ventes réelles issues des annonces terminées eBay
@@ -534,6 +588,7 @@ export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPri
                   </span>
                 </a>
               ))}
+              </div>
             </div>
           )}
         </div>
