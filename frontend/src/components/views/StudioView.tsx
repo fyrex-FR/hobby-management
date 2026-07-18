@@ -239,6 +239,14 @@ export function StudioView() {
     return { x: (1 - w) / 2, y: (1 - h) / 2, w, h };
   }
 
+  // Aligne le cadre au format carte dès que le ratio caméra est connu (une fois
+  // le persisté converti, le lock de ratio le garde carte → plus de reset).
+  useEffect(() => {
+    const screenRatio = (cropRect.w / cropRect.h) * boxAspect;
+    if (Math.abs(screenRatio - CARD_ASPECT) > 0.04) setCropRect(cardCropRect());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoAspect]);
+
   function startFrameDrag(
     e: React.PointerEvent,
     mode: 'move' | 'nw' | 'ne' | 'sw' | 'se',
@@ -1198,7 +1206,7 @@ export function StudioView() {
                       <div className="rounded-full border border-[var(--accent)]/30 bg-black/60 px-4 py-1.5 text-[10px] sm:text-xs font-bold text-[var(--accent)] backdrop-blur-xl">
                         {adjustingFrame
                           ? 'Déplace le cadre et tire les coins pour matcher ta carte'
-                          : 'Rognage auto — aligne la carte dans le cadre'}
+                          : 'Cadre fixe (format carte) — aligne ta carte dedans'}
                       </div>
                     </div>
                   )}
