@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { compressImage } from '../../lib/storage';
 import { DEFAULT_CROP_RECT, clampNormRect, type NormRect } from '../../lib/guideCrop';
+import { CornerCropEditor } from '../shared/CornerCropEditor';
 import { useCreateCard, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { useIdentify } from '../../hooks/useIdentify';
 import { useAppStore } from '../../stores/appStore';
@@ -186,6 +187,11 @@ export function StudioView() {
   const [autoCropEnabled, setAutoCropEnabled] = useState(
     () => localStorage.getItem('studio_autocrop') !== '0',
   );
+  // Mode « Détection coins » : après capture, ouvre l'éditeur de coins (OpenCV).
+  const [cornerScan, setCornerScan] = useState(
+    () => localStorage.getItem('studio_corner_scan') === '1',
+  );
+  const [pendingCrop, setPendingCrop] = useState<{ side: CaptureSide; file: File } | null>(null);
   const [zoom, setZoom] = useState(() => {
     const v = Number(localStorage.getItem('studio_zoom'));
     return v >= 1 && v <= 3 ? v : 1;
@@ -262,6 +268,10 @@ export function StudioView() {
   useEffect(() => {
     localStorage.setItem('studio_autocrop', autoCropEnabled ? '1' : '0');
   }, [autoCropEnabled]);
+
+  useEffect(() => {
+    localStorage.setItem('studio_corner_scan', cornerScan ? '1' : '0');
+  }, [cornerScan]);
 
   const identify = useIdentify();
   const createCard = useCreateCard();
@@ -445,6 +455,11 @@ export function StudioView() {
 
   async function capturePhoto(side: CaptureSide): Promise<File> {
     const video = videoRef.current;
+    // Mode détection coins : on capture l'image pleine (l'éditeur détecte et
+    // redresse ensuite).
+    if (video && cornerScan) {
+      return captureFramed(side, null);
+    }
     if (video && AUTO_CROP_AVAILABLE && autoCropEnabled) {
       return captureFramed(side, cropRect);
     }
@@ -452,6 +467,17 @@ export function StudioView() {
       return captureFramed(side, null);
     }
     return takePhoto(side);
+  }
+
+  // Applique le fichier capturé (après recadrage éventuel) au flux recto/verso.
+  function applyCaptured(side: CaptureSide, file: File) {
+    if (side === 'front') {
+      setFrontFile(file);
+      setStep('back');
+    } else {
+      setBackFile(file);
+      setStep('ready');
+    }
   }
 
   async function handleCapture() {
@@ -468,13 +494,12 @@ export function StudioView() {
       const side: CaptureSide = step === 'back' ? 'back' : 'front';
       const file = await capturePhoto(side);
 
-      if (side === 'front') {
-        setFrontFile(file);
-        setStep('back');
-      } else {
-        setBackFile(file);
-        setStep('ready');
+      // Mode détection coins : passe par l'éditeur avant de valider.
+      if (cornerScan) {
+        setPendingCrop({ side, file });
+        return;
       }
+      applyCaptured(side, file);
     } catch (error) {
       setSaveError((error as Error).message);
     }
@@ -964,7 +989,7 @@ export function StudioView() {
               title={sessionStarted ? 'Réinitialise le lot pour changer le rognage' : 'Détecte les bords et rogne automatiquement (serveur)'}
             >
               <button
-                onClick={() => setAutoCropEnabled((v) => !v)}
+                onClick={() => setAutoCropEnabled((v) => { const nv = !v; if (nv) setCornerScan(false); return nv; })}
                 disabled={sessionStarted || isBusy}
                 className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
                   autoCropEnabled
@@ -973,7 +998,23 @@ export function StudioView() {
                 }`}
               >
                 <ScanLine size={14} />
-                Rognage auto {autoCropEnabled ? 'ON' : 'OFF'}
+                Cadre fixe {autoCropEnabled ? 'ON' : 'OFF'}
+              </button>
+            </div>
+
+            <div
+              className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-1"
+              title={sessionStarted ? 'Réinitialise le lot pour changer le mode' : 'Détecte les coins de la carte et redresse en perspective'}
+            >
+              <button
+                onClick={() => setCornerScan((v) => { const nv = !v; if (nv) setAutoCropEnabled(false); return nv; })}
+                disabled={sessionStarted || isBusy || captureMode === 'halves'}
+                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
+                  cornerScan ? 'bg-[var(--accent)] text-[#0d0c0b]' : 'text-white/60 hover:text-white'
+                }`}
+              >
+                <Crop size={14} />
+                Détection coins {cornerScan ? 'ON' : 'OFF'}
               </button>
             </div>
 
@@ -1509,6 +1550,18 @@ export function StudioView() {
             ✕
           </button>
         </div>
+      )}
+
+      {pendingCrop && (
+        <CornerCropEditor
+          file={pendingCrop.file}
+          side={pendingCrop.side}
+          onCancel={() => setPendingCrop(null)}
+          onDone={(cropped) => {
+            if (pendingCrop) applyCaptured(pendingCrop.side, cropped);
+            setPendingCrop(null);
+          }}
+        />
       )}
     </div>
   );
