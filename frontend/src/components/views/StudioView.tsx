@@ -36,6 +36,8 @@ const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
 // Rognage auto : effectué côté serveur (OpenCV) au moment de l'upload.
 const AUTO_CROP_AVAILABLE = true;
+// Ratio d'une carte standard (2.5" × 3.5").
+const CARD_ASPECT = 2.5 / 3.5;
 
 type CaptureSide = 'front' | 'back';
 type StudioStep = 'front' | 'back' | 'ready' | 'saving';
@@ -226,6 +228,16 @@ export function StudioView() {
   }, [zoom]);
 
   const rotated90 = rotation === 90 || rotation === 270;
+  // Ratio du cadre d'affichage (largeur/hauteur en px).
+  const boxAspect = rotated90 ? 1 / videoAspect : videoAspect;
+
+  // Cadre centré verrouillé au format carte (à l'écran).
+  function cardCropRect(): NormRect {
+    let h = 0.84;
+    let w = (h * CARD_ASPECT) / boxAspect;
+    if (w > 0.96) { w = 0.96; h = (w * boxAspect) / CARD_ASPECT; }
+    return { x: (1 - w) / 2, y: (1 - h) / 2, w, h };
+  }
 
   function startFrameDrag(
     e: React.PointerEvent,
@@ -248,11 +260,18 @@ export function StudioView() {
       if (mode === 'move') {
         next = { ...base, x: base.x + dx, y: base.y + dy };
       } else {
-        let { x, y, w, h } = base;
-        if (mode === 'nw') { x = base.x + dx; y = base.y + dy; w = base.w - dx; h = base.h - dy; }
-        if (mode === 'ne') { y = base.y + dy; w = base.w + dx; h = base.h - dy; }
-        if (mode === 'sw') { x = base.x + dx; w = base.w - dx; h = base.h + dy; }
-        if (mode === 'se') { w = base.w + dx; h = base.h + dy; }
+        // Redimensionnement verrouillé au ratio carte : la largeur pilote,
+        // la hauteur en découle, et le coin opposé reste ancré.
+        const right = base.x + base.w;
+        const bottom = base.y + base.h;
+        let w = mode === 'nw' || mode === 'sw' ? base.w - dx : base.w + dx;
+        w = Math.max(0.08, w);
+        const h = (w * boxAspect) / CARD_ASPECT;
+        let x = base.x, y = base.y;
+        if (mode === 'nw') { x = right - w; y = bottom - h; }
+        if (mode === 'ne') { x = base.x; y = bottom - h; }
+        if (mode === 'sw') { x = right - w; y = base.y; }
+        if (mode === 'se') { x = base.x; y = base.y; }
         next = { x, y, w, h };
       }
       setCropRect(clampNormRect(next));
@@ -1033,12 +1052,12 @@ export function StudioView() {
                 </button>
                 {adjustingFrame && (
                   <button
-                    onClick={() => setCropRect(DEFAULT_CROP_RECT)}
-                    title="Réinitialiser le cadre par défaut"
+                    onClick={() => setCropRect(cardCropRect())}
+                    title="Cadre centré au format carte (2.5×3.5)"
                     className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold text-white/60 transition-all hover:text-white"
                   >
                     <RotateCcw size={14} />
-                    Réinitialiser
+                    Format carte
                   </button>
                 )}
               </div>
