@@ -658,6 +658,56 @@ function TableView({ table, onRowClick, selectMode, selectedIds, onToggleSelect 
     }
   }
 
+  if (isMobile) {
+    return (
+      <div className="flex flex-col gap-2">
+        {table.getRowModel().rows.map((row) => {
+          const card = row.original;
+          const isSelected = selectMode && selectedIds.has(card.id);
+          return (
+            <div
+              key={row.id}
+              data-jump={rowAnchor.get(row.id)}
+              onClick={() => (selectMode ? onToggleSelect(card.id) : onRowClick(card))}
+              className="flex items-center gap-3 p-2.5 rounded-2xl border transition-all active:scale-[0.99]"
+              style={isSelected
+                ? { borderColor: 'var(--border-accent)', background: 'var(--accent-dim)' }
+                : { borderColor: 'rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.02)' }}
+            >
+              {selectMode && (
+                isSelected
+                  ? <CheckCircle2 size={20} className="text-[var(--accent)] shrink-0" fill="currentColor" />
+                  : <Circle size={20} className="text-white/40 shrink-0" />
+              )}
+              {card.image_front_url
+                ? <img src={cdnImg(card.image_front_url)} alt="" loading="lazy" decoding="async" className="w-11 h-16 object-contain rounded-md shrink-0" />
+                : <div className="w-11 h-16 rounded-md shrink-0 flex items-center justify-center text-base" style={{ background: 'var(--bg-elevated)' }}>🃏</div>}
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-sm truncate text-white">{card.player ?? '—'}</div>
+                <div className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
+                  {[card.team, card.year].filter(Boolean).join(' · ') || '—'}
+                </div>
+                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                  {card.is_rookie && <RookieBadge compact />}
+                  {card.grading_company && <GradingBadge card={card} compact />}
+                  {card.numbered && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded" style={{ background: 'rgba(245,166,35,0.15)', color: 'var(--accent)', border: '1px solid rgba(245,166,35,0.25)' }}>{card.numbered}</span>
+                  )}
+                </div>
+              </div>
+              <div className="flex flex-col items-end gap-1.5 shrink-0">
+                <span className="text-sm font-black" style={{ color: card.price != null ? 'var(--accent)' : 'var(--text-muted)' }}>
+                  {card.price != null ? `${card.price} €` : '—'}
+                </span>
+                <StatusBadge status={card.status} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-xl border border-white/5 overflow-x-auto">
       <table className="w-full text-sm border-collapse">
