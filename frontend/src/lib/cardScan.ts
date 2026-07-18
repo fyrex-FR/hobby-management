@@ -1,38 +1,48 @@
-// Détection des coins d'une carte + redressement en perspective, via OpenCV.js
-// chargé à la demande (aucun poids ajouté tant que le mode Auto n'est pas utilisé).
+// Détection des coins d'une carte (OpenCV.js, best-effort) + redressement en
+// perspective (canvas pur, sans dépendance — marche toujours).
 
 export type Point = { x: number; y: number };
 
 // Ratio d'une carte standard (2.5" × 3.5").
-const CARD_RATIO = 2.5 / 3.5;
+export const CARD_RATIO = 2.5 / 3.5;
 
 const OPENCV_URL = 'https://docs.opencv.org/4.10.0/opencv.js';
+const LOAD_TIMEOUT_MS = 12000;
 
 let cvPromise: Promise<any> | null = null;
 
-/** Charge OpenCV.js une seule fois et résout avec l'objet `cv` prêt. */
+/** Charge OpenCV.js une seule fois. Gère le cas où `cv` est une Promise
+ *  (builds récents) et échoue proprement après un délai. */
 export function loadOpenCV(): Promise<any> {
   if (cvPromise) return cvPromise;
   cvPromise = new Promise((resolve, reject) => {
     const w = window as any;
-    const ready = (cv: any) => {
-      if (cv && cv.Mat) resolve(cv);
-      else if (cv) cv.onRuntimeInitialized = () => resolve(cv);
-      else reject(new Error('OpenCV indisponible'));
+    let settled = false;
+    const done = (cv: any) => { if (!settled) { settled = true; resolve(cv); } };
+    const fail = (e: Error) => { if (!settled) { settled = true; cvPromise = null; reject(e); } };
+    const timer = setTimeout(() => fail(new Error('OpenCV: délai dépassé')), LOAD_TIMEOUT_MS);
+
+    const ready = async (raw: any) => {
+      try {
+        let cv = raw;
+        if (cv && typeof cv.then === 'function') cv = await cv; // build exposant une Promise
+        w.cv = cv;
+        if (cv && cv.Mat) { clearTimeout(timer); done(cv); }
+        else if (cv) { cv.onRuntimeInitialized = () => { clearTimeout(timer); done(cv); }; }
+        else fail(new Error('OpenCV indisponible'));
+      } catch (e) { fail(e as Error); }
     };
-    if (w.cv && w.cv.Mat) return resolve(w.cv);
+
+    if (w.cv && (w.cv.Mat || typeof w.cv.then === 'function')) return void ready(w.cv);
     const existing = document.getElementById('opencv-js') as HTMLScriptElement | null;
-    if (existing) {
-      if (w.cv) ready(w.cv);
-      else existing.addEventListener('load', () => ready(w.cv));
-      return;
-    }
+    if (existing) { existing.addEventListener('load', () => ready(w.cv)); return; }
+
     const script = document.createElement('script');
     script.id = 'opencv-js';
     script.src = OPENCV_URL;
     script.async = true;
     script.onload = () => ready((window as any).cv);
-    script.onerror = () => { cvPromise = null; reject(new Error('Chargement OpenCV échoué')); };
+    script.onerror = () => fail(new Error('Chargement OpenCV échoué'));
     document.body.appendChild(script);
   });
   return cvPromise;
@@ -42,18 +52,11 @@ export function loadOpenCV(): Promise<any> {
 export function orderCorners(pts: Point[]): [Point, Point, Point, Point] {
   const bySum = [...pts].sort((a, b) => a.x + a.y - (b.x + b.y));
   const byDiff = [...pts].sort((a, b) => a.x - a.y - (b.x - b.y));
-  const tl = bySum[0];
-  const br = bySum[3];
-  const bl = byDiff[0];
-  const tr = byDiff[3];
-  return [tl, tr, br, bl];
+  return [bySum[0], byDiff[3], bySum[3], byDiff[0]];
 }
 
-/**
- * Détecte le plus grand quadrilatère (la carte) dans l'image.
- * Retourne 4 coins ordonnés TL,TR,BR,BL en coordonnées de l'image source,
- * ou null si rien de convaincant.
- */
+/** Détecte le plus grand quadrilatère (la carte). Retourne 4 coins TL,TR,BR,BL
+ *  en coords image source, ou null. Nécessite OpenCV (sinon lève). */
 export async function detectCardCorners(
   source: HTMLImageElement | HTMLCanvasElement,
 ): Promise<[Point, Point, Point, Point] | null> {
@@ -62,7 +65,6 @@ export async function detectCardCorners(
   const srcH = (source as any).naturalHeight || (source as any).height;
   if (!srcW || !srcH) return null;
 
-  // Downscale pour la rapidité, on remet les coins à l'échelle ensuite.
   const maxDim = 900;
   const scale = Math.min(1, maxDim / Math.max(srcW, srcH));
   const work = document.createElement('canvas');
@@ -95,12 +97,9 @@ export async function detectCardCorners(
       cv.approxPolyDP(cnt, approx, 0.02 * peri, true);
       if (approx.rows === 4 && cv.isContourConvex(approx)) {
         const area = Math.abs(cv.contourArea(approx));
-        // La carte doit occuper une part significative du cadre.
         if (area > bestArea && area > imgArea * 0.15) {
           const pts: Point[] = [];
-          for (let r = 0; r < 4; r++) {
-            pts.push({ x: approx.intPtr(r, 0)[0] / scale, y: approx.intPtr(r, 0)[1] / scale });
-          }
+          for (let r = 0; r < 4; r++) pts.push({ x: approx.intPtr(r, 0)[0] / scale, y: approx.intPtr(r, 0)[1] / scale });
           bestArea = area;
           best = orderCorners(pts);
         }
@@ -115,61 +114,113 @@ export async function detectCardCorners(
   return best;
 }
 
-function dist(a: Point, b: Point): number {
-  return Math.hypot(a.x - b.x, a.y - b.y);
+function dist(a: Point, b: Point): number { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+/** Résout l'homographie 3×3 (comme getPerspectiveTransform) mappant `from`→`to`. */
+function getPerspectiveTransform(from: Point[], to: Point[]): number[] {
+  const A: number[][] = [];
+  const b: number[] = [];
+  for (let i = 0; i < 4; i++) {
+    const { x: sx, y: sy } = from[i];
+    const { x: dx, y: dy } = to[i];
+    A.push([sx, sy, 1, 0, 0, 0, -sx * dx, -sy * dx]); b.push(dx);
+    A.push([0, 0, 0, sx, sy, 1, -sx * dy, -sy * dy]); b.push(dy);
+  }
+  const h = solveLinear(A, b); // 8 inconnues
+  return [h[0], h[1], h[2], h[3], h[4], h[5], h[6], h[7], 1];
 }
 
-/**
- * Redresse la carte définie par 4 coins (ordre TL,TR,BR,BL) en un rectangle
- * droit au ratio carte, et renvoie un JPEG.
- */
+/** Élimination de Gauss pour un système n×n. */
+function solveLinear(A: number[][], b: number[]): number[] {
+  const n = b.length;
+  const M = A.map((row, i) => [...row, b[i]]);
+  for (let col = 0; col < n; col++) {
+    let piv = col;
+    for (let r = col + 1; r < n; r++) if (Math.abs(M[r][col]) > Math.abs(M[piv][col])) piv = r;
+    [M[col], M[piv]] = [M[piv], M[col]];
+    const d = M[col][col] || 1e-9;
+    for (let c = col; c <= n; c++) M[col][c] /= d;
+    for (let r = 0; r < n; r++) {
+      if (r === col) continue;
+      const f = M[r][col];
+      for (let c = col; c <= n; c++) M[r][c] -= f * M[col][c];
+    }
+  }
+  return M.map((row) => row[n]);
+}
+
+/** Redresse la carte définie par 4 coins (TL,TR,BR,BL) en un rectangle droit
+ *  au ratio carte. 100% canvas, aucune dépendance externe. */
 export async function warpCard(
   source: HTMLImageElement | HTMLCanvasElement,
   corners: [Point, Point, Point, Point],
   side: 'front' | 'back',
 ): Promise<File> {
-  const cv = await loadOpenCV();
   const [tl, tr, br, bl] = corners;
-
-  // Dimensions de sortie : on part de la taille moyenne détectée, en imposant
-  // le ratio d'une carte pour un rendu droit et propre.
   const widthPx = (dist(tl, tr) + dist(bl, br)) / 2;
   const heightPx = (dist(tl, bl) + dist(tr, br)) / 2;
   let outW = Math.round(Math.max(widthPx, heightPx * CARD_RATIO));
-  let outH = Math.round(outW / CARD_RATIO);
-  outW = Math.min(1600, Math.max(400, outW));
-  outH = Math.round(outW / CARD_RATIO);
+  outW = Math.min(1400, Math.max(400, outW));
+  const outH = Math.round(outW / CARD_RATIO);
 
-  const src = cv.imread(source);
-  const dst = new cv.Mat();
-  const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [tl.x, tl.y, tr.x, tr.y, br.x, br.y, bl.x, bl.y]);
-  const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, outW, 0, outW, outH, 0, outH]);
-  const M = cv.getPerspectiveTransform(srcTri, dstTri);
+  const srcW = (source as any).naturalWidth || (source as any).width;
+  const srcH = (source as any).naturalHeight || (source as any).height;
+  const srcCanvas = document.createElement('canvas');
+  srcCanvas.width = srcW;
+  srcCanvas.height = srcH;
+  const sctx = srcCanvas.getContext('2d')!;
+  sctx.drawImage(source, 0, 0, srcW, srcH);
+  const srcData = sctx.getImageData(0, 0, srcW, srcH).data;
+
+  // H mappe le rectangle destination -> quadrilatère source (inverse mapping).
+  const destCorners = [{ x: 0, y: 0 }, { x: outW, y: 0 }, { x: outW, y: outH }, { x: 0, y: outH }];
+  const H = getPerspectiveTransform(destCorners, [tl, tr, br, bl]);
 
   const out = document.createElement('canvas');
   out.width = outW;
   out.height = outH;
-  try {
-    cv.warpPerspective(src, dst, M, new cv.Size(outW, outH), cv.INTER_LINEAR, cv.BORDER_REPLICATE, new cv.Scalar());
-    cv.imshow(out, dst);
-  } finally {
-    src.delete(); dst.delete(); srcTri.delete(); dstTri.delete(); M.delete();
+  const octx = out.getContext('2d')!;
+  const dst = octx.createImageData(outW, outH);
+  const dd = dst.data;
+
+  for (let v = 0; v < outH; v++) {
+    for (let u = 0; u < outW; u++) {
+      const X = H[0] * u + H[1] * v + H[2];
+      const Y = H[3] * u + H[4] * v + H[5];
+      const W = H[6] * u + H[7] * v + H[8];
+      const sx = (X / W) | 0;
+      const sy = (Y / W) | 0;
+      const di = (v * outW + u) * 4;
+      if (sx >= 0 && sx < srcW && sy >= 0 && sy < srcH) {
+        const si = (sy * srcW + sx) * 4;
+        dd[di] = srcData[si];
+        dd[di + 1] = srcData[si + 1];
+        dd[di + 2] = srcData[si + 2];
+        dd[di + 3] = 255;
+      } else {
+        dd[di + 3] = 255;
+      }
+    }
   }
+  octx.putImageData(dst, 0, 0);
 
   const blob = await new Promise<Blob>((resolve, reject) =>
-    out.toBlob((v) => (v ? resolve(v) : reject(new Error('Redressement impossible'))), 'image/jpeg', 0.95),
+    out.toBlob((b) => (b ? resolve(b) : reject(new Error('Redressement impossible'))), 'image/jpeg', 0.95),
   );
   return new File([blob], `${side}-${Date.now()}.jpg`, { type: 'image/jpeg' });
 }
 
-/** Coins par défaut (rectangle centré) quand la détection échoue. */
+/** Coins par défaut (rectangle centré au ratio carte) si la détection échoue. */
 export function defaultCorners(w: number, h: number): [Point, Point, Point, Point] {
-  const mx = w * 0.15;
-  const my = h * 0.1;
+  let cw = w * 0.7;
+  let ch = cw / CARD_RATIO;
+  if (ch > h * 0.9) { ch = h * 0.9; cw = ch * CARD_RATIO; }
+  const x = (w - cw) / 2;
+  const y = (h - ch) / 2;
   return [
-    { x: mx, y: my },
-    { x: w - mx, y: my },
-    { x: w - mx, y: h - my },
-    { x: mx, y: h - my },
+    { x, y },
+    { x: x + cw, y },
+    { x: x + cw, y: y + ch },
+    { x, y: y + ch },
   ];
 }
