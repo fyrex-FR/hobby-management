@@ -1165,7 +1165,7 @@ export function StudioView() {
                       />
                       <div className="absolute inset-0">
                         <div
-                          className={`absolute rounded-[1.4rem] border-2 border-[var(--accent)] shadow-[0_0_0_2px_rgba(0,0,0,0.65),0_0_0_9999px_rgba(0,0,0,0.5)] ${adjustingFrame ? 'cursor-move touch-none' : 'pointer-events-none'}`}
+                          className={`absolute rounded-[0.35rem] border-2 border-[var(--accent)] shadow-[0_0_0_2px_rgba(0,0,0,0.65),0_0_0_9999px_rgba(0,0,0,0.5)] ${adjustingFrame ? 'cursor-move touch-none' : 'pointer-events-none'}`}
                           style={{
                             left: `${(0.5 + (cropRect.x - 0.5) * zoom) * 100}%`,
                             top: `${(0.5 + (cropRect.y - 0.5) * zoom) * 100}%`,
@@ -1175,10 +1175,10 @@ export function StudioView() {
                           onPointerDown={adjustingFrame ? (e) => startFrameDrag(e, 'move') : undefined}
                         >
                           {[
-                            'left-2 top-2 border-l-[3px] border-t-[3px] rounded-tl-[0.9rem]',
-                            'right-2 top-2 border-r-[3px] border-t-[3px] rounded-tr-[0.9rem]',
-                            'left-2 bottom-2 border-l-[3px] border-b-[3px] rounded-bl-[0.9rem]',
-                            'right-2 bottom-2 border-r-[3px] border-b-[3px] rounded-br-[0.9rem]',
+                            'left-1.5 top-1.5 border-l-[3px] border-t-[3px] rounded-tl-[0.2rem]',
+                            'right-1.5 top-1.5 border-r-[3px] border-t-[3px] rounded-tr-[0.2rem]',
+                            'left-1.5 bottom-1.5 border-l-[3px] border-b-[3px] rounded-bl-[0.2rem]',
+                            'right-1.5 bottom-1.5 border-r-[3px] border-b-[3px] rounded-br-[0.2rem]',
                           ].map((c) => (
                             <div
                               key={c}
