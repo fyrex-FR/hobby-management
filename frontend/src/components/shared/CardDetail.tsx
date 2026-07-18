@@ -602,6 +602,7 @@ export function CardDetail({ card, onClose }: Props) {
                         numbered: card.numbered,
                         setName: card.set_name || card.brand,
                       }}
+                      cardId={card.id}
                       currentPrice={card.price}
                       onApplyPrice={(eur) =>
                         updateCard.mutateAsync({
