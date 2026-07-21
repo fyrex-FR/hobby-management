@@ -71,6 +71,7 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
   async function publish() {
     setPublishing(true);
     setError('');
+    const trimmedMinimumOfferPrice = minimumOfferPrice.trim();
     try {
       const data = await apiFetch<{ published: boolean; ebay_url: string }>(`/ebay/selling/publish/${card.id}`, {
         method: 'POST',
@@ -79,7 +80,7 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
           description,
           price: parseFloat(price),
           allow_offers: allowOffers,
-          minimum_offer_price: allowOffers ? parseFloat(minimumOfferPrice) : undefined,
+          minimum_offer_price: allowOffers && trimmedMinimumOfferPrice ? parseFloat(trimmedMinimumOfferPrice) : undefined,
           payment_policy_id: paymentPolicyId,
           return_policy_id: returnPolicyId,
           fulfillment_policy_id: fulfillmentPolicyId,
@@ -274,6 +275,7 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
                     type="number"
                     inputMode="decimal"
                     min={0}
+                    required={allowOffers}
                     value={minimumOfferPrice}
                     onChange={(e) => setMinimumOfferPrice(e.target.value)}
                     className="w-full rounded-xl px-3 py-2 text-sm outline-none"

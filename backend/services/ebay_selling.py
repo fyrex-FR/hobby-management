@@ -576,7 +576,7 @@ async def publish_card(
                     "value": f"{minimum_offer_price:.2f}",
                     "currency": "EUR",
                 }
-            offer_body["bestOfferTerms"] = best_offer_terms
+            offer_body["listingPolicies"]["bestOfferTerms"] = best_offer_terms
         if offer_id:
             offer = await _get_offer(client, access_token, offer_id)
             if offer and offer.get("categoryId") != category_id and offer.get("status") == "UNPUBLISHED":

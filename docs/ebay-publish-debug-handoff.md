@@ -297,6 +297,13 @@ Amélioration UX demandée ensuite :
   `description` optionnel. Le backend transforme le texte saisi en HTML
   simple et échappé (`p`, `br`, `ul/li`) avant de l'envoyer à eBay dans
   `product.description` et `listingDescription`.
+- Pour les offres eBay, `bestOfferTerms` doit être envoyé dans
+  `listingPolicies.bestOfferTerms`, pas au niveau racine de l'offer. Le niveau
+  racine peut activer les offres, mais eBay ignore le `autoDeclinePrice` sur
+  certains comptes/marketplaces. Validation réelle effectuée le 2026-07-21
+  avec une offer brouillon temporaire : lecture API OK avec
+  `bestOfferEnabled=true` et `autoDeclinePrice=1.0 EUR`, puis suppression du
+  brouillon et de la SKU temporaire.
 
 ## Repères techniques utiles
 
