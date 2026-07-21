@@ -60,41 +60,37 @@ dépendre de l'historique de conversation. Mis à jour à chaque étape.
   ou (à partir de PR3) automatiquement à la publication. Les annonces créées
   manuellement sur eBay.com ne remontent pas — ce sera le rôle de PR4 (sync).
 
+### PR2 — Business policies + endpoint de preview ✅ (mergé, PAS ENCORE testé en conditions réelles)
+
+- `backend/services/ebay_selling.py` :
+  - `get_business_policies(access_token)` — Account API (payment/return/
+    fulfillment policy, `marketplace_id=EBAY_FR`), renvoie les 3 IDs +
+    `configured: bool`.
+  - `suggest_category(access_token, query)` — Taxonomy API, `category_tree_id`
+    mis en cache mémoire (`_category_tree_cache`).
+  - `build_listing_title(card: dict) -> str` — titre ≤ 80 caractères,
+    troncature propre.
+  - `build_preview(card, access_token)` — combine les trois en parallèle
+    (`asyncio.gather`).
+  - `get_card(card_id, user_id)` — lecture Supabase scopée au propriétaire.
+- `backend/routers/ebay_selling.py` : `GET /ebay/selling/preview/{card_id}`
+  → 404 si carte non trouvée/pas au user, `{"connected": false}` si eBay pas
+  connecté, sinon le preview complet. Ne modifie rien.
+- Testé unitairement (titres, parsing des réponses Account/Taxonomy API
+  mockées, 4 chemins du router via TestClient) — **jamais appelé contre le
+  vrai eBay** (pas d'accès réseau depuis le sandbox de dev). À valider au
+  premier essai réel :
+  - la vraie structure JSON renvoyée par Account API pour les policies du
+    compte xavandr_61 (probable qu'il en ait déjà, à vérifier) ;
+  - la qualité des suggestions de catégorie Taxonomy API sur des titres de
+    cartes de sport (ex. « 2024-25 Panini Mosaic Jaylen Brown Seismic Blue
+    #33 /149 ») — pas garanti que la 1ère suggestion soit la bonne catégorie
+    « Sports Trading Cards », à vérifier et éventuellement filtrer/whitelister
+    une catégorie fixe si la suggestion part n'importe où.
+- Pas de nouvelle UI ajoutée (l'endpoint n'est pas encore appelé depuis le
+  frontend) — PR3 branchera dessus via la modale de publication.
+
 ## Reste à faire
-
-### PR2 — Business policies + endpoint de preview
-
-But : préparer tout ce qu'il faut pour publier, sans encore publier.
-
-- **Nouveau service** `backend/services/ebay_selling.py` :
-  - `async def get_business_policies(user_id) -> dict` — appelle l'**Account
-    API** eBay (`GET /sell/account/v1/payment_policy`,
-    `/sell/account/v1/return_policy`, `/sell/account/v1/fulfillment_policy`,
-    avec `marketplace_id=EBAY_FR` en param), via
-    `get_valid_access_token(user_id)` pour l'auth. Retourne les IDs des
-    policies existantes (une par type, priorité à la policy marquée
-    default/marketplace EBAY_FR). Si aucune policy trouvée → message clair
-    « configure tes options de vente sur eBay » avec lien vers
-    `https://www.ebay.fr/sh/settings/policies` (ou équivalent business
-    policies).
-  - `async def suggest_category(title: str) -> str | None` — **Taxonomy
-    API** (`GET /commerce/taxonomy/v1/category_tree/{tree_id}/
-    get_category_suggestions?q=...`) pour résoudre une catégorie eBay à
-    partir d'un texte (ex. « basketball card »). `tree_id` pour EBAY_FR à
-    récupérer via `get_default_category_tree_id` une fois, log/cache la
-    valeur trouvée (elle ne change pas).
-  - `def build_listing_title(card: Card) -> str` — génère un titre ≤ **80
-    caractères** (contrainte dure eBay) à partir des attributs de la carte
-    (player, year, set, parallel, numbered...). Tronquer proprement si trop
-    long, jamais couper au milieu d'un mot si possible.
-- **Nouveau router** `backend/routers/ebay_selling.py` :
-  - `GET /ebay/selling/preview/{card_id}` (auth) → renvoie titre généré,
-    catégorie suggérée, policies trouvées (ou message si manquantes), prix
-    actuel de la carte (`card.price`), marketplace. Ne modifie rien côté
-    eBay.
-- **Frontend** : pas de nouvelle UI obligatoire pour ce PR (peut être testé
-  via l'endpoint direct) ; si temps, un aperçu simple dans `EbayView.tsx`
-  ou `CardDetail.tsx` avant PR3.
 
 ### PR3 — Publication réelle (le bouton "Publier")
 
