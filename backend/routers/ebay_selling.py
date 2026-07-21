@@ -17,6 +17,8 @@ class PublishRequest(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     price: Optional[float] = None
+    allow_offers: Optional[bool] = False
+    minimum_offer_price: Optional[float] = None
     payment_policy_id: Optional[str] = None
     return_policy_id: Optional[str] = None
     fulfillment_policy_id: Optional[str] = None
@@ -59,6 +61,13 @@ async def publish_listing(card_id: str, body: PublishRequest, user: dict = Depen
         price = body.price if body.price is not None else card.get("price")
         if not price or price <= 0:
             raise HTTPException(status_code=422, detail="Indique un prix de vente avant de publier.")
+        allow_offers = bool(body.allow_offers)
+        minimum_offer_price = body.minimum_offer_price
+        if allow_offers:
+            if minimum_offer_price is None or minimum_offer_price <= 0:
+                raise HTTPException(status_code=422, detail="Indique un montant minimum positif pour autoriser les offres.")
+            if minimum_offer_price >= price:
+                raise HTTPException(status_code=422, detail="Le montant minimum des offres doit être inférieur au prix de vente.")
         if not card.get("image_front_url"):
             raise HTTPException(status_code=422, detail="Ajoute au moins la photo recto avant de publier.")
 
@@ -92,7 +101,17 @@ async def publish_listing(card_id: str, body: PublishRequest, user: dict = Depen
             raise HTTPException(status_code=422, detail="Impossible de déterminer une catégorie eBay pour cette carte.")
 
         try:
-            return await ebay_selling.publish_card(card, access_token, title, price, category["id"], selected_policies, description)
+            return await ebay_selling.publish_card(
+                card,
+                access_token,
+                title,
+                price,
+                category["id"],
+                selected_policies,
+                description,
+                allow_offers=allow_offers,
+                minimum_offer_price=minimum_offer_price,
+            )
         except EbayApiError as e:
             logger.warning("Publication eBay refusée pour la carte %s: %s", card_id, e)
             raise HTTPException(status_code=502, detail=f"{e.step} : {e.body}")

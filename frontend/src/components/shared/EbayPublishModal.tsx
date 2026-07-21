@@ -44,6 +44,8 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
   const [paymentPolicyId, setPaymentPolicyId] = useState('');
   const [returnPolicyId, setReturnPolicyId] = useState('');
   const [fulfillmentPolicyId, setFulfillmentPolicyId] = useState('');
+  const [allowOffers, setAllowOffers] = useState(false);
+  const [minimumOfferPrice, setMinimumOfferPrice] = useState('');
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<{ ebay_url: string } | null>(null);
@@ -76,6 +78,8 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
           title,
           description,
           price: parseFloat(price),
+          allow_offers: allowOffers,
+          minimum_offer_price: allowOffers ? parseFloat(minimumOfferPrice) : undefined,
           payment_policy_id: paymentPolicyId,
           return_policy_id: returnPolicyId,
           fulfillment_policy_id: fulfillmentPolicyId,
@@ -97,6 +101,11 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
   const missingPolicySelection = preview?.policies?.configured
     ? !paymentPolicyId || !returnPolicyId || !fulfillmentPolicyId
     : false;
+  const parsedPrice = parseFloat(price);
+  const parsedMinimumOffer = parseFloat(minimumOfferPrice);
+  const invalidMinimumOffer = allowOffers && (
+    !(parsedMinimumOffer > 0) || (parsedPrice > 0 && parsedMinimumOffer >= parsedPrice)
+  );
 
   function renderPolicySelect(
     label: string,
@@ -246,13 +255,44 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
               />
             </div>
 
+            <div className="rounded-2xl p-3 flex flex-col gap-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
+              <label className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={allowOffers}
+                  onChange={(e) => setAllowOffers(e.target.checked)}
+                  className="w-4 h-4 accent-[var(--accent)]"
+                />
+                <span className="text-sm font-bold text-white">Autoriser les offres</span>
+              </label>
+              {allowOffers && (
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                    Offre minimum (€)
+                  </label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    value={minimumOfferPrice}
+                    onChange={(e) => setMinimumOfferPrice(e.target.value)}
+                    className="w-full rounded-xl px-3 py-2 text-sm outline-none"
+                    style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                  />
+                  <p className="text-[11px] leading-relaxed" style={{ color: invalidMinimumOffer ? 'var(--red)' : 'var(--text-muted)' }}>
+                    eBay refusera automatiquement les offres sous ce montant. Le minimum doit rester inférieur au prix.
+                  </p>
+                </div>
+              )}
+            </div>
+
             {error && (
               <p className="text-xs" style={{ color: 'var(--red)' }}>{error}</p>
             )}
 
             <button
               onClick={publish}
-              disabled={publishing || missingPolicies.length > 0 || missingPolicySelection || !title.trim() || !description.trim() || !(parseFloat(price) > 0)}
+              disabled={publishing || missingPolicies.length > 0 || missingPolicySelection || invalidMinimumOffer || !title.trim() || !description.trim() || !(parsedPrice > 0)}
               className="py-3.5 rounded-2xl text-sm font-black transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
               style={{ background: 'var(--accent)', color: '#09090B' }}
             >

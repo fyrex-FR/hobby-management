@@ -511,6 +511,9 @@ async def publish_card(
     category_id: str,
     policies: dict,
     description: Optional[str] = None,
+    *,
+    allow_offers: bool = False,
+    minimum_offer_price: Optional[float] = None,
 ) -> dict:
     """Enchaîne inventory_item -> offer (créée ou réutilisée) -> publish.
     Lève EbayApiError avec le détail exact en cas d'échec à n'importe quelle
@@ -566,6 +569,14 @@ async def publish_card(
             },
             "pricingSummary": {"price": {"value": str(price), "currency": "EUR"}},
         }
+        if allow_offers:
+            best_offer_terms = {"bestOfferEnabled": True}
+            if minimum_offer_price is not None:
+                best_offer_terms["autoDeclinePrice"] = {
+                    "value": f"{minimum_offer_price:.2f}",
+                    "currency": "EUR",
+                }
+            offer_body["bestOfferTerms"] = best_offer_terms
         if offer_id:
             offer = await _get_offer(client, access_token, offer_id)
             if offer and offer.get("categoryId") != category_id and offer.get("status") == "UNPUBLISHED":
