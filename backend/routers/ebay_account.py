@@ -80,7 +80,13 @@ async def account_setup(user: dict = Depends(current_user)):
         return {
             "connected": False,
             "locations": [],
-            "policies": {"payment": None, "return": None, "fulfillment": None, "configured": False},
+            "policies": {
+                "payment": None,
+                "return": None,
+                "fulfillment": None,
+                "options": {"payment": [], "return": [], "fulfillment": []},
+                "configured": False,
+            },
         }
 
     locations, policies = await list_inventory_locations(access_token), await get_business_policies(access_token)

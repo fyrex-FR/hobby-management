@@ -9,9 +9,24 @@ interface PreviewData {
   title?: string;
   description?: string;
   category?: { id: string; name: string } | null;
-  policies?: { payment: string | null; return: string | null; fulfillment: string | null; configured: boolean };
+  policies?: {
+    payment: string | null;
+    return: string | null;
+    fulfillment: string | null;
+    options?: {
+      payment: PolicyOption[];
+      return: PolicyOption[];
+      fulfillment: PolicyOption[];
+    };
+    configured: boolean;
+  };
   price?: number | null;
   marketplace_id?: string;
+}
+
+interface PolicyOption {
+  id: string;
+  name: string;
 }
 
 interface Props {
@@ -26,6 +41,9 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
+  const [paymentPolicyId, setPaymentPolicyId] = useState('');
+  const [returnPolicyId, setReturnPolicyId] = useState('');
+  const [fulfillmentPolicyId, setFulfillmentPolicyId] = useState('');
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<{ ebay_url: string } | null>(null);
@@ -39,6 +57,9 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
         if (data.title) setTitle(data.title);
         if (data.description) setDescription(data.description);
         setPrice((data.price ?? card.price ?? '').toString());
+        setPaymentPolicyId(data.policies?.payment || '');
+        setReturnPolicyId(data.policies?.return || '');
+        setFulfillmentPolicyId(data.policies?.fulfillment || '');
       })
       .catch((e) => !cancelled && setError((e as Error).message))
       .finally(() => !cancelled && setLoading(false));
@@ -51,7 +72,14 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
     try {
       const data = await apiFetch<{ published: boolean; ebay_url: string }>(`/ebay/selling/publish/${card.id}`, {
         method: 'POST',
-        body: JSON.stringify({ title, description, price: parseFloat(price) }),
+        body: JSON.stringify({
+          title,
+          description,
+          price: parseFloat(price),
+          payment_policy_id: paymentPolicyId,
+          return_policy_id: returnPolicyId,
+          fulfillment_policy_id: fulfillmentPolicyId,
+        }),
       });
       setResult(data);
       onPublished();
@@ -65,6 +93,42 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
   const missingPolicies = preview?.policies && !preview.policies.configured
     ? (['payment', 'return', 'fulfillment'] as const).filter((k) => !preview.policies?.[k])
     : [];
+  const policyOptions = preview?.policies?.options;
+  const missingPolicySelection = preview?.policies?.configured
+    ? !paymentPolicyId || !returnPolicyId || !fulfillmentPolicyId
+    : false;
+
+  function renderPolicySelect(
+    label: string,
+    value: string,
+    onChange: (value: string) => void,
+    options: PolicyOption[] = [],
+  ) {
+    return (
+      <label className="flex flex-col gap-1.5">
+        <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+          {label}
+        </span>
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          disabled={options.length === 0}
+          className="w-full rounded-xl px-3 py-2 text-sm outline-none disabled:opacity-50"
+          style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+        >
+          {options.length === 0 ? (
+            <option value="">Aucune option trouvée</option>
+          ) : (
+            options.map((policy) => (
+              <option key={policy.id} value={policy.id}>
+                {policy.name}
+              </option>
+            ))
+          )}
+        </select>
+      </label>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={onClose}>
@@ -138,6 +202,22 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
               </p>
             )}
 
+            {preview.policies?.configured && (
+              <div className="rounded-2xl p-3 flex flex-col gap-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
+                <div className="flex flex-col gap-1">
+                  <p className="text-xs font-black text-white">Conditions eBay</p>
+                  <p className="text-[11px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                    Choisis les policies du compte vendeur pour cette annonce.
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  {renderPolicySelect('Paiement', paymentPolicyId, setPaymentPolicyId, policyOptions?.payment)}
+                  {renderPolicySelect('Livraison', fulfillmentPolicyId, setFulfillmentPolicyId, policyOptions?.fulfillment)}
+                  {renderPolicySelect('Retours', returnPolicyId, setReturnPolicyId, policyOptions?.return)}
+                </div>
+              </div>
+            )}
+
             <div className="flex flex-col gap-1.5">
               <label className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
                 Description ({description.length}/5000)
@@ -172,7 +252,7 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
 
             <button
               onClick={publish}
-              disabled={publishing || missingPolicies.length > 0 || !title.trim() || !description.trim() || !(parseFloat(price) > 0)}
+              disabled={publishing || missingPolicies.length > 0 || missingPolicySelection || !title.trim() || !description.trim() || !(parseFloat(price) > 0)}
               className="py-3.5 rounded-2xl text-sm font-black transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
               style={{ background: 'var(--accent)', color: '#09090B' }}
             >

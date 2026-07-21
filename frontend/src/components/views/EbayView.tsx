@@ -174,7 +174,7 @@ export function EbayView() {
             icon={CreditCard}
             done={hasPolicies}
             title="Paiement, livraison et retours"
-            detail="eBay doit avoir une policy de paiement, une policy de livraison et une policy de retours sur EBAY_FR. CardVaults reprend la première disponible."
+            detail="eBay doit avoir une policy de paiement, une policy de livraison et une policy de retours sur EBAY_FR. Tu choisis lesquelles utiliser dans la modale de publication."
           />
           <SetupStep
             icon={Camera}

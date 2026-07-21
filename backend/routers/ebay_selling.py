@@ -17,6 +17,9 @@ class PublishRequest(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     price: Optional[float] = None
+    payment_policy_id: Optional[str] = None
+    return_policy_id: Optional[str] = None
+    fulfillment_policy_id: Optional[str] = None
 
 
 class PriceUpdateRequest(BaseModel):
@@ -73,13 +76,23 @@ async def publish_listing(card_id: str, body: PublishRequest, user: dict = Depen
                 status_code=422,
                 detail=f"Configure d'abord tes options de vente sur eBay (manquant : {', '.join(missing)}).",
             )
+        selected_policies = {
+            "payment": body.payment_policy_id or policies["payment"],
+            "return": body.return_policy_id or policies["return"],
+            "fulfillment": body.fulfillment_policy_id or policies["fulfillment"],
+        }
+        policy_options = policies.get("options") or {}
+        for key, selected_id in selected_policies.items():
+            allowed_ids = {policy["id"] for policy in policy_options.get(key, []) if policy.get("id")}
+            if allowed_ids and selected_id not in allowed_ids:
+                raise HTTPException(status_code=422, detail="Option de vente eBay invalide pour ce compte vendeur.")
 
         category = await ebay_selling.suggest_category(access_token, title)
         if not category or not category.get("id"):
             raise HTTPException(status_code=422, detail="Impossible de déterminer une catégorie eBay pour cette carte.")
 
         try:
-            return await ebay_selling.publish_card(card, access_token, title, price, category["id"], policies, description)
+            return await ebay_selling.publish_card(card, access_token, title, price, category["id"], selected_policies, description)
         except EbayApiError as e:
             logger.warning("Publication eBay refusée pour la carte %s: %s", card_id, e)
             raise HTTPException(status_code=502, detail=f"{e.step} : {e.body}")

@@ -30,7 +30,17 @@ export interface EbayBusinessPolicies {
   payment?: string | null;
   return?: string | null;
   fulfillment?: string | null;
+  options?: {
+    payment: EbayPolicyOption[];
+    return: EbayPolicyOption[];
+    fulfillment: EbayPolicyOption[];
+  };
   configured: boolean;
+}
+
+export interface EbayPolicyOption {
+  id: string;
+  name: string;
 }
 
 export interface EbaySellerSetup {

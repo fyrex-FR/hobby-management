@@ -123,7 +123,13 @@ async def get_card(card_id: str, user_id: str) -> Optional[dict]:
     return rows[0] if rows else None
 
 
-async def _get_one_policy(client: httpx.AsyncClient, access_token: str, path: str, list_key: str, id_key: str) -> Optional[str]:
+async def _get_policies(
+    client: httpx.AsyncClient,
+    access_token: str,
+    path: str,
+    list_key: str,
+    id_key: str,
+) -> list[dict]:
     try:
         resp = await client.get(
             f"{ACCOUNT_API}/{path}",
@@ -131,11 +137,18 @@ async def _get_one_policy(client: httpx.AsyncClient, access_token: str, path: st
             params={"marketplace_id": SELL_MARKETPLACE_ID},
         )
         if resp.status_code != 200:
-            return None
+            return []
         items = resp.json().get(list_key, [])
-        return items[0][id_key] if items else None
+        return [
+            {
+                "id": item[id_key],
+                "name": item.get("name") or item[id_key],
+            }
+            for item in items
+            if item.get(id_key)
+        ]
     except Exception:
-        return None
+        return []
 
 
 async def get_business_policies(access_token: str) -> dict:
@@ -143,7 +156,7 @@ async def get_business_policies(access_token: str) -> dict:
     EBAY_FR, en parallèle (plutôt qu'en séquence : 3 allers-retours eBay
     l'un après l'autre peuvent suffire à dépasser le délai que tolère un
     proxy devant l'app). Renvoie leurs IDs si présentes, None sinon par
-    catégorie, plus un booléen global `configured`."""
+    catégorie, les listes disponibles, plus un booléen global `configured`."""
     endpoints = {
         "payment": ("payment_policy", "paymentPolicies", "paymentPolicyId"),
         "return": ("return_policy", "returnPolicies", "returnPolicyId"),
@@ -151,13 +164,15 @@ async def get_business_policies(access_token: str) -> dict:
     }
     async with httpx.AsyncClient(timeout=15) as client:
         keys = list(endpoints.keys())
-        values = await asyncio.gather(*(
-            _get_one_policy(client, access_token, *endpoints[k]) for k in keys
+        lists = await asyncio.gather(*(
+            _get_policies(client, access_token, *endpoints[k]) for k in keys
         ))
-    result = dict(zip(keys, values))
+    options = dict(zip(keys, lists))
+    result = {key: (values[0]["id"] if values else None) for key, values in options.items()}
 
     return {
         **result,
+        "options": options,
         "configured": all(result.get(k) for k in endpoints),
     }
 
