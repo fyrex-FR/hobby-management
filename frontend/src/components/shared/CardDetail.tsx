@@ -31,7 +31,7 @@ import { useFolders } from '../../hooks/useFolders';
 import { useIdentify } from '../../hooks/useIdentify';
 import { EbaySoldItems } from './EbaySoldItems';
 import { EbayPublishModal } from './EbayPublishModal';
-import { EbayLogo } from './EbayLogo';
+import { EbayLogo, VintedLogo } from './EbayLogo';
 import { supabase } from '../../lib/supabase';
 import { compressImage } from '../../lib/storage';
 import { cdnImg } from '../../lib/cdn';
@@ -670,7 +670,7 @@ export function CardDetail({ card, onClose }: Props) {
                             onClick={() => setShowEbayPublish(true)}
                             className="py-4 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-2 bg-[var(--accent)] text-[#09090B] shadow-xl shadow-[var(--accent-glow)] hover:brightness-110 active:scale-95"
                           >
-                            <EbayLogo width={36} height={14} />
+                            <EbayLogo width={36} height={14} mono="#09090B" />
                             PUBLIER
                           </button>
                         )}
@@ -682,15 +682,16 @@ export function CardDetail({ card, onClose }: Props) {
                             rel="noopener noreferrer"
                             className="py-4 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-2 bg-white/5 border border-white/10 hover:bg-white/10 text-[var(--text-secondary)] active:scale-95"
                           >
-                            VINTED ↗
+                            <VintedLogo width={50} height={14} />
+                            VOIR ↗
                           </a>
                         ) : (
                           <button
                             onClick={publishToVinted}
                             className="py-4 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-2 bg-[var(--accent)] text-[#09090B] shadow-xl shadow-[var(--accent-glow)] hover:brightness-110 active:scale-95"
                           >
-                            <ImageIcon size={16} />
-                            VINTED
+                            <VintedLogo width={50} height={14} mono="#09090B" />
+                            PUBLIER
                           </button>
                         )}
                       </div>

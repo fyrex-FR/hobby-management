@@ -176,7 +176,7 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
               className="py-3.5 rounded-2xl text-sm font-black transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
               style={{ background: 'var(--accent)', color: '#09090B' }}
             >
-              {publishing ? <Loader2 size={16} className="animate-spin" /> : <EbayLogo width={32} height={13} />}
+              {publishing ? <Loader2 size={16} className="animate-spin" /> : <EbayLogo width={32} height={13} mono="#09090B" />}
               {publishing ? 'Publication…' : 'Publier sur eBay'}
             </button>
           </>
