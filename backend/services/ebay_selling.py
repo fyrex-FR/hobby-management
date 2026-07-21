@@ -26,6 +26,7 @@ INVENTORY_API = "https://api.ebay.com/sell/inventory/v1"
 
 TITLE_MAX_LEN = 80
 SELL_CONTENT_LANGUAGE = "fr-FR"
+SPORTS_CARD_SINGLE_CATEGORY_ID = "261328"
 
 # Pour la catégorie eBay FR "JCC : cartes à l'unité" (183454), l'état
 # générique USED_EXCELLENT est converti en conditionId 3000 puis rejeté au
@@ -164,6 +165,10 @@ async def suggest_category(access_token: str, query: str) -> Optional[dict]:
                 suggestions = resp.json().get("categorySuggestions", [])
                 if not suggestions:
                     continue
+                for suggestion in suggestions:
+                    preferred = suggestion.get("category", {})
+                    if preferred.get("categoryId") == SPORTS_CARD_SINGLE_CATEGORY_ID:
+                        return {"id": preferred.get("categoryId"), "name": preferred.get("categoryName")}
                 cat = suggestions[0].get("category", {})
                 return {"id": cat.get("categoryId"), "name": cat.get("categoryName")}
         return None
@@ -185,6 +190,10 @@ def build_listing_title(card: dict) -> str:
     if card.get("grading_company") and card.get("grading_grade"):
         grading = f"{card['grading_company']} {card['grading_grade']}"
 
+    card_number = card.get("card_number")
+    if card_number and not str(card_number).strip().startswith("#"):
+        card_number = f"#{card_number}"
+
     parts = [
         card.get("year"),
         card.get("brand") or card.get("set_name"),
@@ -192,7 +201,7 @@ def build_listing_title(card: dict) -> str:
         card.get("player"),
         card.get("insert_name"),
         card.get("parallel_name") if card.get("parallel_name") and card.get("parallel_name") != "Base" else None,
-        f"#{card['card_number']}" if card.get("card_number") else None,
+        card_number,
         card.get("numbered"),
         "RC" if card.get("is_rookie") else None,
         grading or None,

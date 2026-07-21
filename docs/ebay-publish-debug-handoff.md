@@ -266,6 +266,10 @@ Correction additionnelle après retest du bouton `Publier sur eBay` :
   `build_aspects` envoie les aspects FR obligatoires/recommandés utiles :
   `Sport=Basket-ball`, `Type=Carte à collectionner sportive`,
   `Ligue=National Basketball Association (NBA)`, plus équipe/joueur/saison.
+- Taxonomy eBay peut encore placer `183454 JCC` en premier quand le titre
+  contient des termes comme `Prizm ##33 /149`; `261328` reste présent plus
+  bas dans les suggestions. Le backend préfère donc explicitement
+  `261328 Cartes à l'unité` lorsqu'elle apparaît dans les résultats.
 - Point eBay découvert ensuite : `PUT /offer/{offerId}` répond `204` mais ne
   modifie pas réellement `categoryId` sur une offer brouillon existante. Le
   backend supprime donc l'ancienne offer `UNPUBLISHED` et en crée une
