@@ -223,6 +223,23 @@ Point de vigilance découvert pendant le diagnostic :
   token OAuth du vendeur concerné. Cela respecte le multicompte : chaque
   compte eBay a sa propre inventory location.
 
+Correction additionnelle après test réel du bouton `Enregistrer` :
+
+- Le premier endpoint CardVaults de création du lieu appelait eBay avec
+  `PUT /sell/inventory/v1/location/{merchantLocationKey}`. eBay répondait
+  `400 Invalid request` et l'app affichait à nouveau le message générique
+  `Connexion au serveur impossible`.
+- Rejeu contrôlé depuis le conteneur backend avec le token du compte
+  `xavandr_61` : eBay accepte la création avec
+  `POST /sell/inventory/v1/location/{merchantLocationKey}` et un body de
+  forme `{"name":"CardVaults","location":{"address":{...}}}`.
+- Le lieu réel du compte Xavier a été créé avec succès :
+  `merchantLocationKey=cardvaults-fr-93600`, ville `Aulnay-sous-Bois`,
+  code postal `93600`, pays `FR`.
+- `create_inventory_location` utilise maintenant `POST` et devient
+  idempotent : si eBay répond `merchantLocationKey already exists`, le
+  backend récupère la location existante et renvoie un succès applicatif.
+
 ## Repères techniques utiles
 
 - Backend déployé : `https://collection-api.cardvaults.app` (Coolify).

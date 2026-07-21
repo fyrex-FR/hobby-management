@@ -330,8 +330,6 @@ async def create_inventory_location(
     merchant_location_key = _location_key(country, postal_code)
     body = {
         "name": name.strip() or "CardVaults",
-        "merchantLocationStatus": "ENABLED",
-        "locationTypes": ["WAREHOUSE"],
         "location": {
             "address": {
                 "city": city,
@@ -341,11 +339,18 @@ async def create_inventory_location(
         },
     }
     async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.put(
+        resp = await client.post(
             f"{INVENTORY_API}/location/{merchant_location_key}",
             headers=_sell_headers(access_token),
             json=body,
         )
+        if resp.status_code == 400 and "merchantLocationKey already exists" in resp.text:
+            existing = await client.get(
+                f"{INVENTORY_API}/location/{merchant_location_key}",
+                headers=_sell_headers(access_token),
+            )
+            if existing.status_code == 200:
+                return existing.json()
     if resp.status_code not in (200, 201, 204):
         raise EbayApiError("Création du lieu d'expédition eBay", resp.status_code, resp.text)
     return {
