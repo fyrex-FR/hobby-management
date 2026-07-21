@@ -26,6 +26,19 @@ export interface EbayLocationStatus {
   locations: EbayLocation[];
 }
 
+export interface EbayBusinessPolicies {
+  payment?: string | null;
+  return?: string | null;
+  fulfillment?: string | null;
+  configured: boolean;
+}
+
+export interface EbaySellerSetup {
+  connected: boolean;
+  locations: EbayLocation[];
+  policies: EbayBusinessPolicies;
+}
+
 export function useEbayAccountStatus() {
   return useQuery<EbayAccountStatus>({
     queryKey: ['ebay-account-status'],
@@ -61,6 +74,14 @@ export function useEbayLocationStatus(enabled: boolean) {
   });
 }
 
+export function useEbaySellerSetup(enabled: boolean) {
+  return useQuery<EbaySellerSetup>({
+    queryKey: ['ebay-seller-setup'],
+    queryFn: () => apiFetch<EbaySellerSetup>('/ebay/account/setup'),
+    enabled,
+  });
+}
+
 export function useEbayLocationCreate() {
   const qc = useQueryClient();
   return useMutation({
@@ -70,6 +91,9 @@ export function useEbayLocationCreate() {
         body: JSON.stringify(body),
       })
     ),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['ebay-location-status'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ebay-location-status'] });
+      qc.invalidateQueries({ queryKey: ['ebay-seller-setup'] });
+    },
   });
 }

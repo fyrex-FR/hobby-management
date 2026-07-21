@@ -8,7 +8,7 @@ from .auth import current_user
 from services import ebay_oauth
 from services.ebay_oauth import OAuthError
 from services.ebay_oauth import get_valid_access_token
-from services.ebay_selling import EbayApiError, create_inventory_location, list_inventory_locations
+from services.ebay_selling import EbayApiError, create_inventory_location, get_business_policies, list_inventory_locations
 from services.ebay_token_crypto import EncryptionNotConfigured
 
 router = APIRouter()
@@ -71,6 +71,20 @@ async def account_location(user: dict = Depends(current_user)):
     if not access_token:
         return {"connected": False, "locations": []}
     return {"connected": True, "locations": await list_inventory_locations(access_token)}
+
+
+@router.get("/ebay/account/setup")
+async def account_setup(user: dict = Depends(current_user)):
+    access_token = await get_valid_access_token(user["sub"])
+    if not access_token:
+        return {
+            "connected": False,
+            "locations": [],
+            "policies": {"payment": None, "return": None, "fulfillment": None, "configured": False},
+        }
+
+    locations, policies = await list_inventory_locations(access_token), await get_business_policies(access_token)
+    return {"connected": True, "locations": locations, "policies": policies}
 
 
 @router.post("/ebay/account/location")

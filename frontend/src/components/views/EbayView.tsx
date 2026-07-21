@@ -1,13 +1,29 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { CheckCircle2, LogOut, ExternalLink, Tag, PackageCheck, ShoppingBag, MapPin, Save, Loader2 } from 'lucide-react';
+import {
+  AlertCircle,
+  Camera,
+  CheckCircle2,
+  CreditCard,
+  ExternalLink,
+  FileText,
+  Link2,
+  Loader2,
+  LogOut,
+  MapPin,
+  PackageCheck,
+  Save,
+  ShoppingBag,
+  Tag,
+  Truck,
+} from 'lucide-react';
 import { useCards } from '../../hooks/useCards';
 import {
   useEbayAccountStatus,
   useEbayConnect,
   useEbayDisconnect,
   useEbayLocationCreate,
-  useEbayLocationStatus,
+  useEbaySellerSetup,
 } from '../../hooks/useEbayAccount';
 import { EbayLogo } from '../shared/EbayLogo';
 import { cdnImg } from '../../lib/cdn';
@@ -28,10 +44,40 @@ function StatTile({ label, value, icon: Icon, accent }: { label: string; value: 
   );
 }
 
+function SetupStep({
+  title,
+  detail,
+  done,
+  icon: Icon,
+}: {
+  title: string;
+  detail: string;
+  done?: boolean;
+  icon: any;
+}) {
+  return (
+    <div className="flex gap-3 rounded-2xl p-3" style={{ background: done ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.04)' }}>
+      <div
+        className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+        style={{ background: done ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)' }}
+      >
+        <Icon size={17} style={{ color: done ? 'var(--green)' : 'var(--accent)' }} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          {done ? <CheckCircle2 size={14} style={{ color: 'var(--green)' }} /> : <AlertCircle size={14} style={{ color: 'var(--accent)' }} />}
+          <p className="text-sm font-bold text-white">{title}</p>
+        </div>
+        <p className="text-xs leading-relaxed mt-1" style={{ color: 'var(--text-muted)' }}>{detail}</p>
+      </div>
+    </div>
+  );
+}
+
 export function EbayView() {
   const { data: cards = [] } = useCards();
   const { data: status, isLoading } = useEbayAccountStatus();
-  const { data: locationStatus } = useEbayLocationStatus(Boolean(status?.connected));
+  const { data: setup } = useEbaySellerSetup(Boolean(status?.connected));
   const connect = useEbayConnect();
   const disconnect = useEbayDisconnect();
   const createLocation = useEbayLocationCreate();
@@ -60,7 +106,10 @@ export function EbayView() {
     () => cards.filter((c) => c.status === 'a_vendre' && !c.ebay_url),
     [cards],
   );
-  const location = locationStatus?.locations?.[0];
+  const location = setup?.locations?.[0];
+  const policies = setup?.policies;
+  const hasLocation = Boolean(location);
+  const hasPolicies = Boolean(policies?.configured);
 
   useEffect(() => {
     const address = location?.location?.address;
@@ -100,6 +149,60 @@ export function EbayView() {
           {notice.text}
         </div>
       )}
+
+      <div className="glass rounded-2xl p-5 flex flex-col gap-4">
+        <div className="flex flex-col gap-1">
+          <p className="text-sm font-black text-white">Avant de publier</p>
+          <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+            Chaque vendeur configure son propre compte eBay. CardVaults utilise ensuite ces réglages pour créer l’annonce avec la bonne catégorie sport, l’état carte adapté, le lieu d’expédition et les options de vente eBay.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <SetupStep
+            icon={Link2}
+            done={Boolean(status?.connected)}
+            title="Compte eBay connecté"
+            detail="Connexion OAuth obligatoire : l’annonce est publiée sur le compte du vendeur connecté, pas sur un compte global."
+          />
+          <SetupStep
+            icon={MapPin}
+            done={hasLocation}
+            title="Lieu d’expédition"
+            detail="Code postal et ville à enregistrer dans CardVaults. Cela crée une location eBay active propre au compte vendeur."
+          />
+          <SetupStep
+            icon={CreditCard}
+            done={hasPolicies}
+            title="Paiement, livraison et retours"
+            detail="eBay doit avoir une policy de paiement, une policy de livraison et une policy de retours sur EBAY_FR. CardVaults reprend la première disponible."
+          />
+          <SetupStep
+            icon={Camera}
+            done={readyNotListed.length > 0 || listed.length > 0}
+            title="Cartes prêtes"
+            detail="Avant publication : photo recto, prix positif, titre 80 caractères max et description 5000 caractères max. Titre et description restent modifiables dans la modale."
+          />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+          <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--text-secondary)' }}>
+            <Truck size={14} style={{ color: 'var(--accent)' }} />
+            Expédition depuis le lieu vendeur
+          </div>
+          <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--text-secondary)' }}>
+            <Tag size={14} style={{ color: 'var(--accent)' }} />
+            Catégorie sport prioritaire
+          </div>
+          <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--text-secondary)' }}>
+            <FileText size={14} style={{ color: 'var(--accent)' }} />
+            Description générée puis éditable
+          </div>
+        </div>
+        {status?.connected && policies && !policies.configured && (
+          <p className="text-xs leading-relaxed rounded-xl px-3 py-2" style={{ background: 'rgba(239,68,68,0.08)', color: 'var(--red)' }}>
+            À configurer côté eBay : {[!policies.payment && 'paiement', !policies.fulfillment && 'livraison', !policies.return && 'retours'].filter(Boolean).join(', ')}.
+          </p>
+        )}
+      </div>
 
       {/* Statut de connexion */}
       {isLoading ? (
