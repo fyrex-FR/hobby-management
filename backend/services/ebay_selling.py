@@ -304,7 +304,8 @@ async def list_inventory_locations(access_token: str) -> list[dict]:
             resp = await client.get(f"{INVENTORY_API}/location", headers=_sell_headers(access_token))
         if resp.status_code != 200:
             return []
-        return resp.json().get("locations", [])
+        locations = resp.json().get("locations", [])
+        return sorted(locations, key=lambda loc: loc.get("merchantLocationStatus") != "ENABLED")
     except Exception:
         return []
 
