@@ -23,6 +23,7 @@ TAXONOMY_API = "https://api.ebay.com/commerce/taxonomy/v1"
 INVENTORY_API = "https://api.ebay.com/sell/inventory/v1"
 
 TITLE_MAX_LEN = 80
+SELL_CONTENT_LANGUAGE = "fr-FR"
 
 # Condition volontairement générique et universelle (valeur ConditionEnum
 # stable dans toutes les catégories eBay), plutôt que de deviner des valeurs
@@ -59,6 +60,7 @@ def _sell_headers(access_token: str) -> dict:
     return {
         "Authorization": f"Bearer {access_token}",
         "X-EBAY-C-MARKETPLACE-ID": SELL_MARKETPLACE_ID,
+        "Content-Language": SELL_CONTENT_LANGUAGE,
         "Content-Type": "application/json",
     }
 

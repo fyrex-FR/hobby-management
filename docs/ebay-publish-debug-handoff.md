@@ -123,6 +123,84 @@ Par ordre de priorité suggéré :
    navigateur, ce qui isolerait un problème côté navigateur/CORS d'un
    problème d'infra pure.
 
+## Diagnostic et résolution du 2026-07-21
+
+Reprise par Jarvis depuis le workspace local avec accès réseau et accès
+Coolify.
+
+Faits établis :
+
+- Le repo local a été mis à jour sur `main`, commit `3a6610e`.
+- Le conteneur backend Coolify actif était
+  `x134wf8gaskhyej4w8jebyus-111930572432`, image construite depuis
+  `3a6610e5524e717fe00470c740929790c99debe4`.
+- Le frontend actuellement servi par Cloudflare Pages charge le bundle
+  `assets/index-DqUgd_TD.js`.
+- L'HTML `https://collection.cardvaults.app/` est servi avec
+  `cache-control: public, max-age=0, must-revalidate`.
+- Le bundle JS est servi avec `cache-control: public, max-age=14400,
+  must-revalidate`.
+- Le bundle JS actuellement servi contient bien le fix `Promise.race` et le
+  message `Connexion au serveur impossible`; Cloudflare ne sert donc pas une
+  ancienne build globale au moment du test.
+- Un `OPTIONS` CORS vers
+  `https://collection-api.cardvaults.app/api/ebay/selling/publish/nonexistent-card-id`
+  avec `Origin: https://collection.cardvaults.app` renvoie `200 OK`, avec
+  `access-control-allow-origin: https://collection.cardvaults.app` et les
+  headers/méthodes attendus.
+- Un `POST` sans auth vers le même endpoint renvoie proprement `403 Not
+  authenticated` et apparaît dans les logs Uvicorn, donc Cloudflare/Traefik
+  routent bien ce chemin jusqu'au process Python.
+- Un test `POST` authentifié avec un utilisateur Supabase temporaire, sur un
+  `card_id` inexistant, renvoie proprement `404 {"detail":"Carte
+  introuvable"}` et apparaît dans les logs Uvicorn. Le compte Supabase de
+  test a ensuite été supprimé.
+- Un curl depuis le conteneur backend vers `https://api.ebay.com/` répond
+  rapidement (`404` racine eBay), donc le conteneur a une sortie réseau/TLS
+  vers eBay.
+- Les logs backend des dernières 24h ne montraient aucune tentative
+  `POST /api/ebay/selling/publish/...` réelle, hors tests de diagnostic
+  ci-dessus.
+- Une tentative réelle de Xavier en onglet privé a ensuite produit :
+  `OPTIONS /api/ebay/selling/publish/0cafdca5-4288-4f4b-ad4f-9c3805bd1a48`
+  -> `200 OK`, puis
+  `POST /api/ebay/selling/publish/0cafdca5-4288-4f4b-ad4f-9c3805bd1a48`
+  -> `502 Bad Gateway`. La requête atteignait donc bien le process Python.
+- Rejeu contrôlé côté conteneur pour la carte concernée (Jaylen Brown
+  2024-25 Panini Mosaic Blue Prizm /149) : `get_card`, token eBay,
+  business policies et catégorie OK, puis échec sur la première étape
+  Inventory API.
+- Erreur eBay exacte :
+  `API_INVENTORY 25709 — Valeur non valide pour header Content-Language`,
+  étape `Création de la fiche produit`.
+- Les logs Traefik contiennent beaucoup d'erreurs ACME/Let's Encrypt liées à
+  des domaines proxifiés par Cloudflare, dont `collection-api.cardvaults.app`,
+  mais l'API HTTPS répond correctement via Cloudflare. Ces erreurs sont à
+  surveiller côté infra, mais elles n'expliquent pas à elles seules un échec
+  spécifique du bouton publish alors que les curls vers le même endpoint
+  passent.
+
+Interprétation à ce stade :
+
+- Le bug n'était pas un cache navigateur, ni un timeout, ni un blocage
+  CORS/proxy avant Python.
+- La cause réelle était un header eBay manquant/invalide pour les appels Sell
+  Inventory sur `EBAY_FR`. eBay exige un `Content-Language` cohérent avec le
+  marketplace.
+- Correctif code : `backend/services/ebay_selling.py` ajoute
+  `Content-Language: fr-FR` dans les headers eBay Sell.
+- Durcissement diagnostic : `backend/routers/ebay_selling.py` loggue
+  maintenant aussi les `EbayApiError` (502 métier), pas seulement les
+  exceptions inattendues.
+
+Point de vigilance découvert pendant le diagnostic :
+
+- La base Supabase prod ne contenait pas encore `cards.ebay_offer_id` et
+  `cards.ebay_listing_id` au moment de la vérification. La migration
+  `backend/add_ebay_offer_id_migration.sql` doit être appliquée avant un
+  retest final de publication, sinon eBay pourrait publier correctement mais
+  l'app échouerait ensuite en enregistrant l'URL/offer/listing sur la carte.
+
 ## Repères techniques utiles
 
 - Backend déployé : `https://collection-api.cardvaults.app` (Coolify).

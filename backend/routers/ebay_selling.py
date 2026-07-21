@@ -77,6 +77,7 @@ async def publish_listing(card_id: str, body: PublishRequest, user: dict = Depen
         try:
             return await ebay_selling.publish_card(card, access_token, title, price, category["id"], policies)
         except EbayApiError as e:
+            logger.warning("Publication eBay refusée pour la carte %s: %s", card_id, e)
             raise HTTPException(status_code=502, detail=f"{e.step} : {e.body}")
     except HTTPException:
         raise
@@ -99,6 +100,7 @@ async def withdraw_listing(card_id: str, user: dict = Depends(current_user)):
         try:
             return await ebay_selling.withdraw_card(card, access_token)
         except EbayApiError as e:
+            logger.warning("Retrait eBay refusé pour la carte %s: %s", card_id, e)
             raise HTTPException(status_code=502, detail=f"{e.step} : {e.body}")
     except HTTPException:
         raise
@@ -124,6 +126,7 @@ async def update_listing_price(card_id: str, body: PriceUpdateRequest, user: dic
         try:
             return await ebay_selling.update_offer_price(card, access_token, body.price)
         except EbayApiError as e:
+            logger.warning("Mise à jour prix eBay refusée pour la carte %s: %s", card_id, e)
             raise HTTPException(status_code=502, detail=f"{e.step} : {e.body}")
     except HTTPException:
         raise
