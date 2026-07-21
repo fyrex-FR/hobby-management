@@ -173,6 +173,12 @@ Faits établis :
 - Erreur eBay exacte :
   `API_INVENTORY 25709 — Valeur non valide pour header Content-Language`,
   étape `Création de la fiche produit`.
+- Après correction de `Content-Language`, le flux passe la création/mise à
+  jour inventory/offer mais échoue à la publication avec :
+  `API_INVENTORY 25002 — Item.Country n'existe pas ou est spécifié en tant
+  que balise vide`, étape `Publication de l'annonce`.
+- `GET /sell/inventory/v1/location` pour le compte vendeur renvoie
+  `{"locations":[]}` : aucune inventory location eBay n'est configurée.
 - Les logs Traefik contiennent beaucoup d'erreurs ACME/Let's Encrypt liées à
   des domaines proxifiés par Cloudflare, dont `collection-api.cardvaults.app`,
   mais l'API HTTPS répond correctement via Cloudflare. Ces erreurs sont à
@@ -185,10 +191,14 @@ Interprétation à ce stade :
 - Le bug n'était pas un cache navigateur, ni un timeout, ni un blocage
   CORS/proxy avant Python.
 - La cause réelle était un header eBay manquant/invalide pour les appels Sell
-  Inventory sur `EBAY_FR`. eBay exige un `Content-Language` cohérent avec le
-  marketplace.
+  Inventory sur `EBAY_FR`, puis l'absence de `merchantLocationKey`/inventory
+  location pour publier l'offre. eBay exige un `Content-Language` cohérent
+  avec le marketplace et un lieu vendeur contenant au minimum le pays.
 - Correctif code : `backend/services/ebay_selling.py` ajoute
   `Content-Language: fr-FR` dans les headers eBay Sell.
+- Correctif code : `publish_card` lit une inventory location eBay existante
+  et envoie son `merchantLocationKey` dans l'offre. S'il n'y a aucune
+  location, l'erreur renvoyée est désormais explicite.
 - Correctif de robustesse : si la migration des colonnes `ebay_offer_id` /
   `ebay_listing_id` n'est pas encore appliquée en prod, `publish_card`
   retente un enregistrement minimal (`ebay_url`, `price`, `status`) pour ne
@@ -205,6 +215,10 @@ Point de vigilance découvert pendant le diagnostic :
   retest complet des fonctions de retrait/mise à jour prix. Le publish lui-même
   tolère désormais temporairement cette migration manquante en enregistrant
   au minimum l'URL eBay.
+- Le compte vendeur de Xavier doit avoir une inventory location eBay. Au
+  moment du diagnostic, Jarvis attendait le code postal d'expédition pour
+  créer une location WAREHOUSE `CardVaults` via l'API eBay, ou Xavier pouvait
+  la créer lui-même dans l'interface vendeur eBay.
 
 ## Repères techniques utiles
 

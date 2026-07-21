@@ -289,12 +289,36 @@ async def _find_existing_offer_id(access_token: str, sku: str) -> Optional[str]:
         return None
 
 
+async def get_inventory_location_key(access_token: str) -> Optional[str]:
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(f"{INVENTORY_API}/location", headers=_sell_headers(access_token))
+        if resp.status_code != 200:
+            return None
+        locations = resp.json().get("locations", [])
+        if not locations:
+            return None
+        enabled = [loc for loc in locations if loc.get("merchantLocationStatus") == "ENABLED"]
+        location = (enabled or locations)[0]
+        return location.get("merchantLocationKey")
+    except Exception:
+        return None
+
+
 async def publish_card(card: dict, access_token: str, title: str, price: float, category_id: str, policies: dict) -> dict:
     """Enchaîne inventory_item -> offer (créée ou réutilisée) -> publish.
     Lève EbayApiError avec le détail exact en cas d'échec à n'importe quelle
     étape ; ne modifie la carte en base qu'en cas de succès complet."""
     sku = card["id"]
     image_urls = [u for u in [card.get("image_front_url"), card.get("image_back_url")] if u]
+
+    merchant_location_key = await get_inventory_location_key(access_token)
+    if not merchant_location_key:
+        raise EbayApiError(
+            "Lieu d'expédition eBay",
+            400,
+            "Aucune inventory location eBay configurée. Crée un lieu d'expédition vendeur sur eBay avant de publier.",
+        )
 
     async with httpx.AsyncClient(timeout=20) as client:
         # 1. Inventory item + vérification d'une offer existante EN PARALLÈLE
@@ -327,6 +351,7 @@ async def publish_card(card: dict, access_token: str, title: str, price: float, 
             "format": "FIXED_PRICE",
             "availableQuantity": 1,
             "categoryId": category_id,
+            "merchantLocationKey": merchant_location_key,
             "listingDescription": build_listing_description(card, title),
             "listingPolicies": {
                 "paymentPolicyId": policies["payment"],
