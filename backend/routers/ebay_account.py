@@ -1,12 +1,24 @@
-from fastapi import APIRouter, Depends
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
 
 from .auth import current_user
 from services import ebay_oauth
 from services.ebay_oauth import OAuthError
+from services.ebay_oauth import get_valid_access_token
+from services.ebay_selling import EbayApiError, create_inventory_location, list_inventory_locations
 from services.ebay_token_crypto import EncryptionNotConfigured
 
 router = APIRouter()
+
+
+class LocationRequest(BaseModel):
+    postal_code: str
+    city: str
+    country: Optional[str] = "FR"
+    name: Optional[str] = "CardVaults"
 
 
 @router.post("/ebay/account/login")
@@ -51,6 +63,32 @@ def urlsafe(text: str) -> str:
 @router.get("/ebay/account/status")
 async def account_status(user: dict = Depends(current_user)):
     return await ebay_oauth.get_status(user["sub"])
+
+
+@router.get("/ebay/account/location")
+async def account_location(user: dict = Depends(current_user)):
+    access_token = await get_valid_access_token(user["sub"])
+    if not access_token:
+        return {"connected": False, "locations": []}
+    return {"connected": True, "locations": await list_inventory_locations(access_token)}
+
+
+@router.post("/ebay/account/location")
+async def account_location_create(body: LocationRequest, user: dict = Depends(current_user)):
+    access_token = await get_valid_access_token(user["sub"])
+    if not access_token:
+        return {"connected": False, "locations": []}
+    try:
+        location = await create_inventory_location(
+            access_token,
+            postal_code=body.postal_code,
+            city=body.city,
+            country=body.country or "FR",
+            name=body.name or "CardVaults",
+        )
+    except EbayApiError as e:
+        raise HTTPException(status_code=502, detail=f"{e.step} : {e.body}")
+    return {"connected": True, "location": location, "locations": await list_inventory_locations(access_token)}
 
 
 @router.delete("/ebay/account")

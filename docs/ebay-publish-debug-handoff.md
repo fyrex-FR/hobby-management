@@ -216,9 +216,12 @@ Point de vigilance découvert pendant le diagnostic :
   tolère désormais temporairement cette migration manquante en enregistrant
   au minimum l'URL eBay.
 - Le compte vendeur de Xavier doit avoir une inventory location eBay. Au
-  moment du diagnostic, Jarvis attendait le code postal d'expédition pour
-  créer une location WAREHOUSE `CardVaults` via l'API eBay, ou Xavier pouvait
-  la créer lui-même dans l'interface vendeur eBay.
+  moment du diagnostic, l'interface eBay FR ne rendait pas ce réglage facile
+  à trouver. CardVaults expose donc désormais un réglage par compte connecté
+  dans l'onglet eBay : l'utilisateur renseigne ville + code postal, puis le
+  backend crée une location WAREHOUSE `CardVaults` via l'API eBay avec le
+  token OAuth du vendeur concerné. Cela respecte le multicompte : chaque
+  compte eBay a sa propre inventory location.
 
 ## Repères techniques utiles
 

@@ -1,8 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
-import { CheckCircle2, LogOut, ExternalLink, Tag, PackageCheck, ShoppingBag } from 'lucide-react';
+import { CheckCircle2, LogOut, ExternalLink, Tag, PackageCheck, ShoppingBag, MapPin, Save, Loader2 } from 'lucide-react';
 import { useCards } from '../../hooks/useCards';
-import { useEbayAccountStatus, useEbayConnect, useEbayDisconnect } from '../../hooks/useEbayAccount';
+import {
+  useEbayAccountStatus,
+  useEbayConnect,
+  useEbayDisconnect,
+  useEbayLocationCreate,
+  useEbayLocationStatus,
+} from '../../hooks/useEbayAccount';
 import { EbayLogo } from '../shared/EbayLogo';
 import { cdnImg } from '../../lib/cdn';
 
@@ -25,9 +31,13 @@ function StatTile({ label, value, icon: Icon, accent }: { label: string; value: 
 export function EbayView() {
   const { data: cards = [] } = useCards();
   const { data: status, isLoading } = useEbayAccountStatus();
+  const { data: locationStatus } = useEbayLocationStatus(Boolean(status?.connected));
   const connect = useEbayConnect();
   const disconnect = useEbayDisconnect();
+  const createLocation = useEbayLocationCreate();
   const [notice, setNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const [postalCode, setPostalCode] = useState('');
+  const [city, setCity] = useState('');
 
   // Retour du flux OAuth (?ebay=connected | ?ebay=error&reason=...), nettoie l'URL ensuite.
   useEffect(() => {
@@ -50,6 +60,24 @@ export function EbayView() {
     () => cards.filter((c) => c.status === 'a_vendre' && !c.ebay_url),
     [cards],
   );
+  const location = locationStatus?.locations?.[0];
+
+  useEffect(() => {
+    const address = location?.location?.address;
+    if (!address) return;
+    if (address.postalCode) setPostalCode(address.postalCode);
+    if (address.city) setCity(address.city);
+  }, [location]);
+
+  function saveLocation() {
+    createLocation.mutate(
+      { postal_code: postalCode.trim(), city: city.trim(), country: 'FR', name: 'CardVaults' },
+      {
+        onSuccess: () => setNotice({ kind: 'success', text: 'Lieu d’expédition eBay enregistré.' }),
+        onError: (e) => setNotice({ kind: 'error', text: (e as Error).message }),
+      },
+    );
+  }
 
   return (
     <div className="p-6 max-w-4xl mx-auto flex flex-col gap-6">
@@ -79,30 +107,75 @@ export function EbayView() {
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Chargement…</p>
         </div>
       ) : status?.connected ? (
-        <div className="glass rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(34,197,94,0.12)' }}>
-              <CheckCircle2 size={22} style={{ color: 'var(--green)' }} />
+        <div className="flex flex-col gap-3">
+          <div className="glass rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(34,197,94,0.12)' }}>
+                <CheckCircle2 size={22} style={{ color: 'var(--green)' }} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-white truncate">
+                  Connecté{status.ebay_username ? ` en tant que ${status.ebay_username}` : ''}
+                </p>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  Marketplace {status.marketplace_id || 'EBAY_FR'}
+                  {status.connected_at ? ` · depuis le ${new Date(status.connected_at).toLocaleDateString('fr-FR')}` : ''}
+                </p>
+              </div>
             </div>
-            <div className="min-w-0">
-              <p className="text-sm font-bold text-white truncate">
-                Connecté{status.ebay_username ? ` en tant que ${status.ebay_username}` : ''}
-              </p>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                Marketplace {status.marketplace_id || 'EBAY_FR'}
-                {status.connected_at ? ` · depuis le ${new Date(status.connected_at).toLocaleDateString('fr-FR')}` : ''}
-              </p>
+            <button
+              onClick={() => disconnect.mutate()}
+              disabled={disconnect.isPending}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50 shrink-0"
+              style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--red)' }}
+            >
+              <LogOut size={15} />
+              {disconnect.isPending ? 'Déconnexion…' : 'Déconnecter'}
+            </button>
+          </div>
+
+          <div className="glass rounded-2xl p-5 flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(255,255,255,0.06)' }}>
+                <MapPin size={18} style={{ color: location ? 'var(--green)' : 'var(--accent)' }} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-white">Lieu d’expédition</p>
+                <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
+                  {location
+                    ? `${location.name || location.merchantLocationKey} · ${location.location?.address?.postalCode || ''} ${location.location?.address?.city || ''}`
+                    : 'Requis pour publier sur eBay'}
+                </p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr_auto] gap-2">
+              <input
+                value={postalCode}
+                onChange={(e) => setPostalCode(e.target.value)}
+                placeholder="Code postal"
+                inputMode="numeric"
+                className="rounded-xl px-3 py-2.5 text-sm outline-none"
+                style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+              />
+              <input
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                placeholder="Ville"
+                className="rounded-xl px-3 py-2.5 text-sm outline-none"
+                style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+              />
+              <button
+                onClick={saveLocation}
+                disabled={createLocation.isPending || !postalCode.trim() || !city.trim()}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50"
+                style={{ background: 'var(--accent)', color: '#09090B' }}
+              >
+                {createLocation.isPending ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                Enregistrer
+              </button>
             </div>
           </div>
-          <button
-            onClick={() => disconnect.mutate()}
-            disabled={disconnect.isPending}
-            className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50 shrink-0"
-            style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--red)' }}
-          >
-            <LogOut size={15} />
-            {disconnect.isPending ? 'Déconnexion…' : 'Déconnecter'}
-          </button>
         </div>
       ) : (
         <div className="glass rounded-2xl p-6 flex flex-col gap-3">

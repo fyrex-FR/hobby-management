@@ -290,19 +290,72 @@ async def _find_existing_offer_id(access_token: str, sku: str) -> Optional[str]:
 
 
 async def get_inventory_location_key(access_token: str) -> Optional[str]:
+    locations = await list_inventory_locations(access_token)
+    if not locations:
+        return None
+    enabled = [loc for loc in locations if loc.get("merchantLocationStatus") == "ENABLED"]
+    location = (enabled or locations)[0]
+    return location.get("merchantLocationKey")
+
+
+async def list_inventory_locations(access_token: str) -> list[dict]:
     try:
         async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(f"{INVENTORY_API}/location", headers=_sell_headers(access_token))
         if resp.status_code != 200:
-            return None
-        locations = resp.json().get("locations", [])
-        if not locations:
-            return None
-        enabled = [loc for loc in locations if loc.get("merchantLocationStatus") == "ENABLED"]
-        location = (enabled or locations)[0]
-        return location.get("merchantLocationKey")
+            return []
+        return resp.json().get("locations", [])
     except Exception:
-        return None
+        return []
+
+
+def _location_key(country: str, postal_code: str) -> str:
+    normalized = re.sub(r"[^a-z0-9-]+", "-", f"cardvaults-{country}-{postal_code}".lower()).strip("-")
+    return normalized[:50] or "cardvaults-default"
+
+
+async def create_inventory_location(
+    access_token: str,
+    postal_code: str,
+    city: str,
+    country: str = "FR",
+    name: str = "CardVaults",
+) -> dict:
+    country = (country or "FR").strip().upper()
+    postal_code = postal_code.strip()
+    city = city.strip()
+    if not postal_code or not city:
+        raise EbayApiError("Lieu d'expédition eBay", 400, "Ville et code postal sont requis.")
+
+    merchant_location_key = _location_key(country, postal_code)
+    body = {
+        "name": name.strip() or "CardVaults",
+        "merchantLocationStatus": "ENABLED",
+        "locationTypes": ["WAREHOUSE"],
+        "location": {
+            "address": {
+                "city": city,
+                "postalCode": postal_code,
+                "country": country,
+            },
+        },
+    }
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.put(
+            f"{INVENTORY_API}/location/{merchant_location_key}",
+            headers=_sell_headers(access_token),
+            json=body,
+        )
+    if resp.status_code not in (200, 201, 204):
+        raise EbayApiError("Création du lieu d'expédition eBay", resp.status_code, resp.text)
+    return {
+        "merchantLocationKey": merchant_location_key,
+        "name": body["name"],
+        "city": city,
+        "postalCode": postal_code,
+        "country": country,
+        "merchantLocationStatus": "ENABLED",
+    }
 
 
 async def publish_card(card: dict, access_token: str, title: str, price: float, category_id: str, policies: dict) -> dict:

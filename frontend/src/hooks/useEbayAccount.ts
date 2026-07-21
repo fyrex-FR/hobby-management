@@ -8,6 +8,24 @@ export interface EbayAccountStatus {
   connected_at?: string | null;
 }
 
+export interface EbayLocation {
+  merchantLocationKey: string;
+  name?: string;
+  merchantLocationStatus?: string;
+  location?: {
+    address?: {
+      city?: string;
+      postalCode?: string;
+      country?: string;
+    };
+  };
+}
+
+export interface EbayLocationStatus {
+  connected: boolean;
+  locations: EbayLocation[];
+}
+
 export function useEbayAccountStatus() {
   return useQuery<EbayAccountStatus>({
     queryKey: ['ebay-account-status'],
@@ -32,5 +50,26 @@ export function useEbayDisconnect() {
   return useMutation({
     mutationFn: () => apiFetch<{ connected: boolean }>('/ebay/account', { method: 'DELETE' }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['ebay-account-status'] }),
+  });
+}
+
+export function useEbayLocationStatus(enabled: boolean) {
+  return useQuery<EbayLocationStatus>({
+    queryKey: ['ebay-location-status'],
+    queryFn: () => apiFetch<EbayLocationStatus>('/ebay/account/location'),
+    enabled,
+  });
+}
+
+export function useEbayLocationCreate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { postal_code: string; city: string; country?: string; name?: string }) => (
+      apiFetch<EbayLocationStatus>('/ebay/account/location', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      })
+    ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ebay-location-status'] }),
   });
 }
