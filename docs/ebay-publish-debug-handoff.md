@@ -266,6 +266,10 @@ Correction additionnelle après retest du bouton `Publier sur eBay` :
   `build_aspects` envoie les aspects FR obligatoires/recommandés utiles :
   `Sport=Basket-ball`, `Type=Carte à collectionner sportive`,
   `Ligue=National Basketball Association (NBA)`, plus équipe/joueur/saison.
+- Point eBay découvert ensuite : `PUT /offer/{offerId}` répond `204` mais ne
+  modifie pas réellement `categoryId` sur une offer brouillon existante. Le
+  backend supprime donc l'ancienne offer `UNPUBLISHED` et en crée une
+  nouvelle quand la catégorie calculée diffère de celle de l'offer existante.
 
 ## Repères techniques utiles
 

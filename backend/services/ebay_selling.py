@@ -306,6 +306,13 @@ async def _find_existing_offer_id(access_token: str, sku: str) -> Optional[str]:
         return None
 
 
+async def _get_offer(client: httpx.AsyncClient, access_token: str, offer_id: str) -> Optional[dict]:
+    resp = await client.get(f"{INVENTORY_API}/offer/{offer_id}", headers=_sell_headers(access_token))
+    if resp.status_code != 200:
+        return None
+    return resp.json()
+
+
 async def get_inventory_location_key(access_token: str) -> Optional[str]:
     locations = await list_inventory_locations(access_token)
     if not locations:
@@ -438,10 +445,18 @@ async def publish_card(card: dict, access_token: str, title: str, price: float, 
             "pricingSummary": {"price": {"value": str(price), "currency": "EUR"}},
         }
         if offer_id:
+            offer = await _get_offer(client, access_token, offer_id)
+            if offer and offer.get("categoryId") != category_id and offer.get("status") == "UNPUBLISHED":
+                delete_resp = await client.delete(f"{INVENTORY_API}/offer/{offer_id}", headers=_sell_headers(access_token))
+                if delete_resp.status_code not in (200, 204, 404):
+                    raise EbayApiError("Suppression de l'ancienne offre", delete_resp.status_code, delete_resp.text)
+                offer_id = None
+
+        if offer_id:
             resp = await client.put(f"{INVENTORY_API}/offer/{offer_id}", headers=_sell_headers(access_token), json=offer_body)
             if resp.status_code not in (200, 204):
                 raise EbayApiError("Mise à jour de l'offre", resp.status_code, resp.text)
-        else:
+        if not offer_id:
             resp = await client.post(f"{INVENTORY_API}/offer", headers=_sell_headers(access_token), json=offer_body)
             if resp.status_code not in (200, 201):
                 raise EbayApiError("Création de l'offre", resp.status_code, resp.text)
