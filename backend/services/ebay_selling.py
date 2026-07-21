@@ -52,6 +52,42 @@ class EbayApiError(Exception):
         self.body = body[:800]
         super().__init__(f"{step} (HTTP {status_code}): {self.body}")
 
+
+def _is_retryable_inventory_error(resp: httpx.Response) -> bool:
+    if resp.status_code in (429, 500, 502, 503, 504):
+        return True
+    return False
+
+
+async def _put_inventory_item_with_retry(
+    client: httpx.AsyncClient,
+    access_token: str,
+    sku: str,
+    payload: dict,
+) -> httpx.Response:
+    """eBay Inventory API sometimes returns transient 25001/500 errors for
+    a valid inventory item. A short retry avoids surfacing a fake setup issue
+    to the seller while keeping real validation errors immediate."""
+    last_resp: httpx.Response | None = None
+    for attempt in range(3):
+        resp = await client.put(
+            f"{INVENTORY_API}/inventory_item/{sku}",
+            headers=_sell_headers(access_token),
+            json=payload,
+        )
+        if resp.status_code in (200, 201, 204) or not _is_retryable_inventory_error(resp):
+            return resp
+        last_resp = resp
+        logger.warning(
+            "eBay inventory item retry %s/2 for sku %s after HTTP %s: %s",
+            attempt + 1,
+            sku,
+            resp.status_code,
+            resp.text[:300],
+        )
+        await asyncio.sleep(0.75 * (attempt + 1))
+    return last_resp or resp
+
 # Cache en mémoire du category tree id par marketplace (ne change pas).
 _category_tree_cache: dict[str, str] = {}
 
@@ -476,6 +512,17 @@ async def publish_card(
         )
 
     listing_description = build_listing_description(card, title, description)
+    inventory_payload = {
+        "availability": {"shipToLocationAvailability": {"quantity": 1}},
+        "condition": DEFAULT_CONDITION,
+        "conditionDescriptors": DEFAULT_CONDITION_DESCRIPTORS,
+        "product": {
+            "title": title,
+            "description": listing_description,
+            "aspects": build_aspects(card),
+            "imageUrls": image_urls,
+        },
+    }
 
     async with httpx.AsyncClient(timeout=20) as client:
         # 1. Inventory item + vérification d'une offer existante EN PARALLÈLE
@@ -483,21 +530,7 @@ async def publish_card(
         # temps total de la requête (risque de timeout d'un proxy intermédiaire
         # sur un enchaînement de plusieurs appels eBay).
         put_resp, offer_id = await asyncio.gather(
-            client.put(
-                f"{INVENTORY_API}/inventory_item/{sku}",
-                headers=_sell_headers(access_token),
-                json={
-                    "availability": {"shipToLocationAvailability": {"quantity": 1}},
-                    "condition": DEFAULT_CONDITION,
-                    "conditionDescriptors": DEFAULT_CONDITION_DESCRIPTORS,
-                    "product": {
-                        "title": title,
-                        "description": listing_description,
-                        "aspects": build_aspects(card),
-                        "imageUrls": image_urls,
-                    },
-                },
-            ),
+            _put_inventory_item_with_retry(client, access_token, sku, inventory_payload),
             _find_existing_offer_id(access_token, sku),
         )
         resp = put_resp
