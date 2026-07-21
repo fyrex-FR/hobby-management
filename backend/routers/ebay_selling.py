@@ -15,6 +15,7 @@ logger = logging.getLogger("ebay_selling")
 
 class PublishRequest(BaseModel):
     title: Optional[str] = None
+    description: Optional[str] = None
     price: Optional[float] = None
 
 
@@ -61,6 +62,9 @@ async def publish_listing(card_id: str, body: PublishRequest, user: dict = Depen
         title = body.title.strip() if body.title and body.title.strip() else ebay_selling.build_listing_title(card)
         if len(title) > 80:
             raise HTTPException(status_code=422, detail="Le titre doit faire 80 caractères maximum.")
+        description = body.description.strip() if body.description and body.description.strip() else None
+        if description and len(description) > 5000:
+            raise HTTPException(status_code=422, detail="La description doit faire 5000 caractères maximum.")
 
         policies = await ebay_selling.get_business_policies(access_token)
         if not policies.get("configured"):
@@ -75,7 +79,7 @@ async def publish_listing(card_id: str, body: PublishRequest, user: dict = Depen
             raise HTTPException(status_code=422, detail="Impossible de déterminer une catégorie eBay pour cette carte.")
 
         try:
-            return await ebay_selling.publish_card(card, access_token, title, price, category["id"], policies)
+            return await ebay_selling.publish_card(card, access_token, title, price, category["id"], policies, description)
         except EbayApiError as e:
             logger.warning("Publication eBay refusée pour la carte %s: %s", card_id, e)
             raise HTTPException(status_code=502, detail=f"{e.step} : {e.body}")

@@ -7,6 +7,7 @@ ebay_service.py qui ne porte que des scopes publics.
 """
 
 import asyncio
+import html
 import logging
 import os
 import re
@@ -219,6 +220,7 @@ async def build_preview(card: dict, access_token: str) -> dict:
     return {
         "connected": True,
         "title": title,
+        "description": build_listing_description_text(card, title),
         "category": category,
         "policies": policies,
         "price": card.get("price"),
@@ -238,26 +240,79 @@ async def update_card_fields(card_id: str, user_id: str, fields: dict) -> None:
         raise RuntimeError(f"Supabase update cards {resp.status_code}: {resp.text[:300]}")
 
 
-def build_listing_description(card: dict, title: str) -> str:
-    lines = [f"<p>{title}</p>", "<ul>"]
-    for label, value in [
-        ("Année", card.get("year")),
-        ("Marque", card.get("brand")),
-        ("Set", card.get("set_name")),
-        ("Parallel", card.get("parallel_name") if card.get("parallel_name") != "Base" else None),
-        ("Numéro", card.get("card_number")),
-        ("Tirage", card.get("numbered")),
-        ("État", card.get("condition_notes") or "Mint / Near Mint"),
-    ]:
-        if value:
-            lines.append(f"<li>{label} : {value}</li>")
+def _html_description_from_text(text: str) -> str:
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text.strip()) if p.strip()]
+    html_parts: list[str] = []
+    for paragraph in paragraphs:
+        lines = [line.strip() for line in paragraph.splitlines() if line.strip()]
+        if lines and all(line.startswith(("- ", "* ", "• ")) for line in lines):
+            html_parts.append("<ul>")
+            for line in lines:
+                html_parts.append(f"<li>{html.escape(line[2:].strip())}</li>")
+            html_parts.append("</ul>")
+        else:
+            html_parts.append("<p>" + "<br>".join(html.escape(line) for line in lines) + "</p>")
+    return "\n".join(html_parts)
+
+
+def build_listing_description_text(card: dict, title: str) -> str:
+    brand = str(card.get("brand") or "").strip()
+    set_value = str(card.get("set_name") or "").strip()
+    if brand and set_value and brand.lower() not in set_value.lower():
+        set_name = f"{brand} {set_value}"
+    else:
+        set_name = set_value or brand
+    player = card.get("player") or "the featured player"
+    card_type = card.get("card_type")
+    is_auto = card_type in ("auto", "auto_patch")
+    is_patch = card_type in ("patch", "auto_patch")
+
+    intro_bits = [f"Up for sale: a {player}"]
     if card.get("is_rookie"):
-        lines.append("<li>Rookie Card</li>")
+        intro_bits.append("rookie")
+    intro_bits.append("card")
+    if set_name:
+        intro_bits.append(f"from the {set_name} set")
+    if card.get("insert_name"):
+        intro_bits.append(f"{card['insert_name']} insert")
+    intro = " ".join(intro_bits).replace(" set Prospects", " set, Prospects")
+    if not intro.endswith("."):
+        intro += "."
+
+    details: list[tuple[str, str]] = []
+    edition_parts = [
+        card.get("parallel_name") if card.get("parallel_name") and card.get("parallel_name") != "Base" else None,
+        f"numbered {card['numbered']}" if card.get("numbered") else None,
+        f"card #{card['card_number']}" if card.get("card_number") else None,
+    ]
+    edition = ", ".join(str(p) for p in edition_parts if p)
+    if edition:
+        details.append(("Edition", edition))
+    if is_auto:
+        details.append(("Autograph", "sticker/on-card autograph; authenticity shown in photos or guaranteed by the manufacturer when applicable"))
+    if is_patch:
+        details.append(("Memorabilia", "patch/relic card; please check photos for the exact piece and condition"))
+    condition = card.get("condition_notes") or "stored in a hard case/toploader since opening, never handled bare-handed"
+    details.append(("Condition", condition))
     if card.get("grading_company") and card.get("grading_grade"):
-        lines.append(f"<li>Gradée {card['grading_company']} {card['grading_grade']}"
-                      + (f" (cert. {card['grading_cert']})" if card.get("grading_cert") else "") + "</li>")
-    lines.append("</ul>")
-    return "\n".join(lines)
+        grading = f"{card['grading_company']} {card['grading_grade']}"
+        if card.get("grading_cert"):
+            grading += f", cert. {card['grading_cert']}"
+        details.append(("Grading", grading))
+    details.append(("Shipping", "shipped in a protective sleeve/case with reinforced packaging, fast and careful handling"))
+
+    body = [title, "", intro, ""]
+    body.extend(f"- {label}: {value}" for label, value in details)
+    body.extend([
+        "",
+        "Great pickup for collectors. Please zoom in on the photos to check condition before bidding/buying. Any questions, feel free to message me first.",
+    ])
+    return "\n".join(body)
+
+
+def build_listing_description(card: dict, title: str, description: Optional[str] = None) -> str:
+    text = description.strip() if description and description.strip() else build_listing_description_text(card, title)
+    return _html_description_from_text(text)
 
 
 def build_aspects(card: dict) -> dict:
@@ -397,7 +452,15 @@ async def create_inventory_location(
     }
 
 
-async def publish_card(card: dict, access_token: str, title: str, price: float, category_id: str, policies: dict) -> dict:
+async def publish_card(
+    card: dict,
+    access_token: str,
+    title: str,
+    price: float,
+    category_id: str,
+    policies: dict,
+    description: Optional[str] = None,
+) -> dict:
     """Enchaîne inventory_item -> offer (créée ou réutilisée) -> publish.
     Lève EbayApiError avec le détail exact en cas d'échec à n'importe quelle
     étape ; ne modifie la carte en base qu'en cas de succès complet."""
@@ -411,6 +474,8 @@ async def publish_card(card: dict, access_token: str, title: str, price: float, 
             400,
             "Aucune inventory location eBay configurée. Crée un lieu d'expédition vendeur sur eBay avant de publier.",
         )
+
+    listing_description = build_listing_description(card, title, description)
 
     async with httpx.AsyncClient(timeout=20) as client:
         # 1. Inventory item + vérification d'une offer existante EN PARALLÈLE
@@ -427,7 +492,7 @@ async def publish_card(card: dict, access_token: str, title: str, price: float, 
                     "conditionDescriptors": DEFAULT_CONDITION_DESCRIPTORS,
                     "product": {
                         "title": title,
-                        "description": build_listing_description(card, title),
+                        "description": listing_description,
                         "aspects": build_aspects(card),
                         "imageUrls": image_urls,
                     },
@@ -445,7 +510,7 @@ async def publish_card(card: dict, access_token: str, title: str, price: float, 
             "availableQuantity": 1,
             "categoryId": category_id,
             "merchantLocationKey": merchant_location_key,
-            "listingDescription": build_listing_description(card, title),
+            "listingDescription": listing_description,
             "listingPolicies": {
                 "paymentPolicyId": policies["payment"],
                 "returnPolicyId": policies["return"],

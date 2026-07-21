@@ -285,6 +285,19 @@ Correction additionnelle après retest du bouton `Publier sur eBay` :
   `backend/add_ebay_offer_id_migration.sql` reste nécessaire pour fiabiliser
   retrait d'annonce et mise à jour de prix.
 
+Amélioration UX demandée ensuite :
+
+- `GET /api/ebay/selling/preview/{card_id}` renvoie désormais aussi une
+  `description` générée depuis les données de la carte (titre, set, insert,
+  parallèle, numérotation, autograph/relic si pertinent, état, grading,
+  expédition).
+- La modale `EbayPublishModal` affiche cette description avant le prix et
+  permet de l'éditer avant publication.
+- `POST /api/ebay/selling/publish/{card_id}` accepte un champ
+  `description` optionnel. Le backend transforme le texte saisi en HTML
+  simple et échappé (`p`, `br`, `ul/li`) avant de l'envoyer à eBay dans
+  `product.description` et `listingDescription`.
+
 ## Repères techniques utiles
 
 - Backend déployé : `https://collection-api.cardvaults.app` (Coolify).

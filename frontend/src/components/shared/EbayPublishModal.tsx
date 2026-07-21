@@ -7,6 +7,7 @@ import type { Card } from '../../types';
 interface PreviewData {
   connected: boolean;
   title?: string;
+  description?: string;
   category?: { id: string; name: string } | null;
   policies?: { payment: string | null; return: string | null; fulfillment: string | null; configured: boolean };
   price?: number | null;
@@ -23,6 +24,7 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
   const [preview, setPreview] = useState<PreviewData | null>(null);
   const [loading, setLoading] = useState(true);
   const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState('');
@@ -35,6 +37,7 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
         if (cancelled) return;
         setPreview(data);
         if (data.title) setTitle(data.title);
+        if (data.description) setDescription(data.description);
         setPrice((data.price ?? card.price ?? '').toString());
       })
       .catch((e) => !cancelled && setError((e as Error).message))
@@ -48,7 +51,7 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
     try {
       const data = await apiFetch<{ published: boolean; ebay_url: string }>(`/ebay/selling/publish/${card.id}`, {
         method: 'POST',
-        body: JSON.stringify({ title, price: parseFloat(price) }),
+        body: JSON.stringify({ title, description, price: parseFloat(price) }),
       });
       setResult(data);
       onPublished();
@@ -66,7 +69,7 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={onClose}>
       <div
-        className="w-full max-w-md rounded-3xl glass border-strong shadow-2xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto"
+        className="w-full max-w-lg rounded-3xl glass border-strong shadow-2xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between">
@@ -137,6 +140,19 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
 
             <div className="flex flex-col gap-1.5">
               <label className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                Description ({description.length}/5000)
+              </label>
+              <textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value.slice(0, 5000))}
+                rows={11}
+                className="w-full rounded-xl px-3 py-2 text-sm leading-relaxed outline-none resize-y min-h-[220px]"
+                style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+              />
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
                 Prix (€)
               </label>
               <input
@@ -156,7 +172,7 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
 
             <button
               onClick={publish}
-              disabled={publishing || missingPolicies.length > 0 || !title.trim() || !(parseFloat(price) > 0)}
+              disabled={publishing || missingPolicies.length > 0 || !title.trim() || !description.trim() || !(parseFloat(price) > 0)}
               className="py-3.5 rounded-2xl text-sm font-black transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
               style={{ background: 'var(--accent)', color: '#09090B' }}
             >
