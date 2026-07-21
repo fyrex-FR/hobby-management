@@ -26,7 +26,7 @@ import { useCards } from './hooks/useCards';
 import { useRequests } from './hooks/useRequests';
 import { useImpersonateStore } from './stores/impersonateStore';
 import { apiFetch } from './api/client';
-import { EbayAccountModal } from './components/shared/EbayAccountModal';
+import { EbayView } from './components/views/EbayView';
 import { LoginView } from './components/views/LoginView';
 import { DashboardView } from './components/views/DashboardView';
 import { CollectionView } from './components/views/CollectionView';
@@ -101,27 +101,15 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
 function UserMenu() {
   const [open, setOpen] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
-  const [showEbayAccount, setShowEbayAccount] = useState(false);
-  const [ebayNotice, setEbayNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+  const setActiveView = useAppStore((s) => s.setActiveView);
 
   // Retour du flux OAuth eBay (?ebay=connected | ?ebay=error&reason=...) :
-  // ouvre directement la modale avec le résultat, puis nettoie l'URL.
+  // navigue vers la vue eBay, qui lit et nettoie ces paramètres elle-même.
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const ebay = params.get('ebay');
-    if (!ebay) return;
-    if (ebay === 'connected') {
-      setEbayNotice({ kind: 'success', text: 'Compte eBay connecté avec succès.' });
-    } else if (ebay === 'error') {
-      const reason = params.get('reason') || 'Connexion échouée';
-      setEbayNotice({ kind: 'error', text: `Connexion eBay impossible : ${reason}` });
+    if (new URLSearchParams(window.location.search).has('ebay')) {
+      setActiveView('ebay');
     }
-    setShowEbayAccount(true);
-    params.delete('ebay');
-    params.delete('reason');
-    const query = params.toString();
-    window.history.replaceState({}, '', window.location.pathname + (query ? `?${query}` : ''));
-  }, []);
+  }, [setActiveView]);
 
   return (
     <>
@@ -144,14 +132,6 @@ function UserMenu() {
               className="absolute right-0 top-full mt-2 rounded-2xl overflow-hidden z-20 w-52 glass border-strong shadow-xl p-1"
             >
               <button
-                onClick={() => { setShowEbayAccount(true); setOpen(false); }}
-                className="w-full px-4 py-2.5 text-left text-sm transition-colors hover:bg-white/5 rounded-xl flex items-center gap-3"
-                style={{ color: 'var(--text-primary)' }}
-              >
-                <ShoppingBag size={15} className="text-[var(--text-secondary)]" />
-                Compte eBay
-              </button>
-              <button
                 onClick={() => { setShowChangePassword(true); setOpen(false); }}
                 className="w-full px-4 py-2.5 text-left text-sm transition-colors hover:bg-white/5 rounded-xl flex items-center gap-3"
                 style={{ color: 'var(--text-primary)' }}
@@ -173,12 +153,6 @@ function UserMenu() {
         </AnimatePresence>
       </div>
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
-      {showEbayAccount && (
-        <EbayAccountModal
-          initialNotice={ebayNotice}
-          onClose={() => { setShowEbayAccount(false); setEbayNotice(null); }}
-        />
-      )}
     </>
   );
 }
@@ -269,6 +243,7 @@ function Header({ onShare, isAdmin }: { onShare: () => void; isAdmin: boolean })
   const toolNav = [
     { id: 'players', label: 'Joueurs', icon: Users },
     { id: 'grading', label: 'Grading', icon: GraduationCap },
+    { id: 'ebay', label: 'eBay', icon: ShoppingBag },
     { id: 'studio', label: 'Studio photo', icon: ScanLine },
     { id: 'batch', label: 'Import lot', icon: Upload },
     ...(isAdmin ? [{ id: 'compare' as const, label: 'Comparer IA', icon: Database }] : []),
@@ -609,6 +584,7 @@ function AppShell() {
             {activeView === 'compare' && isAdmin && <CompareView />}
             {activeView === 'players' && <PlayersView />}
             {activeView === 'grading' && <GradingView />}
+            {activeView === 'ebay' && <EbayView />}
             {activeView === 'requests' && <RequestsView />}
             {activeView === 'migration' && isAdmin && <MigrationView />}
           </motion.div>
