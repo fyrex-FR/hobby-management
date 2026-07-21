@@ -77,31 +77,38 @@ async def get_card(card_id: str, user_id: str) -> Optional[dict]:
     return rows[0] if rows else None
 
 
+async def _get_one_policy(client: httpx.AsyncClient, access_token: str, path: str, list_key: str, id_key: str) -> Optional[str]:
+    try:
+        resp = await client.get(
+            f"{ACCOUNT_API}/{path}",
+            headers=_sell_headers(access_token),
+            params={"marketplace_id": SELL_MARKETPLACE_ID},
+        )
+        if resp.status_code != 200:
+            return None
+        items = resp.json().get(list_key, [])
+        return items[0][id_key] if items else None
+    except Exception:
+        return None
+
+
 async def get_business_policies(access_token: str) -> dict:
     """Récupère les 3 policies (paiement/retour/livraison) du vendeur pour
-    EBAY_FR. Renvoie leurs IDs si présentes, None sinon par catégorie, plus
-    un booléen global `configured`."""
+    EBAY_FR, en parallèle (plutôt qu'en séquence : 3 allers-retours eBay
+    l'un après l'autre peuvent suffire à dépasser le délai que tolère un
+    proxy devant l'app). Renvoie leurs IDs si présentes, None sinon par
+    catégorie, plus un booléen global `configured`."""
     endpoints = {
         "payment": ("payment_policy", "paymentPolicies", "paymentPolicyId"),
         "return": ("return_policy", "returnPolicies", "returnPolicyId"),
         "fulfillment": ("fulfillment_policy", "fulfillmentPolicies", "fulfillmentPolicyId"),
     }
-    result: dict = {}
     async with httpx.AsyncClient(timeout=15) as client:
-        for key, (path, list_key, id_key) in endpoints.items():
-            try:
-                resp = await client.get(
-                    f"{ACCOUNT_API}/{path}",
-                    headers=_sell_headers(access_token),
-                    params={"marketplace_id": SELL_MARKETPLACE_ID},
-                )
-                if resp.status_code != 200:
-                    result[key] = None
-                    continue
-                items = resp.json().get(list_key, [])
-                result[key] = items[0][id_key] if items else None
-            except Exception:
-                result[key] = None
+        keys = list(endpoints.keys())
+        values = await asyncio.gather(*(
+            _get_one_policy(client, access_token, *endpoints[k]) for k in keys
+        ))
+    result = dict(zip(keys, values))
 
     return {
         **result,
