@@ -293,26 +293,30 @@ async def publish_card(card: dict, access_token: str, title: str, price: float, 
     image_urls = [u for u in [card.get("image_front_url"), card.get("image_back_url")] if u]
 
     async with httpx.AsyncClient(timeout=20) as client:
-        # 1. Inventory item (idempotent : PUT keyed by sku).
-        resp = await client.put(
-            f"{INVENTORY_API}/inventory_item/{sku}",
-            headers=_sell_headers(access_token),
-            json={
-                "availability": {"shipToLocationAvailability": {"quantity": 1}},
-                "condition": DEFAULT_CONDITION,
-                "product": {
-                    "title": title,
-                    "description": build_listing_description(card, title),
-                    "aspects": build_aspects(card),
-                    "imageUrls": image_urls,
+        # 1. Inventory item + vérification d'une offer existante EN PARALLÈLE
+        # (les deux sont indépendants) plutôt qu'en séquence, pour réduire le
+        # temps total de la requête (risque de timeout d'un proxy intermédiaire
+        # sur un enchaînement de plusieurs appels eBay).
+        put_resp, offer_id = await asyncio.gather(
+            client.put(
+                f"{INVENTORY_API}/inventory_item/{sku}",
+                headers=_sell_headers(access_token),
+                json={
+                    "availability": {"shipToLocationAvailability": {"quantity": 1}},
+                    "condition": DEFAULT_CONDITION,
+                    "product": {
+                        "title": title,
+                        "description": build_listing_description(card, title),
+                        "aspects": build_aspects(card),
+                        "imageUrls": image_urls,
+                    },
                 },
-            },
+            ),
+            _find_existing_offer_id(access_token, sku),
         )
+        resp = put_resp
         if resp.status_code not in (200, 201, 204):
             raise EbayApiError("Création de la fiche produit", resp.status_code, resp.text)
-
-        # 2. Offer : réutilise celle existante si un essai précédent en a créé une.
-        offer_id = await _find_existing_offer_id(access_token, sku)
         offer_body = {
             "sku": sku,
             "marketplaceId": SELL_MARKETPLACE_ID,
