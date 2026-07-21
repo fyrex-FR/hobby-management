@@ -274,6 +274,16 @@ Correction additionnelle après retest du bouton `Publier sur eBay` :
   modifie pas réellement `categoryId` sur une offer brouillon existante. Le
   backend supprime donc l'ancienne offer `UNPUBLISHED` et en crée une
   nouvelle quand la catégorie calculée diffère de celle de l'offer existante.
+- Retest réel après déploiement `8156943` : `POST
+  /api/ebay/selling/publish/0cafdca5-4288-4f4b-ad4f-9c3805bd1a48` renvoie
+  `200 OK` et publie l'annonce eBay
+  `https://www.ebay.fr/itm/298522516967`. La carte est passée en
+  `status=a_vendre`, `price=6.00`, `ebay_url` enregistré.
+- Warning restant : les colonnes Supabase `cards.ebay_offer_id` et
+  `cards.ebay_listing_id` sont toujours absentes en prod, donc le backend a
+  utilisé le fallback d'enregistrement minimal. Appliquer
+  `backend/add_ebay_offer_id_migration.sql` reste nécessaire pour fiabiliser
+  retrait d'annonce et mise à jour de prix.
 
 ## Repères techniques utiles
 
