@@ -17,7 +17,8 @@ import {
   Key,
   Share2,
   Inbox,
-  ChevronDown
+  ChevronDown,
+  ShoppingBag
 } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
 import { useAppStore } from './stores/appStore';
@@ -25,6 +26,7 @@ import { useCards } from './hooks/useCards';
 import { useRequests } from './hooks/useRequests';
 import { useImpersonateStore } from './stores/impersonateStore';
 import { apiFetch } from './api/client';
+import { EbayAccountModal } from './components/shared/EbayAccountModal';
 import { LoginView } from './components/views/LoginView';
 import { DashboardView } from './components/views/DashboardView';
 import { CollectionView } from './components/views/CollectionView';
@@ -99,6 +101,27 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
 function UserMenu() {
   const [open, setOpen] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showEbayAccount, setShowEbayAccount] = useState(false);
+  const [ebayNotice, setEbayNotice] = useState<{ kind: 'success' | 'error'; text: string } | null>(null);
+
+  // Retour du flux OAuth eBay (?ebay=connected | ?ebay=error&reason=...) :
+  // ouvre directement la modale avec le résultat, puis nettoie l'URL.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const ebay = params.get('ebay');
+    if (!ebay) return;
+    if (ebay === 'connected') {
+      setEbayNotice({ kind: 'success', text: 'Compte eBay connecté avec succès.' });
+    } else if (ebay === 'error') {
+      const reason = params.get('reason') || 'Connexion échouée';
+      setEbayNotice({ kind: 'error', text: `Connexion eBay impossible : ${reason}` });
+    }
+    setShowEbayAccount(true);
+    params.delete('ebay');
+    params.delete('reason');
+    const query = params.toString();
+    window.history.replaceState({}, '', window.location.pathname + (query ? `?${query}` : ''));
+  }, []);
 
   return (
     <>
@@ -121,6 +144,14 @@ function UserMenu() {
               className="absolute right-0 top-full mt-2 rounded-2xl overflow-hidden z-20 w-52 glass border-strong shadow-xl p-1"
             >
               <button
+                onClick={() => { setShowEbayAccount(true); setOpen(false); }}
+                className="w-full px-4 py-2.5 text-left text-sm transition-colors hover:bg-white/5 rounded-xl flex items-center gap-3"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                <ShoppingBag size={15} className="text-[var(--text-secondary)]" />
+                Compte eBay
+              </button>
+              <button
                 onClick={() => { setShowChangePassword(true); setOpen(false); }}
                 className="w-full px-4 py-2.5 text-left text-sm transition-colors hover:bg-white/5 rounded-xl flex items-center gap-3"
                 style={{ color: 'var(--text-primary)' }}
@@ -142,6 +173,12 @@ function UserMenu() {
         </AnimatePresence>
       </div>
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
+      {showEbayAccount && (
+        <EbayAccountModal
+          initialNotice={ebayNotice}
+          onClose={() => { setShowEbayAccount(false); setEbayNotice(null); }}
+        />
+      )}
     </>
   );
 }
