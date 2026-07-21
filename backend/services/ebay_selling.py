@@ -7,6 +7,7 @@ ebay_service.py qui ne porte que des scopes publics.
 """
 
 import asyncio
+import logging
 import os
 import re
 from typing import Optional
@@ -17,6 +18,7 @@ from .ebay_oauth import SELL_MARKETPLACE_ID
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+logger = logging.getLogger("ebay_selling")
 
 ACCOUNT_API = "https://api.ebay.com/sell/account/v1"
 TAXONOMY_API = "https://api.ebay.com/commerce/taxonomy/v1"
@@ -354,13 +356,27 @@ async def publish_card(card: dict, access_token: str, title: str, price: float, 
             raise EbayApiError("Publication de l'annonce", resp.status_code, "listingId manquant dans la réponse")
 
     ebay_url = f"https://www.ebay.fr/itm/{listing_id}"
-    await update_card_fields(sku, card["user_id"], {
+    card_update = {
         "ebay_url": ebay_url,
         "ebay_offer_id": offer_id,
         "ebay_listing_id": listing_id,
         "price": price,
         "status": "a_vendre" if card.get("status") not in ("vendu",) else card["status"],
-    })
+    }
+    try:
+        await update_card_fields(sku, card["user_id"], card_update)
+    except RuntimeError as e:
+        if "ebay_offer_id" not in str(e) and "ebay_listing_id" not in str(e):
+            raise
+        logger.warning(
+            "Colonnes eBay offer/listing absentes dans Supabase; enregistrement minimal pour la carte %s",
+            sku,
+        )
+        await update_card_fields(sku, card["user_id"], {
+            "ebay_url": ebay_url,
+            "price": price,
+            "status": card_update["status"],
+        })
     return {"published": True, "ebay_url": ebay_url, "listing_id": listing_id, "offer_id": offer_id}
 
 

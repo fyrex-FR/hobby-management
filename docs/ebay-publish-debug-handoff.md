@@ -189,6 +189,10 @@ Interprétation à ce stade :
   marketplace.
 - Correctif code : `backend/services/ebay_selling.py` ajoute
   `Content-Language: fr-FR` dans les headers eBay Sell.
+- Correctif de robustesse : si la migration des colonnes `ebay_offer_id` /
+  `ebay_listing_id` n'est pas encore appliquée en prod, `publish_card`
+  retente un enregistrement minimal (`ebay_url`, `price`, `status`) pour ne
+  pas transformer une publication eBay réussie en erreur applicative.
 - Durcissement diagnostic : `backend/routers/ebay_selling.py` loggue
   maintenant aussi les `EbayApiError` (502 métier), pas seulement les
   exceptions inattendues.
@@ -198,8 +202,9 @@ Point de vigilance découvert pendant le diagnostic :
 - La base Supabase prod ne contenait pas encore `cards.ebay_offer_id` et
   `cards.ebay_listing_id` au moment de la vérification. La migration
   `backend/add_ebay_offer_id_migration.sql` doit être appliquée avant un
-  retest final de publication, sinon eBay pourrait publier correctement mais
-  l'app échouerait ensuite en enregistrant l'URL/offer/listing sur la carte.
+  retest complet des fonctions de retrait/mise à jour prix. Le publish lui-même
+  tolère désormais temporairement cette migration manquante en enregistrant
+  au minimum l'URL eBay.
 
 ## Repères techniques utiles
 
