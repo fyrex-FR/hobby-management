@@ -105,10 +105,10 @@ dépendre de l'historique de conversation. Mis à jour à chaque étape.
   - `build_listing_description(card, title)` / `build_aspects(card)` —
     description HTML + item specifics (Player/Athlete, Season, Manufacturer,
     Set, Parallel/Variety, Card Number, Autographed, Professional Grader,
-    Grade, Certification Number). Noms d'aspects standards mais **non
-    vérifiés contre le schéma réel de la catégorie suggérée** — si eBay en
-    ignore certains ou en réclame d'autres en obligatoire, ça remontera dans
-    l'erreur `EbayApiError` de `createOffer`, pas silencieusement.
+    Grade, Certification Number), plus aspects FR nécessaires pour la
+    catégorie cartes de sport eBay FR (`Sport`, `Type`, `Ligue`, etc.). Si
+    eBay réclame d'autres champs obligatoires, ça remontera dans l'erreur
+    `EbayApiError` de `createOffer`, pas silencieusement.
   - `publish_card(card, access_token, title, price, category_id, policies)` :
     `PUT inventory_item/{sku}` → cherche une offer existante pour ce sku
     (`GET offer?sku=`) et la met à jour (`PUT`) sinon en crée une (`POST`) →

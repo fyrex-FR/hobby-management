@@ -257,6 +257,15 @@ Correction additionnelle après retest du bouton `Publier sur eBay` :
   `USED_VERY_GOOD` (conditionId `4000`) et `publish_card` envoie désormais
   `conditionDescriptors=[{"name":"40001","values":["400010"]}]` sur
   l'inventory item.
+- Après déploiement de ce correctif, l'étape condition passe, puis eBay
+  refuse l'annonce car la catégorie suggérée était encore `183454` (JCC) et
+  réclamait l'aspect obligatoire `Jeu`. Pour les cartes NBA Panini, la
+  catégorie correcte remontée par Taxonomy avec une requête contextualisée
+  est `261328 Cartes à l'unité` (sports cards). `suggest_category` préfixe
+  désormais la requête par `sports trading card basketball`, et
+  `build_aspects` envoie les aspects FR obligatoires/recommandés utiles :
+  `Sport=Basket-ball`, `Type=Carte à collectionner sportive`,
+  `Ligue=National Basketball Association (NBA)`, plus équipe/joueur/saison.
 
 ## Repères techniques utiles
 

@@ -153,18 +153,20 @@ async def suggest_category(access_token: str, query: str) -> Optional[dict]:
         return None
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
-                f"{TAXONOMY_API}/category_tree/{tree_id}/get_category_suggestions",
-                headers=_sell_headers(access_token),
-                params={"q": query},
-            )
-        if resp.status_code != 200:
-            return None
-        suggestions = resp.json().get("categorySuggestions", [])
-        if not suggestions:
-            return None
-        cat = suggestions[0].get("category", {})
-        return {"id": cat.get("categoryId"), "name": cat.get("categoryName")}
+            for category_query in (f"sports trading card basketball {query}", query):
+                resp = await client.get(
+                    f"{TAXONOMY_API}/category_tree/{tree_id}/get_category_suggestions",
+                    headers=_sell_headers(access_token),
+                    params={"q": category_query},
+                )
+                if resp.status_code != 200:
+                    continue
+                suggestions = resp.json().get("categorySuggestions", [])
+                if not suggestions:
+                    continue
+                cat = suggestions[0].get("category", {})
+                return {"id": cat.get("categoryId"), "name": cat.get("categoryName")}
+        return None
     except Exception:
         return None
 
@@ -258,6 +260,17 @@ def build_aspects(card: dict) -> dict:
     def add(name: str, value):
         if value:
             aspects[name] = [str(value)]
+
+    add("Sport", "Basket-ball")
+    add("Type", "Carte à collectionner sportive")
+    add("Ligue", "National Basketball Association (NBA)")
+    add("Équipe", card.get("team"))
+    add("Joueur ou athlète", card.get("player"))
+    add("Saison", card.get("year"))
+    add("Fabricant", card.get("brand"))
+    add("Numéro de carte", card.get("card_number"))
+    if card.get("parallel_name") and card.get("parallel_name") != "Base":
+        add("Parallèle ou variété", card.get("parallel_name"))
 
     add("Player/Athlete", card.get("player"))
     add("Season", card.get("year"))
