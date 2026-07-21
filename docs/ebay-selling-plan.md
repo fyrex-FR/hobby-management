@@ -97,16 +97,11 @@ dépendre de l'historique de conversation. Mis à jour à chaque étape.
 - `services/ebay_selling.py` :
   - `EbayApiError(step, status_code, body)` — porte le détail exact d'un
     échec, jamais avalé silencieusement.
-  - `DEFAULT_CONDITION = "USED_EXCELLENT"` — choix **délibérément
-    conservateur** : `developer.ebay.com` est bloqué (403) depuis ce sandbox
-    (vérifié, comme le reste d'eBay), donc impossible de confirmer si des
-    valeurs plus spécifiques aux cartes gradées (`GRADED` +
-    `conditionDescriptors` avec grading company/grade/cert) sont supportées
-    et sous quels noms de champs exacts. `USED_EXCELLENT` est une valeur
-    `ConditionEnum` stable et universelle. Le grading reste indiqué en clair
-    dans le titre/la description (aucun risque de rejet API sur du texte
-    libre). **Premier point à vérifier/améliorer une fois un vrai test
-    effectué.**
+  - `DEFAULT_CONDITION = "USED_VERY_GOOD"` + `conditionDescriptors`
+    `40001=400010` — vérifié ensuite contre l'API Metadata eBay FR pour la
+    catégorie `183454` : cela correspond à `4000 Non gradée` /
+    `Near Mint or Better`. Le choix initial `USED_EXCELLENT` était converti
+    en conditionId `3000` et rejeté au publish.
   - `build_listing_description(card, title)` / `build_aspects(card)` —
     description HTML + item specifics (Player/Athlete, Season, Manufacturer,
     Set, Parallel/Variety, Card Number, Autographed, Professional Grader,

@@ -240,6 +240,24 @@ Correction additionnelle après test réel du bouton `Enregistrer` :
   idempotent : si eBay répond `merchantLocationKey already exists`, le
   backend récupère la location existante et renvoie un succès applicatif.
 
+Correction additionnelle après retest du bouton `Publier sur eBay` :
+
+- Le setup du lieu d'expédition fonctionnait, mais le publish réel échouait
+  encore avec le même message générique côté client car le backend renvoyait
+  un `502` métier après refus eBay.
+- Erreur eBay exacte dans les logs :
+  `API_INVENTORY 25059 — Les informations sur l'état 3000 n'existent pas ou
+  ne sont pas valides pour la catégorie 183454`, étape `Publication de
+  l'annonce`.
+- Vérification via Metadata API eBay pour `EBAY_FR`, catégorie `183454` :
+  conditions exposées `2750 Gradée`, `3000 Occasion`, `4000 Non gradée`.
+  Pour `4000 Non gradée`, le descriptor obligatoire est `40001 État de la
+  carte`, valeur `400010 Near Mint or Better`.
+- Correctif code : `DEFAULT_CONDITION` passe de `USED_EXCELLENT` à
+  `USED_VERY_GOOD` (conditionId `4000`) et `publish_card` envoie désormais
+  `conditionDescriptors=[{"name":"40001","values":["400010"]}]` sur
+  l'inventory item.
+
 ## Repères techniques utiles
 
 - Backend déployé : `https://collection-api.cardvaults.app` (Coolify).

@@ -27,13 +27,17 @@ INVENTORY_API = "https://api.ebay.com/sell/inventory/v1"
 TITLE_MAX_LEN = 80
 SELL_CONTENT_LANGUAGE = "fr-FR"
 
-# Condition volontairement générique et universelle (valeur ConditionEnum
-# stable dans toutes les catégories eBay), plutôt que de deviner des valeurs
-# spécifiques aux cartes gradées (GRADED + conditionDescriptors) qui n'ont
-# pas pu être vérifiées contre la doc eBay (réseau bloqué depuis ce sandbox).
-# Le grading (société + note) est de toute façon indiqué en clair dans le
-# titre et la description, sans risque de rejet par l'API.
-DEFAULT_CONDITION = "USED_EXCELLENT"
+# Pour la catégorie eBay FR "JCC : cartes à l'unité" (183454), l'état
+# générique USED_EXCELLENT est converti en conditionId 3000 puis rejeté au
+# publish. Les cartes non gradées doivent utiliser conditionId 4000 et le
+# descriptor obligatoire "État de la carte".
+DEFAULT_CONDITION = "USED_VERY_GOOD"
+DEFAULT_CONDITION_DESCRIPTORS = [
+    {
+        "name": "40001",
+        "values": ["400010"],  # Near Mint or Better
+    },
+]
 
 
 class EbayApiError(Exception):
@@ -391,6 +395,7 @@ async def publish_card(card: dict, access_token: str, title: str, price: float, 
                 json={
                     "availability": {"shipToLocationAvailability": {"quantity": 1}},
                     "condition": DEFAULT_CONDITION,
+                    "conditionDescriptors": DEFAULT_CONDITION_DESCRIPTORS,
                     "product": {
                         "title": title,
                         "description": build_listing_description(card, title),
