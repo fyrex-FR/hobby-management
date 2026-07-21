@@ -11,36 +11,38 @@ async function getAuthHeaders(): Promise<HeadersInit> {
 }
 
 /**
- * @param timeoutMs Délai avant abandon (défaut 60s). Les navigateurs ne
- * mettent pas nativement de délai sur fetch() : sans ça, une requête qui
- * traîne (ex. plusieurs appels eBay enchaînés côté serveur) reste "pendante"
- * jusqu'à ce que le réseau tranche lui-même, avec un message générique
- * illisible ("Load failed", "Failed to fetch").
+ * @param timeoutMs Délai avant de considérer la requête trop lente (défaut
+ * 60s). Volontairement implémenté avec Promise.race plutôt qu'un
+ * AbortController relié au fetch : WebKit/Safari a un bug connu où combiner
+ * `signal` et un `body` (POST/PATCH avec JSON) fait échouer fetch()
+ * instantanément avec un message générique ("Load failed"), y compris pour
+ * des requêtes qui auraient parfaitement abouti. Ici, le fetch d'origine
+ * n'est jamais annulé : on abandonne juste l'attente de son résultat.
  */
 export async function apiFetch<T>(path: string, options: RequestInit = {}, timeoutMs = 60000): Promise<T> {
   const authHeaders = await getAuthHeaders();
   const base = import.meta.env.VITE_API_URL ?? '';
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  const fetchPromise = fetch(`${base}/api${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders,
+      ...options.headers,
+    },
+  });
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error('__TIMEOUT__')), timeoutMs);
+  });
 
   let resp: Response;
   try {
-    resp = await fetch(`${base}/api${path}`, {
-      ...options,
-      signal: options.signal ?? controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        ...authHeaders,
-        ...options.headers,
-      },
-    });
+    resp = await Promise.race([fetchPromise, timeoutPromise]);
   } catch (e) {
-    if ((e as Error).name === 'AbortError') {
+    if ((e as Error).message === '__TIMEOUT__') {
       throw new Error('Le serveur met trop de temps à répondre. Réessaie dans un instant.');
     }
     throw new Error('Connexion au serveur impossible. Vérifie ta connexion et réessaie.');
-  } finally {
-    clearTimeout(timer);
   }
 
   if (!resp.ok) {
