@@ -90,45 +90,82 @@ dépendre de l'historique de conversation. Mis à jour à chaque étape.
 - Pas de nouvelle UI ajoutée (l'endpoint n'est pas encore appelé depuis le
   frontend) — PR3 branchera dessus via la modale de publication.
 
+### PR3 — Publication réelle (le bouton "Publier") ✅ (mergé, PAS ENCORE testé en conditions réelles)
+
+- `backend/add_ebay_offer_id_migration.sql` — colonnes `ebay_offer_id` /
+  `ebay_listing_id` sur `cards`.
+- `services/ebay_selling.py` :
+  - `EbayApiError(step, status_code, body)` — porte le détail exact d'un
+    échec, jamais avalé silencieusement.
+  - `DEFAULT_CONDITION = "USED_EXCELLENT"` — choix **délibérément
+    conservateur** : `developer.ebay.com` est bloqué (403) depuis ce sandbox
+    (vérifié, comme le reste d'eBay), donc impossible de confirmer si des
+    valeurs plus spécifiques aux cartes gradées (`GRADED` +
+    `conditionDescriptors` avec grading company/grade/cert) sont supportées
+    et sous quels noms de champs exacts. `USED_EXCELLENT` est une valeur
+    `ConditionEnum` stable et universelle. Le grading reste indiqué en clair
+    dans le titre/la description (aucun risque de rejet API sur du texte
+    libre). **Premier point à vérifier/améliorer une fois un vrai test
+    effectué.**
+  - `build_listing_description(card, title)` / `build_aspects(card)` —
+    description HTML + item specifics (Player/Athlete, Season, Manufacturer,
+    Set, Parallel/Variety, Card Number, Autographed, Professional Grader,
+    Grade, Certification Number). Noms d'aspects standards mais **non
+    vérifiés contre le schéma réel de la catégorie suggérée** — si eBay en
+    ignore certains ou en réclame d'autres en obligatoire, ça remontera dans
+    l'erreur `EbayApiError` de `createOffer`, pas silencieusement.
+  - `publish_card(card, access_token, title, price, category_id, policies)` :
+    `PUT inventory_item/{sku}` → cherche une offer existante pour ce sku
+    (`GET offer?sku=`) et la met à jour (`PUT`) sinon en crée une (`POST`) →
+    `POST offer/{id}/publish`. **`update_card_fields` n'est appelé qu'après
+    le succès complet des 3 étapes** — un échec à n'importe quelle étape ne
+    touche pas la carte, et un nouvel essai ne duplique pas l'offer (testé).
+  - `withdraw_card(card, access_token)` — `POST offer/{id}/withdraw` (un 404
+    -- offer déjà absente côté eBay -- est traité comme un succès), nettoie
+    `ebay_url`/`ebay_offer_id`/`ebay_listing_id`.
+  - `update_offer_price(card, access_token, new_price)` — `GET` l'offer
+    existante (le `PUT` est un remplacement complet côté eBay), modifie
+    `pricingSummary`, retire les champs en lecture seule (`offerId`,
+    `listing`, `status`) avant de renvoyer, `PUT`.
+- `routers/ebay_selling.py` :
+  - `POST /ebay/selling/publish/{card_id}` — body optionnel
+    `{title?, price?}` (édités par l'utilisateur dans la modale). Valide
+    **avant tout appel eBay** : prix > 0, `image_front_url` présent, titre
+    ≤ 80, policies `configured`, catégorie résolue. Renvoie `{"connected":
+    false}` si le vendeur n'est pas connecté (même forme que
+    `/ebay/account/status`), 422 avec message clair pour chaque validation
+    manquante, 502 avec le détail eBay exact si `EbayApiError`.
+  - `POST /ebay/selling/withdraw/{card_id}`, `PATCH /ebay/selling/price/{card_id}`
+    (même traitement d'erreurs).
+- **Frontend** :
+  - `EbayPublishModal.tsx` — appelle le preview de PR2 au montage, affiche
+    titre éditable (compteur /80), catégorie suggérée, prix éditable ;
+    bloque le bouton Publier si les policies ne sont pas configurées (liste
+    lesquelles) ; affiche le lien vers l'annonce après succès.
+  - `CardDetail.tsx` — bouton **« PUBLIER »** (ouvre la modale) si pas
+    d'`ebay_offer_id`, sinon **« VOIR SUR EBAY »** + bouton retirer
+    (appelle withdraw, invalide la query `cards`).
+  - **Fix connexe nécessaire** : `CollectionView.tsx` gardait un snapshot
+    figé de `selectedCard` au moment du clic, jamais resynchronisé avec les
+    données fraîches de la query `cards` — donc après une mutation (prix,
+    statut, et maintenant publication eBay), la fiche ouverte n'affichait
+    pas le nouvel état sans fermer/rouvrir. Corrigé par un `useEffect` qui
+    re-pointe `selectedCard` vers l'entrée à jour de `cards` dès qu'elle
+    change. Ce bug préexistant touchait déjà (silencieusement) le bouton de
+    prix depuis la médiane des ventes eBay.
+
+**⚠️ Premier test réel — checklist** :
+1. Utiliser **une carte à faible valeur** (vraie annonce, vrais frais eBay
+   en cas de vente).
+2. Si `createOrReplaceInventoryItem` échoue sur le `condition` → ajuster
+   `DEFAULT_CONDITION` (voir ci-dessus) selon le message d'erreur exact
+   renvoyé (visible directement dans la modale de publication).
+3. Si `createOffer` échoue côté aspects/catégorie → ajuster
+   `build_aspects`/`suggest_category` selon le message d'erreur exact.
+4. Vérifier que le lien `https://www.ebay.fr/itm/{listingId}` généré pointe
+   bien vers l'annonce publiée.
+
 ## Reste à faire
-
-### PR3 — Publication réelle (le bouton "Publier")
-
-- Dans `ebay_selling.py`, enchaîner les 3 appels **Inventory API** (auth via
-  `get_valid_access_token`) :
-  1. `PUT /sell/inventory/v1/inventory_item/{sku}` — `sku` = `card.id`,
-     `image_urls` = `[card.image_front_url, card.image_back_url]` (déjà des
-     URLs publiques R2, directement utilisables), `condition`
-     (NEW/USED selon `grading_company` présent ou non — eBay a des valeurs
-     de condition spécifiques aux trading cards, à vérifier dans la doc
-     Inventory API au moment de coder), `product.title`, `product.aspects`
-     (player, year, set...).
-  2. `POST /sell/inventory/v1/offer` — `sku`, `marketplaceId: EBAY_FR`,
-     `format: FIXED_PRICE`, `pricingSummary.price` = `card.price`,
-     `categoryId` (résolu en PR2), `listingPolicies` (les 3 policy IDs de
-     PR2), `quantity: 1`.
-  3. `POST /sell/inventory/v1/offer/{offerId}/publish` → renvoie
-     `listingId`.
-  - Stocker sur la carte : `ebay_url` (construit à partir du `listingId` :
-    `https://www.ebay.fr/itm/{listingId}`), et idéalement une nouvelle
-    colonne `ebay_offer_id` / `ebay_listing_id` (migration à ajouter) pour
-    permettre `withdraw`/`update` plus tard sans reparser l'URL.
-  - `DELETE /sell/inventory/v1/offer/{offerId}/withdraw` pour retirer une
-    annonce → vide `ebay_url` (et `ebay_offer_id`), repasse la carte en
-    `a_vendre` ou `collection`.
-  - `PUT /sell/inventory/v1/offer/{offerId}` pour changer le prix sans
-    republier.
-- **Router** : `POST /ebay/selling/publish/{card_id}` (utilise le preview de
-  PR2 en interne, ou prend un body avec titre/prix éventuellement édités par
-  l'utilisateur), `POST /ebay/selling/withdraw/{card_id}`,
-  `PATCH /ebay/selling/price/{card_id}`.
-- **Frontend** : bouton **« Publier sur eBay »** dans `CardDetail.tsx`
-  (à côté du bouton Vinted existant), avec une modale de preview (titre
-  éditable, prix prérempli depuis la médiane des ventes déjà implémentée,
-  aperçu photos) → publie → toast + lien vers l'annonce.
-- ⚠️ Recommandé : tester d'abord avec **une carte à faible valeur** en
-  conditions réelles (l'app publiera une vraie annonce sur eBay.fr, avec de
-  vrais frais eBay si vente).
 
 ### PR4 — Sync automatique du statut vendu
 
