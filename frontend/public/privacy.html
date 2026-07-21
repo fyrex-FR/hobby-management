@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Politique de confidentialité — CardVaults</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --accent: #F5A623;
+      --bg: #09090B;
+      --bg-card: #111113;
+      --bg-elevated: #18181B;
+      --border: rgba(255,255,255,0.08);
+      --text: #FAFAFA;
+      --text-muted: #A1A1AA;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      line-height: 1.65;
+    }
+
+    .wrap {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 48px 24px 96px;
+    }
+
+    header {
+      margin-bottom: 40px;
+    }
+
+    header .brand {
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.02em;
+    }
+    header .brand span { color: var(--accent); }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 800;
+      margin: 24px 0 8px;
+      letter-spacing: -0.02em;
+    }
+
+    .updated {
+      color: var(--text-muted);
+      font-size: 13px;
+      margin-bottom: 32px;
+    }
+
+    h2 {
+      font-size: 17px;
+      font-weight: 700;
+      margin: 32px 0 10px;
+      color: var(--accent);
+    }
+
+    p, li {
+      color: #E4E4E7;
+      font-size: 15px;
+    }
+
+    ul { padding-left: 20px; margin: 8px 0; }
+    li { margin-bottom: 6px; }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 20px;
+      margin: 24px 0;
+    }
+
+    footer {
+      margin-top: 48px;
+      padding-top: 24px;
+      border-top: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand">Card<span>Vaults</span></div>
+    </header>
+
+    <h1>Politique de confidentialité</h1>
+    <p class="updated">Dernière mise à jour : 2026</p>
+
+    <p>
+      CardVaults est une application personnelle de gestion de collection de
+      cartes à collectionner (sport cards). Cette page explique quelles
+      données sont traitées et pourquoi.
+    </p>
+
+    <h2>Qui gère l'application</h2>
+    <p>
+      CardVaults est un outil développé et utilisé pour la gestion d'une
+      collection personnelle de cartes, avec un accès étendu à un nombre
+      restreint d'utilisateurs invités par l'administrateur.
+    </p>
+
+    <h2>Données collectées</h2>
+    <ul>
+      <li><strong>Compte</strong> : adresse e-mail, utilisée pour l'authentification.</li>
+      <li><strong>Collection</strong> : informations sur les cartes (joueur, année, set, état, prix, notes) et photos que vous téléversez ou capturez dans l'application.</li>
+      <li><strong>Ventes</strong> : lorsque vous connectez un compte eBay, les informations nécessaires à la publication et au suivi de vos annonces (titre, prix, statut de l'annonce, identifiant de vente).</li>
+    </ul>
+
+    <h2>Utilisation des données</h2>
+    <p>Les données servent uniquement à faire fonctionner l'application pour son propriétaire :</p>
+    <ul>
+      <li>afficher et organiser votre collection ;</li>
+      <li>identifier automatiquement une carte à partir d'une photo ;</li>
+      <li>estimer une valeur de marché à partir d'annonces et de ventes publiques (eBay) ;</li>
+      <li>publier et gérer vos annonces de vente sur les plateformes que vous connectez (eBay, Vinted).</li>
+    </ul>
+    <p>Les données ne sont ni vendues, ni partagées à des fins publicitaires.</p>
+
+    <h2>Connexion à un compte eBay</h2>
+    <div class="card">
+      <p>
+        Si vous connectez votre compte eBay, CardVaults reçoit un accès limité
+        (API de vente eBay) exclusivement pour :
+      </p>
+      <ul>
+        <li>publier des annonces en votre nom, avec les informations que vous validez ;</li>
+        <li>consulter le statut de vos annonces et commandes ;</li>
+        <li>afficher votre pseudo eBay pour confirmer la connexion.</li>
+      </ul>
+      <p>
+        Les jetons d'accès eBay sont chiffrés avant stockage. Vous pouvez
+        déconnecter votre compte à tout moment depuis l'application ; les
+        jetons associés sont alors supprimés.
+      </p>
+    </div>
+
+    <h2>Sous-traitants techniques</h2>
+    <p>Les données transitent par les prestataires suivants, uniquement pour le fonctionnement du service :</p>
+    <ul>
+      <li>Supabase (authentification, base de données) ;</li>
+      <li>Cloudflare (hébergement, stockage des photos) ;</li>
+      <li>eBay (recherche de prix, publication d'annonces, sur autorisation) ;</li>
+      <li>Google (identification automatique de carte à partir d'une photo).</li>
+    </ul>
+
+    <h2>Conservation et suppression</h2>
+    <p>
+      Les données sont conservées tant que le compte existe. Vous pouvez
+      demander la suppression de votre compte et de vos données en
+      contactant l'administrateur de l'application.
+    </p>
+
+    <h2>Contact</h2>
+    <p>
+      Pour toute question relative à cette politique ou à vos données,
+      contactez l'administrateur de CardVaults.
+    </p>
+
+    <footer>
+      CardVaults — application de gestion de collection à usage privé.
+    </footer>
+  </div>
+</body>
+</html>
