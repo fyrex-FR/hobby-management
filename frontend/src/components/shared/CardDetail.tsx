@@ -9,7 +9,6 @@ import {
   Camera,
   Download,
   RefreshCw,
-  ExternalLink,
   Search,
   ChevronDown,
   ChevronUp,
@@ -592,112 +591,120 @@ export function CardDetail({ card, onClose }: Props) {
                 )}
 
                 {!editing && (
-                  <div className="flex flex-col gap-3 pt-4">
-                    <div className="flex gap-3">
-                      <button
-                        onClick={() => {
-                          navigator.clipboard.writeText(buildPriceSearchText(card));
-                          window.open(`https://130point.com/sales/?q=${encodeURIComponent(buildPriceSearchText(card))}`, '_blank');
-                        }}
-                        className="flex-1 py-3.5 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 bg-white/5 border border-white/10 hover:bg-white/10 text-[var(--text-secondary)] active:scale-95"
-                      >
-                        <ExternalLink size={14} />
-                        130 Point ↗
-                      </button>
+                  <div className="flex flex-col gap-5 pt-4">
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
+                          Marché
+                        </span>
+                        <div className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(buildPriceSearchText(card));
+                              window.open(`https://130point.com/sales/?q=${encodeURIComponent(buildPriceSearchText(card))}`, '_blank');
+                            }}
+                            className="hover:text-white transition-colors"
+                          >
+                            130 Point ↗
+                          </button>
+                          <span className="opacity-40">·</span>
+                          <button onClick={openEbaySold} className="hover:text-white transition-colors">
+                            eBay Sold ↗
+                          </button>
+                        </div>
+                      </div>
 
-                      <button
-                        onClick={openEbaySold}
-                        className="flex-1 py-3.5 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 bg-white/5 border border-white/10 hover:bg-white/10 text-[var(--text-secondary)] active:scale-95"
-                      >
-                        <ExternalLink size={14} />
-                        eBay Sold ↗
-                      </button>
+                      <EbaySoldItems
+                        query={buildPriceSearchText(card)}
+                        imageUrl={card.image_front_url}
+                        match={{
+                          year: card.year,
+                          cardNumber: card.card_number,
+                          numbered: card.numbered,
+                          setName: card.set_name || card.brand,
+                        }}
+                        cardId={card.id}
+                        currentPrice={card.price}
+                        onApplyPrice={(eur) =>
+                          updateCard.mutateAsync({
+                            id: card.id,
+                            price: eur,
+                            status: card.status === 'draft' || card.status === 'collection' ? 'a_vendre' : card.status,
+                          })
+                        }
+                      />
                     </div>
 
-                    <EbaySoldItems
-                      query={buildPriceSearchText(card)}
-                      imageUrl={card.image_front_url}
-                      match={{
-                        year: card.year,
-                        cardNumber: card.card_number,
-                        numbered: card.numbered,
-                        setName: card.set_name || card.brand,
-                      }}
-                      cardId={card.id}
-                      currentPrice={card.price}
-                      onApplyPrice={(eur) =>
-                        updateCard.mutateAsync({
-                          id: card.id,
-                          price: eur,
-                          status: card.status === 'draft' || card.status === 'collection' ? 'a_vendre' : card.status,
-                        })
-                      }
-                    />
+                    <div className="flex flex-col gap-3">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
+                        Mettre en vente
+                      </span>
 
-                    {ebayError && (
-                      <p className="text-xs" style={{ color: 'var(--red)' }}>{ebayError}</p>
-                    )}
-                    <div className="flex gap-3">
-                      {card.ebay_offer_id ? (
-                        <>
-                          <a
-                            href={card.ebay_url ?? '#'}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex-[4] py-4 rounded-2xl text-sm font-black text-center transition-all flex items-center justify-center gap-2 bg-white/5 border border-white/10 hover:bg-white/10 text-[var(--text-secondary)] active:scale-95"
+                      {ebayError && (
+                        <p className="text-xs" style={{ color: 'var(--red)' }}>{ebayError}</p>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-3 items-start">
+                        {card.ebay_offer_id ? (
+                          <div className="flex flex-col gap-1.5">
+                            <a
+                              href={card.ebay_url ?? '#'}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="py-4 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-2 bg-white/5 border border-white/10 hover:bg-white/10 text-[var(--text-secondary)] active:scale-95"
+                            >
+                              <EbayLogo width={36} height={14} />
+                              VOIR ↗
+                            </a>
+                            <button
+                              onClick={withdrawFromEbay}
+                              disabled={withdrawingEbay}
+                              className="py-1 text-[11px] text-center transition-colors disabled:opacity-50"
+                              style={{ color: 'var(--red)' }}
+                            >
+                              {withdrawingEbay ? 'Retrait…' : 'Retirer de eBay'}
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setShowEbayPublish(true)}
+                            className="py-4 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-2 bg-[var(--accent)] text-[#09090B] shadow-xl shadow-[var(--accent-glow)] hover:brightness-110 active:scale-95"
                           >
                             <EbayLogo width={36} height={14} />
-                            VOIR SUR EBAY
-                            <ExternalLink size={16} strokeWidth={3} />
-                          </a>
-                          <button
-                            onClick={withdrawFromEbay}
-                            disabled={withdrawingEbay}
-                            className="flex-1 py-4 rounded-2xl text-sm transition-all flex items-center justify-center bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 active:scale-95 disabled:opacity-50"
-                            title="Retirer de eBay"
-                          >
-                            {withdrawingEbay ? <RefreshCw size={16} className="animate-spin" /> : <X size={18} />}
+                            PUBLIER
                           </button>
-                        </>
-                      ) : (
-                        <button
-                          onClick={() => setShowEbayPublish(true)}
-                          className="flex-1 py-4 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-2 bg-white/5 border border-white/10 hover:bg-white/10 text-[var(--text-secondary)] active:scale-95"
-                        >
-                          <EbayLogo width={36} height={14} />
-                          PUBLIER
-                        </button>
-                      )}
+                        )}
+
+                        {card.vinted_url ? (
+                          <a
+                            href={card.vinted_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="py-4 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-2 bg-white/5 border border-white/10 hover:bg-white/10 text-[var(--text-secondary)] active:scale-95"
+                          >
+                            VINTED ↗
+                          </a>
+                        ) : (
+                          <button
+                            onClick={publishToVinted}
+                            className="py-4 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-2 bg-[var(--accent)] text-[#09090B] shadow-xl shadow-[var(--accent-glow)] hover:brightness-110 active:scale-95"
+                          >
+                            <ImageIcon size={16} />
+                            VINTED
+                          </button>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="flex gap-3">
-                      {card.vinted_url ? (
-                        <a
-                          href={card.vinted_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex-[4] py-4 rounded-2xl text-sm font-black text-center transition-all flex items-center justify-center gap-2 bg-[var(--accent)] text-[#09090B] shadow-xl shadow-[var(--accent-glow)] hover:brightness-110 active:scale-95"
-                        >
-                          VOIR SUR VINTED
-                          <ExternalLink size={16} strokeWidth={3} />
-                        </a>
-                      ) : (
-                        <button
-                          onClick={publishToVinted}
-                          className="flex-[4] py-4 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-2 bg-[var(--accent)] text-[#09090B] shadow-xl shadow-[var(--accent-glow)] hover:brightness-110 active:scale-95"
-                        >
-                          PUBLIER SUR VINTED
-                          <ImageIcon size={16} strokeWidth={3} />
-                        </button>
-                      )}
-                      <button
-                        onClick={handleDelete}
-                        disabled={deleteCard.isPending}
-                        className="flex-1 py-4 rounded-2xl text-sm transition-all flex items-center justify-center bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 active:scale-95"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
+                    <div className="h-px bg-white/5 my-1" />
+                    <button
+                      onClick={handleDelete}
+                      disabled={deleteCard.isPending}
+                      className="py-3 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 text-red-400 bg-transparent hover:bg-red-500/10 active:scale-95 disabled:opacity-50"
+                    >
+                      <Trash2 size={14} />
+                      Supprimer la carte
+                    </button>
                   </div>
                 )}
               </motion.div>
