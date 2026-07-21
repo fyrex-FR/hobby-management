@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X,
@@ -30,11 +31,14 @@ import { useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { useFolders } from '../../hooks/useFolders';
 import { useIdentify } from '../../hooks/useIdentify';
 import { EbaySoldItems } from './EbaySoldItems';
+import { EbayPublishModal } from './EbayPublishModal';
+import { EbayLogo } from './EbayLogo';
 import { supabase } from '../../lib/supabase';
 import { compressImage } from '../../lib/storage';
 import { cdnImg } from '../../lib/cdn';
 import { RookieBadge } from './RookieBadge';
 import { normalizeParallelName } from '../../lib/cardQuality';
+import { apiFetch } from '../../api/client';
 
 
 const inputCls = 'w-full rounded-xl px-3 py-2 text-sm outline-none transition-all bg-white/5 border border-white/10 focus:border-[var(--accent)]/50 focus:bg-white/10';
@@ -116,6 +120,7 @@ export function CardDetail({ card, onClose }: Props) {
   const deleteCard = useDeleteCard();
   const updateCard = useUpdateCard();
   const identify = useIdentify();
+  const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [reanalyzeError, setReanalyzeError] = useState('');
@@ -124,6 +129,22 @@ export function CardDetail({ card, onClose }: Props) {
   const [showGrading, setShowGrading] = useState(false);
   const [lightboxSide, setLightboxSide] = useState<'front' | 'back' | null>(null);
   const [downloadingPhotos, setDownloadingPhotos] = useState(false);
+  const [showEbayPublish, setShowEbayPublish] = useState(false);
+  const [withdrawingEbay, setWithdrawingEbay] = useState(false);
+  const [ebayError, setEbayError] = useState('');
+
+  async function withdrawFromEbay() {
+    setWithdrawingEbay(true);
+    setEbayError('');
+    try {
+      await apiFetch(`/ebay/selling/withdraw/${card.id}`, { method: 'POST' });
+      await queryClient.invalidateQueries({ queryKey: ['cards'] });
+    } catch (e) {
+      setEbayError((e as Error).message);
+    } finally {
+      setWithdrawingEbay(false);
+    }
+  }
   const { data: folders = [] } = useFolders();
   const [folderIds, setFolderIds] = useState<string[]>(card.folder_ids ?? []);
   const frontInputRef = useRef<HTMLInputElement>(null);
@@ -613,6 +634,42 @@ export function CardDetail({ card, onClose }: Props) {
                       }
                     />
 
+                    {ebayError && (
+                      <p className="text-xs" style={{ color: 'var(--red)' }}>{ebayError}</p>
+                    )}
+                    <div className="flex gap-3">
+                      {card.ebay_offer_id ? (
+                        <>
+                          <a
+                            href={card.ebay_url ?? '#'}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-[4] py-4 rounded-2xl text-sm font-black text-center transition-all flex items-center justify-center gap-2 bg-white/5 border border-white/10 hover:bg-white/10 text-[var(--text-secondary)] active:scale-95"
+                          >
+                            <EbayLogo width={36} height={14} />
+                            VOIR SUR EBAY
+                            <ExternalLink size={16} strokeWidth={3} />
+                          </a>
+                          <button
+                            onClick={withdrawFromEbay}
+                            disabled={withdrawingEbay}
+                            className="flex-1 py-4 rounded-2xl text-sm transition-all flex items-center justify-center bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 active:scale-95 disabled:opacity-50"
+                            title="Retirer de eBay"
+                          >
+                            {withdrawingEbay ? <RefreshCw size={16} className="animate-spin" /> : <X size={18} />}
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => setShowEbayPublish(true)}
+                          className="flex-1 py-4 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-2 bg-white/5 border border-white/10 hover:bg-white/10 text-[var(--text-secondary)] active:scale-95"
+                        >
+                          <EbayLogo width={36} height={14} />
+                          PUBLIER
+                        </button>
+                      )}
+                    </div>
+
                     <div className="flex gap-3">
                       {card.vinted_url ? (
                         <a
@@ -910,6 +967,13 @@ export function CardDetail({ card, onClose }: Props) {
       );
     })()}
     </AnimatePresence>
+    {showEbayPublish && (
+      <EbayPublishModal
+        card={card}
+        onClose={() => setShowEbayPublish(false)}
+        onPublished={() => { setShowEbayPublish(false); queryClient.invalidateQueries({ queryKey: ['cards'] }); }}
+      />
+    )}
     </>
   );
 }

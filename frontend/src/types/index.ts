@@ -40,6 +40,8 @@ export interface Card {
   grading_cost: number | null;
   vinted_url: string | null;
   ebay_url: string | null;
+  ebay_offer_id: string | null;
+  ebay_listing_id: string | null;
   quantity: number | null;
   folder_ids: string[] | null;
 }
