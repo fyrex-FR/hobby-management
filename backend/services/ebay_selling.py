@@ -20,8 +20,28 @@ SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
 
 ACCOUNT_API = "https://api.ebay.com/sell/account/v1"
 TAXONOMY_API = "https://api.ebay.com/commerce/taxonomy/v1"
+INVENTORY_API = "https://api.ebay.com/sell/inventory/v1"
 
 TITLE_MAX_LEN = 80
+
+# Condition volontairement générique et universelle (valeur ConditionEnum
+# stable dans toutes les catégories eBay), plutôt que de deviner des valeurs
+# spécifiques aux cartes gradées (GRADED + conditionDescriptors) qui n'ont
+# pas pu être vérifiées contre la doc eBay (réseau bloqué depuis ce sandbox).
+# Le grading (société + note) est de toute façon indiqué en clair dans le
+# titre et la description, sans risque de rejet par l'API.
+DEFAULT_CONDITION = "USED_EXCELLENT"
+
+
+class EbayApiError(Exception):
+    """Erreur eBay avec le corps de réponse brut, pour un diagnostic exact
+    sans avoir besoin d'accès réseau à eBay pour la reproduire."""
+
+    def __init__(self, step: str, status_code: int, body: str):
+        self.step = step
+        self.status_code = status_code
+        self.body = body[:800]
+        super().__init__(f"{step} (HTTP {status_code}): {self.body}")
 
 # Cache en mémoire du category tree id par marketplace (ne change pas).
 _category_tree_cache: dict[str, str] = {}
@@ -178,3 +198,196 @@ async def build_preview(card: dict, access_token: str) -> dict:
         "price": card.get("price"),
         "marketplace_id": SELL_MARKETPLACE_ID,
     }
+
+
+async def update_card_fields(card_id: str, user_id: str, fields: dict) -> None:
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.patch(
+            f"{SUPABASE_URL}/rest/v1/cards",
+            headers=_supabase_headers(),
+            params={"id": f"eq.{card_id}", "user_id": f"eq.{user_id}"},
+            json=fields,
+        )
+    if resp.status_code not in (200, 204):
+        raise RuntimeError(f"Supabase update cards {resp.status_code}: {resp.text[:300]}")
+
+
+def build_listing_description(card: dict, title: str) -> str:
+    lines = [f"<p>{title}</p>", "<ul>"]
+    for label, value in [
+        ("Année", card.get("year")),
+        ("Marque", card.get("brand")),
+        ("Set", card.get("set_name")),
+        ("Parallel", card.get("parallel_name") if card.get("parallel_name") != "Base" else None),
+        ("Numéro", card.get("card_number")),
+        ("Tirage", card.get("numbered")),
+        ("État", card.get("condition_notes") or "Mint / Near Mint"),
+    ]:
+        if value:
+            lines.append(f"<li>{label} : {value}</li>")
+    if card.get("is_rookie"):
+        lines.append("<li>Rookie Card</li>")
+    if card.get("grading_company") and card.get("grading_grade"):
+        lines.append(f"<li>Gradée {card['grading_company']} {card['grading_grade']}"
+                      + (f" (cert. {card['grading_cert']})" if card.get("grading_cert") else "") + "</li>")
+    lines.append("</ul>")
+    return "\n".join(lines)
+
+
+def build_aspects(card: dict) -> dict:
+    """Item specifics standards pour des cartes de sport. Les valeurs qui ne
+    correspondent à aucune liste attendue par eBay pour la catégorie sont
+    généralement ignorées plutôt que de faire échouer l'appel."""
+    aspects: dict[str, list[str]] = {}
+
+    def add(name: str, value):
+        if value:
+            aspects[name] = [str(value)]
+
+    add("Player/Athlete", card.get("player"))
+    add("Season", card.get("year"))
+    add("Manufacturer", card.get("brand"))
+    add("Set", card.get("set_name"))
+    if card.get("parallel_name") and card.get("parallel_name") != "Base":
+        add("Parallel/Variety", card.get("parallel_name"))
+    add("Card Number", card.get("card_number"))
+    if card.get("card_type") in ("auto", "auto_patch"):
+        add("Autographed", "Yes")
+    if card.get("grading_company"):
+        add("Professional Grader", card.get("grading_company"))
+        add("Grade", card.get("grading_grade"))
+        add("Certification Number", card.get("grading_cert"))
+    return aspects
+
+
+async def _find_existing_offer_id(access_token: str, sku: str) -> Optional[str]:
+    """Un offer existe déjà pour ce sku+marketplace (publish déjà tenté) ?
+    Rend l'endpoint de publication rejouable sans dupliquer les offres."""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                f"{INVENTORY_API}/offer",
+                headers=_sell_headers(access_token),
+                params={"sku": sku, "marketplace_id": SELL_MARKETPLACE_ID},
+            )
+        if resp.status_code != 200:
+            return None
+        offers = resp.json().get("offers", [])
+        return offers[0]["offerId"] if offers else None
+    except Exception:
+        return None
+
+
+async def publish_card(card: dict, access_token: str, title: str, price: float, category_id: str, policies: dict) -> dict:
+    """Enchaîne inventory_item -> offer (créée ou réutilisée) -> publish.
+    Lève EbayApiError avec le détail exact en cas d'échec à n'importe quelle
+    étape ; ne modifie la carte en base qu'en cas de succès complet."""
+    sku = card["id"]
+    image_urls = [u for u in [card.get("image_front_url"), card.get("image_back_url")] if u]
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        # 1. Inventory item (idempotent : PUT keyed by sku).
+        resp = await client.put(
+            f"{INVENTORY_API}/inventory_item/{sku}",
+            headers=_sell_headers(access_token),
+            json={
+                "availability": {"shipToLocationAvailability": {"quantity": 1}},
+                "condition": DEFAULT_CONDITION,
+                "product": {
+                    "title": title,
+                    "description": build_listing_description(card, title),
+                    "aspects": build_aspects(card),
+                    "imageUrls": image_urls,
+                },
+            },
+        )
+        if resp.status_code not in (200, 201, 204):
+            raise EbayApiError("Création de la fiche produit", resp.status_code, resp.text)
+
+        # 2. Offer : réutilise celle existante si un essai précédent en a créé une.
+        offer_id = await _find_existing_offer_id(access_token, sku)
+        offer_body = {
+            "sku": sku,
+            "marketplaceId": SELL_MARKETPLACE_ID,
+            "format": "FIXED_PRICE",
+            "availableQuantity": 1,
+            "categoryId": category_id,
+            "listingDescription": build_listing_description(card, title),
+            "listingPolicies": {
+                "paymentPolicyId": policies["payment"],
+                "returnPolicyId": policies["return"],
+                "fulfillmentPolicyId": policies["fulfillment"],
+            },
+            "pricingSummary": {"price": {"value": str(price), "currency": "EUR"}},
+        }
+        if offer_id:
+            resp = await client.put(f"{INVENTORY_API}/offer/{offer_id}", headers=_sell_headers(access_token), json=offer_body)
+            if resp.status_code not in (200, 204):
+                raise EbayApiError("Mise à jour de l'offre", resp.status_code, resp.text)
+        else:
+            resp = await client.post(f"{INVENTORY_API}/offer", headers=_sell_headers(access_token), json=offer_body)
+            if resp.status_code not in (200, 201):
+                raise EbayApiError("Création de l'offre", resp.status_code, resp.text)
+            offer_id = resp.json().get("offerId")
+            if not offer_id:
+                raise EbayApiError("Création de l'offre", resp.status_code, "offerId manquant dans la réponse")
+
+        # 3. Publish.
+        resp = await client.post(f"{INVENTORY_API}/offer/{offer_id}/publish", headers=_sell_headers(access_token), json={})
+        if resp.status_code not in (200, 201):
+            raise EbayApiError("Publication de l'annonce", resp.status_code, resp.text)
+        listing_id = resp.json().get("listingId")
+        if not listing_id:
+            raise EbayApiError("Publication de l'annonce", resp.status_code, "listingId manquant dans la réponse")
+
+    ebay_url = f"https://www.ebay.fr/itm/{listing_id}"
+    await update_card_fields(sku, card["user_id"], {
+        "ebay_url": ebay_url,
+        "ebay_offer_id": offer_id,
+        "ebay_listing_id": listing_id,
+        "price": price,
+        "status": "a_vendre" if card.get("status") not in ("vendu",) else card["status"],
+    })
+    return {"published": True, "ebay_url": ebay_url, "listing_id": listing_id, "offer_id": offer_id}
+
+
+async def withdraw_card(card: dict, access_token: str) -> dict:
+    offer_id = card.get("ebay_offer_id")
+    if not offer_id:
+        raise EbayApiError("Retrait de l'annonce", 400, "Cette carte n'a pas d'annonce eBay connue.")
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.post(f"{INVENTORY_API}/offer/{offer_id}/withdraw", headers=_sell_headers(access_token), json={})
+    # 404 = déjà retirée côté eBay (offre inconnue) : on nettoie quand même la carte.
+    if resp.status_code not in (200, 204, 404):
+        raise EbayApiError("Retrait de l'annonce", resp.status_code, resp.text)
+
+    await update_card_fields(card["id"], card["user_id"], {
+        "ebay_url": None,
+        "ebay_offer_id": None,
+        "ebay_listing_id": None,
+    })
+    return {"withdrawn": True}
+
+
+async def update_offer_price(card: dict, access_token: str, new_price: float) -> dict:
+    offer_id = card.get("ebay_offer_id")
+    if not offer_id:
+        raise EbayApiError("Mise à jour du prix", 400, "Cette carte n'a pas d'annonce eBay connue.")
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(f"{INVENTORY_API}/offer/{offer_id}", headers=_sell_headers(access_token))
+        if resp.status_code != 200:
+            raise EbayApiError("Lecture de l'offre", resp.status_code, resp.text)
+        offer = resp.json()
+        offer["pricingSummary"] = {**offer.get("pricingSummary", {}), "price": {"value": str(new_price), "currency": "EUR"}}
+        # Champs en lecture seule que l'API refuse en entrée.
+        for ro_field in ("offerId", "listing", "status"):
+            offer.pop(ro_field, None)
+
+        resp = await client.put(f"{INVENTORY_API}/offer/{offer_id}", headers=_sell_headers(access_token), json=offer)
+        if resp.status_code not in (200, 204):
+            raise EbayApiError("Mise à jour du prix", resp.status_code, resp.text)
+
+    await update_card_fields(card["id"], card["user_id"], {"price": new_price})
+    return {"updated": True, "price": new_price}

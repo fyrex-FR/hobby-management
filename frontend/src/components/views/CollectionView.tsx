@@ -789,6 +789,15 @@ export function CollectionView() {
   const deleteCard = useDeleteCard();
   const deleteFolder = useDeleteFolder();
 
+  // Garde selectedCard synchronisée avec les données fraîches (ex. après une
+  // mutation déclenchée depuis CardDetail : prix, statut, publication eBay…)
+  // au lieu de garder le snapshot pris au moment du clic.
+  useEffect(() => {
+    if (!selectedCard) return;
+    const fresh = cards.find((c) => c.id === selectedCard.id);
+    if (fresh && fresh !== selectedCard) setSelectedCard(fresh);
+  }, [cards, selectedCard]);
+
   const folderById = useMemo(() => new Map(folders.map((f) => [f.id, f])), [folders]);
 
   function toggleSelect(id: string) {
