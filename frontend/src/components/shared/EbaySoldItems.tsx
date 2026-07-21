@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { apiFetch } from '../../api/client';
 import { cdnImg } from '../../lib/cdn';
+import { EbayLogo } from './EbayLogo';
 
 interface EbayResult {
   title: string;
@@ -37,18 +38,6 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' });
 }
 
-function EbayLogo() {
-  return (
-    <svg viewBox="0 0 100 40" width="40" height="16" aria-label="eBay">
-      <text x="0" y="32" fontSize="40" fontWeight="bold" fontFamily="Arial, sans-serif">
-        <tspan fill="#E53238">e</tspan>
-        <tspan fill="#0064D2">B</tspan>
-        <tspan fill="#F5AF02">a</tspan>
-        <tspan fill="#86B817">y</tspan>
-      </text>
-    </svg>
-  );
-}
 
 async function urlToBase64(url: string): Promise<string> {
   const resp = await fetch(url);
