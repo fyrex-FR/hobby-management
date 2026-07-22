@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   AlertCircle,
@@ -7,6 +7,7 @@ import {
   CreditCard,
   ExternalLink,
   FileText,
+  ImagePlus,
   Link2,
   Loader2,
   LogOut,
@@ -15,6 +16,7 @@ import {
   Save,
   ShoppingBag,
   Tag,
+  Trash2,
   Truck,
 } from 'lucide-react';
 import { useCards } from '../../hooks/useCards';
@@ -23,10 +25,16 @@ import {
   useEbayConnect,
   useEbayDisconnect,
   useEbayLocationCreate,
+  useEbaySellerImage,
+  useEbaySellerImageSave,
   useEbaySellerSetup,
 } from '../../hooks/useEbayAccount';
 import { EbayLogo } from '../shared/EbayLogo';
 import { cdnImg } from '../../lib/cdn';
+import { supabase } from '../../lib/supabase';
+import { compressImage } from '../../lib/storage';
+
+const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
 function StatTile({ label, value, icon: Icon, accent }: { label: string; value: number; icon: any; accent?: boolean }) {
   return (
@@ -70,6 +78,119 @@ function SetupStep({
         </div>
         <p className="text-xs leading-relaxed mt-1" style={{ color: 'var(--text-muted)' }}>{detail}</p>
       </div>
+    </div>
+  );
+}
+
+function SellerImageCard() {
+  const { data: settings, isLoading } = useEbaySellerImage();
+  const save = useEbaySellerImageSave();
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleFile(file: File) {
+    if (!file.type.startsWith('image/')) return;
+    setError('');
+    setUploading(true);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) throw new Error('Session expirée, reconnecte-toi.');
+      const blob = await compressImage(file);
+      const form = new FormData();
+      form.append('file', new File([blob], 'seller-image.jpg', { type: 'image/jpeg' }));
+      form.append('card_id', 'ebay-seller-image');
+      form.append('side', 'extra');
+      const r = await fetch(`${API_BASE}/api/upload`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+      if (!r.ok) throw new Error(await r.text());
+      const { url } = await r.json();
+      await save.mutateAsync(url);
+    } catch (e) {
+      setError((e as Error).message || 'Envoi de l’image impossible.');
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function remove() {
+    setError('');
+    save.mutate(null, { onError: (e) => setError((e as Error).message) });
+  }
+
+  const imageUrl = settings?.extra_image_url ?? null;
+  const busy = uploading || save.isPending;
+
+  return (
+    <div className="glass rounded-2xl p-5 flex flex-col gap-3">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(255,255,255,0.06)' }}>
+          <ImagePlus size={18} style={{ color: imageUrl ? 'var(--green)' : 'var(--accent)' }} />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-white">Image d’annonce</p>
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            Ajoutée automatiquement en 3e photo de chaque annonce publiée
+          </p>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Chargement…</p>
+      ) : imageUrl ? (
+        <div className="flex flex-col gap-3">
+          <img src={cdnImg(imageUrl)} alt="Image vendeur" className="max-h-40 w-auto rounded-xl object-contain self-start" style={{ background: 'rgba(255,255,255,0.04)' }} />
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => inputRef.current?.click()}
+              disabled={busy}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50"
+              style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)' }}
+            >
+              {uploading ? <Loader2 size={15} className="animate-spin" /> : <ImagePlus size={15} />}
+              Remplacer
+            </button>
+            <button
+              onClick={remove}
+              disabled={busy}
+              className="flex items-center gap-2 text-xs font-bold disabled:opacity-50"
+              style={{ color: 'var(--red)' }}
+            >
+              <Trash2 size={13} />
+              Retirer
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+            Ajoutée automatiquement en 3e photo de chaque annonce publiée — présente tes conditions d’envoi, ta protection des cartes, etc.
+          </p>
+          <button
+            onClick={() => inputRef.current?.click()}
+            disabled={busy}
+            className="self-start flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50"
+            style={{ background: 'var(--accent)', color: '#09090B' }}
+          >
+            {uploading ? <Loader2 size={15} className="animate-spin" /> : <ImagePlus size={15} />}
+            {uploading ? 'Envoi…' : 'Ajouter une image'}
+          </button>
+        </div>
+      )}
+
+      {error && <p className="text-xs" style={{ color: 'var(--red)' }}>{error}</p>}
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }}
+      />
     </div>
   );
 }
@@ -203,6 +324,8 @@ export function EbayView() {
           </p>
         )}
       </div>
+
+      <SellerImageCard />
 
       {/* Statut de connexion */}
       {isLoading ? (

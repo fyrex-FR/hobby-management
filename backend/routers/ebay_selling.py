@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from .auth import current_user
-from services import ebay_selling
+from services import ebay_selling, ebay_settings_store
 from services.ebay_oauth import get_valid_access_token
 from services.ebay_selling import EbayApiError
 
@@ -22,6 +22,7 @@ class PublishRequest(BaseModel):
     payment_policy_id: Optional[str] = None
     return_policy_id: Optional[str] = None
     fulfillment_policy_id: Optional[str] = None
+    include_extra_image: bool = True
 
 
 class PriceUpdateRequest(BaseModel):
@@ -41,7 +42,10 @@ async def preview_listing(card_id: str, user: dict = Depends(current_user)):
         return {"connected": False}
 
     try:
-        return await ebay_selling.build_preview(card, access_token)
+        preview = await ebay_selling.build_preview(card, access_token)
+        settings = await ebay_settings_store.get_settings(user["sub"])
+        preview["extra_image_url"] = (settings or {}).get("extra_image_url")
+        return preview
     except Exception as e:
         logger.exception("Preview eBay: erreur inattendue pour la carte %s", card_id)
         raise HTTPException(status_code=500, detail=f"Erreur inattendue lors de l'aperçu : {e}")
@@ -100,6 +104,11 @@ async def publish_listing(card_id: str, body: PublishRequest, user: dict = Depen
         if not category or not category.get("id"):
             raise HTTPException(status_code=422, detail="Impossible de déterminer une catégorie eBay pour cette carte.")
 
+        extra_image_url = None
+        if body.include_extra_image:
+            settings = await ebay_settings_store.get_settings(user["sub"])
+            extra_image_url = (settings or {}).get("extra_image_url")
+
         try:
             return await ebay_selling.publish_card(
                 card,
@@ -111,6 +120,7 @@ async def publish_listing(card_id: str, body: PublishRequest, user: dict = Depen
                 description,
                 allow_offers=allow_offers,
                 minimum_offer_price=minimum_offer_price,
+                extra_image_url=extra_image_url,
             )
         except EbayApiError as e:
             logger.warning("Publication eBay refusée pour la carte %s: %s", card_id, e)

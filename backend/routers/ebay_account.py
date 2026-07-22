@@ -2,10 +2,10 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from .auth import current_user
-from services import ebay_oauth
+from services import ebay_oauth, ebay_settings_store
 from services.ebay_oauth import OAuthError
 from services.ebay_oauth import get_valid_access_token
 from services.ebay_selling import EbayApiError, create_inventory_location, get_business_policies, list_inventory_locations
@@ -19,6 +19,22 @@ class LocationRequest(BaseModel):
     city: str
     country: Optional[str] = "FR"
     name: Optional[str] = "CardVaults"
+
+
+class SellerSettingsRequest(BaseModel):
+    extra_image_url: Optional[str] = None
+
+    @field_validator("extra_image_url")
+    @classmethod
+    def _validate_url(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            return None
+        if not value.startswith("https://"):
+            raise ValueError("L'image doit être une URL https valide.")
+        return value
 
 
 @router.post("/ebay/account/login")
@@ -115,3 +131,18 @@ async def account_location_create(body: LocationRequest, user: dict = Depends(cu
 async def account_disconnect(user: dict = Depends(current_user)):
     await ebay_oauth.disconnect(user["sub"])
     return {"connected": False}
+
+
+@router.get("/ebay/account/settings")
+async def account_settings(user: dict = Depends(current_user)):
+    """Réglages vendeur CardVaults (indépendants du compte eBay connecté) :
+    pour l'instant l'image « vendeur » ajoutée automatiquement en 3e photo de
+    chaque annonce publiée."""
+    settings = await ebay_settings_store.get_settings(user["sub"])
+    return {"extra_image_url": (settings or {}).get("extra_image_url")}
+
+
+@router.put("/ebay/account/settings")
+async def account_settings_update(body: SellerSettingsRequest, user: dict = Depends(current_user)):
+    await ebay_settings_store.upsert_settings(user["sub"], {"extra_image_url": body.extra_image_url})
+    return {"extra_image_url": body.extra_image_url}

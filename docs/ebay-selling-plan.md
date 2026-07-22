@@ -160,6 +160,34 @@ dépendre de l'historique de conversation. Mis à jour à chaque étape.
 4. Vérifier que le lien `https://www.ebay.fr/itm/{listingId}` généré pointe
    bien vers l'annonce publiée.
 
+### Image vendeur (3e photo automatique) ✅
+
+- `backend/add_ebay_seller_settings_migration.sql` — table
+  `ebay_seller_settings` (1 ligne par `user_id`, `extra_image_url`), même
+  modèle RLS service-only que `ebay_seller_tokens`.
+- `backend/services/ebay_settings_store.py` — CRUD Supabase REST, calqué sur
+  `ebay_tokens_store.py`.
+- `backend/routers/ebay_account.py` : `GET /ebay/account/settings`,
+  `PUT /ebay/account/settings` (valide que l'URL est `https://...`).
+- `backend/routers/ebay_selling.py` :
+  - `GET /ebay/selling/preview/{card_id}` renvoie en plus
+    `extra_image_url` (réglage de l'utilisateur, ou `null`).
+  - `POST /ebay/selling/publish/{card_id}` accepte
+    `include_extra_image: bool = True` ; si vrai et qu'une image est
+    configurée, elle est passée à `publish_card` qui l'ajoute à
+    `image_urls` en 3e position, après recto/verso.
+- **Frontend** :
+  - `useEbaySellerImage` / `useEbaySellerImageSave` dans
+    `hooks/useEbayAccount.ts`.
+  - `EbayView.tsx` — carte « Image d'annonce » : aperçu + Remplacer/Retirer
+    si une image est configurée, sinon bouton d'ajout. Upload réutilise
+    `POST /api/upload` (même flux que les photos recto/verso, avec
+    `compressImage`), puis `PUT /ebay/account/settings`.
+  - `EbayPublishModal.tsx` — checkbox « Ajouter mon image d'annonce (3e
+    photo) », cochée par défaut, affichée uniquement si
+    `preview.extra_image_url` est renseigné ; envoie `include_extra_image`
+    au publish.
+
 ## Reste à faire
 
 ### PR4 — Sync automatique du statut vendu
