@@ -514,12 +514,13 @@ async def publish_card(
     *,
     allow_offers: bool = False,
     minimum_offer_price: Optional[float] = None,
+    extra_image_url: Optional[str] = None,
 ) -> dict:
     """Enchaîne inventory_item -> offer (créée ou réutilisée) -> publish.
     Lève EbayApiError avec le détail exact en cas d'échec à n'importe quelle
     étape ; ne modifie la carte en base qu'en cas de succès complet."""
     sku = card["id"]
-    image_urls = [u for u in [card.get("image_front_url"), card.get("image_back_url")] if u]
+    image_urls = [u for u in [card.get("image_front_url"), card.get("image_back_url"), extra_image_url] if u]
 
     merchant_location_key = await get_inventory_location_key(access_token)
     if not merchant_location_key:

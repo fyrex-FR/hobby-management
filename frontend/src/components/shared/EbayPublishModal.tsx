@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { X, Loader2, ExternalLink, CheckCircle2, AlertCircle } from 'lucide-react';
 import { apiFetch } from '../../api/client';
 import { EbayLogo } from './EbayLogo';
+import { cdnImg } from '../../lib/cdn';
 import type { Card } from '../../types';
 
 interface PreviewData {
@@ -22,6 +23,7 @@ interface PreviewData {
   };
   price?: number | null;
   marketplace_id?: string;
+  extra_image_url?: string | null;
 }
 
 interface PolicyOption {
@@ -46,6 +48,7 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
   const [fulfillmentPolicyId, setFulfillmentPolicyId] = useState('');
   const [allowOffers, setAllowOffers] = useState(false);
   const [minimumOfferPrice, setMinimumOfferPrice] = useState('');
+  const [includeExtraImage, setIncludeExtraImage] = useState(true);
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState('');
   const [result, setResult] = useState<{ ebay_url: string } | null>(null);
@@ -84,6 +87,7 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
           payment_policy_id: paymentPolicyId,
           return_policy_id: returnPolicyId,
           fulfillment_policy_id: fulfillmentPolicyId,
+          include_extra_image: includeExtraImage,
         }),
       });
       setResult(data);
@@ -255,6 +259,19 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
                 style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
               />
             </div>
+
+            {preview.extra_image_url && (
+              <label className="flex items-center gap-3 rounded-2xl p-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
+                <input
+                  type="checkbox"
+                  checked={includeExtraImage}
+                  onChange={(e) => setIncludeExtraImage(e.target.checked)}
+                  className="w-4 h-4 accent-[var(--accent)]"
+                />
+                <img src={cdnImg(preview.extra_image_url)} alt="" className="w-6 h-6 rounded-md object-cover shrink-0" />
+                <span className="text-sm font-bold text-white">Ajouter mon image d'annonce (3e photo)</span>
+              </label>
+            )}
 
             <div className="rounded-2xl p-3 flex flex-col gap-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
               <label className="flex items-center gap-3">

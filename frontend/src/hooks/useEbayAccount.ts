@@ -92,6 +92,30 @@ export function useEbaySellerSetup(enabled: boolean) {
   });
 }
 
+export interface EbaySellerImageSettings {
+  extra_image_url: string | null;
+}
+
+export function useEbaySellerImage() {
+  return useQuery<EbaySellerImageSettings>({
+    queryKey: ['ebay-seller-image'],
+    queryFn: () => apiFetch<EbaySellerImageSettings>('/ebay/account/settings'),
+  });
+}
+
+export function useEbaySellerImageSave() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (extra_image_url: string | null) => (
+      apiFetch<EbaySellerImageSettings>('/ebay/account/settings', {
+        method: 'PUT',
+        body: JSON.stringify({ extra_image_url }),
+      })
+    ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ebay-seller-image'] }),
+  });
+}
+
 export function useEbayLocationCreate() {
   const qc = useQueryClient();
   return useMutation({
