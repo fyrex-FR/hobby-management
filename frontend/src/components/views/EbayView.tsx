@@ -3,8 +3,11 @@ import { motion } from 'framer-motion';
 import {
   AlertCircle,
   Camera,
+  Check,
   CheckCircle2,
+  Copy,
   CreditCard,
+  Download,
   ExternalLink,
   FileText,
   ImagePlus,
@@ -31,6 +34,7 @@ import {
 } from '../../hooks/useEbayAccount';
 import { EbayLogo } from '../shared/EbayLogo';
 import { cdnImg } from '../../lib/cdn';
+import { downloadImage } from '../../lib/downloadImage';
 import { supabase } from '../../lib/supabase';
 import { compressImage } from '../../lib/storage';
 
@@ -88,6 +92,8 @@ function SellerImageCard() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
+  const [downloading, setDownloading] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   async function handleFile(file: File) {
     if (!file.type.startsWith('image/')) return;
@@ -122,6 +128,31 @@ function SellerImageCard() {
     save.mutate(null, { onError: (e) => setError((e as Error).message) });
   }
 
+  async function handleDownload() {
+    if (!imageUrl) return;
+    setError('');
+    setDownloading(true);
+    try {
+      await downloadImage(imageUrl, 'image-annonce-ebay.jpg');
+    } catch (e) {
+      setError((e as Error).message || 'Téléchargement impossible.');
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  async function handleCopyLink() {
+    if (!imageUrl) return;
+    setError('');
+    try {
+      await navigator.clipboard.writeText(imageUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      setError((e as Error).message || 'Copie du lien impossible.');
+    }
+  }
+
   const imageUrl = settings?.extra_image_url ?? null;
   const busy = uploading || save.isPending;
 
@@ -144,7 +175,7 @@ function SellerImageCard() {
       ) : imageUrl ? (
         <div className="flex flex-col gap-3">
           <img src={cdnImg(imageUrl)} alt="Image vendeur" className="max-h-40 w-auto rounded-xl object-contain self-start" style={{ background: 'rgba(255,255,255,0.04)' }} />
-          <div className="flex items-center gap-3">
+          <div className="flex items-center flex-wrap gap-3">
             <button
               onClick={() => inputRef.current?.click()}
               disabled={busy}
@@ -153,6 +184,24 @@ function SellerImageCard() {
             >
               {uploading ? <Loader2 size={15} className="animate-spin" /> : <ImagePlus size={15} />}
               Remplacer
+            </button>
+            <button
+              onClick={handleDownload}
+              disabled={busy || downloading}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50"
+              style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)' }}
+            >
+              {downloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+              Télécharger
+            </button>
+            <button
+              onClick={handleCopyLink}
+              disabled={busy}
+              className="flex items-center gap-2 text-xs font-bold disabled:opacity-50"
+              style={{ color: copied ? 'var(--green)' : 'var(--text-secondary)' }}
+            >
+              {copied ? <Check size={13} /> : <Copy size={13} />}
+              {copied ? 'Copié ✓' : 'Copier le lien'}
             </button>
             <button
               onClick={remove}
@@ -164,6 +213,9 @@ function SellerImageCard() {
               Retirer
             </button>
           </div>
+          <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+            Pour tes annonces créées directement sur eBay : télécharge l’image puis ajoute-la via l’éditeur photo eBay (eBay n’accepte pas les liens externes dans une annonce existante).
+          </p>
         </div>
       ) : (
         <div className="flex flex-col gap-3">
