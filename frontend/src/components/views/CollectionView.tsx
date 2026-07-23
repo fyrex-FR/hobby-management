@@ -48,7 +48,7 @@ import { playerLastName, playerInitial, playerNameKey, buildPlayerCanonical, str
 type FilterTab = 'all' | 'a_vendre' | 'vendu';
 type GroupBy = 'none' | 'player' | 'team' | 'brand' | 'set_name' | 'year';
 type SortBy = 'recent' | 'player' | 'year_desc' | 'year_asc' | 'price_desc' | 'price_asc' | 'numbered';
-type ListingFilter = 'all' | 'online' | 'vinted' | 'ebay' | 'offline';
+type ListingFilter = 'all' | 'online' | 'vinted' | 'ebay' | 'offline' | 'not_vinted' | 'not_ebay';
 
 const SORT_LABELS: Record<SortBy, string> = {
   recent: 'Plus récentes',
@@ -922,6 +922,8 @@ export function CollectionView() {
         if (listingFilter === 'vinted' && !hasV) return false;
         if (listingFilter === 'ebay' && !hasE) return false;
         if (listingFilter === 'offline' && (hasV || hasE)) return false;
+        if (listingFilter === 'not_vinted' && hasV) return false;
+        if (listingFilter === 'not_ebay' && hasE) return false;
       }
       if (folderFilter) {
         const fids = c.folder_ids ?? [];
@@ -949,16 +951,16 @@ export function CollectionView() {
 
   // Compteurs annonces.
   const listingCounts = useMemo(() => {
-    let online = 0, vinted = 0, ebay = 0, offline = 0;
+    let online = 0, vinted = 0, ebay = 0, offline = 0, notVinted = 0, notEbay = 0;
     cards.forEach((c) => {
       if (c.status === 'draft') return;
       const hasV = !!c.vinted_url, hasE = !!c.ebay_url;
-      if (hasV) vinted += 1;
-      if (hasE) ebay += 1;
+      if (hasV) vinted += 1; else notVinted += 1;
+      if (hasE) ebay += 1; else notEbay += 1;
       if (hasV || hasE) online += 1;
       else offline += 1;
     });
-    return { online, vinted, ebay, offline };
+    return { online, vinted, ebay, offline, notVinted, notEbay };
   }, [cards]);
 
   // Compteurs par dossier (cartes hors brouillon).
@@ -1273,6 +1275,8 @@ export function CollectionView() {
                 { value: 'vinted', label: 'Vinted', count: listingCounts.vinted },
                 { value: 'ebay', label: 'eBay', count: listingCounts.ebay },
                 { value: 'offline', label: 'Hors ligne', count: listingCounts.offline },
+                { value: 'not_vinted', label: 'Pas sur Vinted', count: listingCounts.notVinted },
+                { value: 'not_ebay', label: 'Pas sur eBay', count: listingCounts.notEbay },
               ]}
               selected={listingFilter === 'all' ? null : listingFilter}
               onSelect={(v) => setListingFilter((v as ListingFilter) ?? 'all')}
