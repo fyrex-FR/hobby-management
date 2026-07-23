@@ -1,3 +1,5 @@
+import asyncio
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -5,13 +7,14 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel, field_validator
 
 from .auth import current_user
-from services import ebay_oauth, ebay_settings_store
+from services import ebay_oauth, ebay_settings_store, ebay_trading
 from services.ebay_oauth import OAuthError
 from services.ebay_oauth import get_valid_access_token
 from services.ebay_selling import EbayApiError, create_inventory_location, get_business_policies, list_inventory_locations
 from services.ebay_token_crypto import EncryptionNotConfigured
 
 router = APIRouter()
+logger = logging.getLogger("ebay_account")
 
 
 class LocationRequest(BaseModel):
@@ -146,3 +149,122 @@ async def account_settings(user: dict = Depends(current_user)):
 async def account_settings_update(body: SellerSettingsRequest, user: dict = Depends(current_user)):
     await ebay_settings_store.upsert_settings(user["sub"], {"extra_image_url": body.extra_image_url})
     return {"extra_image_url": body.extra_image_url}
+
+
+class ApplyImageRequest(BaseModel):
+    offset: int = 0
+    batch: int = 20
+
+    @field_validator("offset")
+    @classmethod
+    def _clamp_offset(cls, value: int) -> int:
+        return max(0, value)
+
+    @field_validator("batch")
+    @classmethod
+    def _clamp_batch(cls, value: int) -> int:
+        return max(1, min(25, value))
+
+
+MAX_LISTING_PICTURES = 24
+APPLY_IMAGE_CONCURRENCY = 4
+
+
+@router.post("/ebay/account/apply-image-to-listings")
+async def apply_image_to_listings(body: ApplyImageRequest, user: dict = Depends(current_user)):
+    """Ajoute l'image vendeur configurée en 3e photo (ou dernière) de chaque
+    annonce eBay active du vendeur, y compris celles créées à la main sur
+    eBay avant CardVaults. Traité par lots (`offset`/`batch`) car un vendeur
+    peut avoir des centaines d'annonces actives — le frontend rappelle cet
+    endpoint en boucle jusqu'à `done: true`."""
+    try:
+        settings = await ebay_settings_store.get_settings(user["sub"])
+        extra_image_url = (settings or {}).get("extra_image_url")
+        if not extra_image_url:
+            raise HTTPException(status_code=422, detail="Configure d'abord une image d'annonce.")
+
+        access_token = await get_valid_access_token(user["sub"])
+        if not access_token:
+            return {"connected": False}
+
+        eps_image_url = (settings or {}).get("eps_image_url")
+        eps_source_url = (settings or {}).get("eps_source_url")
+        if not eps_image_url or eps_source_url != extra_image_url:
+            try:
+                eps_image_url = await ebay_trading.upload_image_to_eps(access_token, extra_image_url)
+            except EbayApiError as e:
+                raise HTTPException(status_code=502, detail=f"{e.step} : {e.body}")
+            await ebay_settings_store.upsert_settings(
+                user["sub"],
+                {"eps_image_url": eps_image_url, "eps_source_url": extra_image_url},
+            )
+
+        try:
+            item_ids = await ebay_trading.get_active_item_ids(access_token)
+        except EbayApiError as e:
+            raise HTTPException(status_code=502, detail=f"{e.step} : {e.body}")
+
+        total = len(item_ids)
+        batch_ids = item_ids[body.offset:body.offset + body.batch]
+
+        updated = 0
+        skipped = 0
+        errors: list[dict] = []
+        semaphore = asyncio.Semaphore(APPLY_IMAGE_CONCURRENCY)
+
+        async def process(item_id: str) -> None:
+            nonlocal updated, skipped
+            async with semaphore:
+                try:
+                    info = await ebay_trading.get_item_pictures(access_token, item_id)
+                except EbayApiError as e:
+                    errors.append({"item_id": item_id, "title": None, "message": f"{e.step} : {e.body}"})
+                    return
+
+                title = info.get("title") or item_id
+                if info.get("has_variations"):
+                    errors.append({
+                        "item_id": item_id,
+                        "title": title,
+                        "message": "Annonce à variations non prise en charge.",
+                    })
+                    return
+
+                picture_urls = info.get("picture_urls") or []
+                if ebay_trading.image_already_present(eps_image_url, picture_urls):
+                    skipped += 1
+                    return
+
+                if len(picture_urls) >= MAX_LISTING_PICTURES:
+                    errors.append({
+                        "item_id": item_id,
+                        "title": title,
+                        "message": "24 photos max atteintes sur cette annonce.",
+                    })
+                    return
+
+                try:
+                    await ebay_trading.revise_item_pictures(access_token, item_id, picture_urls + [eps_image_url])
+                    updated += 1
+                except EbayApiError as e:
+                    errors.append({"item_id": item_id, "title": title, "message": f"{e.step} : {e.body}"})
+
+        await asyncio.gather(*(process(item_id) for item_id in batch_ids))
+
+        next_offset = body.offset + body.batch
+        return {
+            "done": next_offset >= total,
+            "next_offset": next_offset,
+            "total": total,
+            "updated": updated,
+            "skipped": skipped,
+            "errors": errors,
+            "eps_image_url": eps_image_url,
+        }
+    except HTTPException:
+        raise
+    except EbayApiError as e:
+        raise HTTPException(status_code=502, detail=f"{e.step} : {e.body}")
+    except Exception as e:
+        logger.exception("Application de l'image vendeur aux annonces existantes : erreur inattendue")
+        raise HTTPException(status_code=500, detail=f"Erreur inattendue : {e}")

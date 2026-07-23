@@ -116,6 +116,39 @@ export function useEbaySellerImageSave() {
   });
 }
 
+export interface EbayApplyImageError {
+  item_id: string;
+  title: string | null;
+  message: string;
+}
+
+export type EbayApplyImageBatchResult =
+  | { connected: false }
+  | {
+      done: boolean;
+      next_offset: number;
+      total: number;
+      updated: number;
+      skipped: number;
+      errors: EbayApplyImageError[];
+      eps_image_url: string;
+    };
+
+/** Un seul lot d'annonces traité par appel — le composant appelant rappelle
+ * cette mutation en boucle (offset croissant) jusqu'à `done: true`, avec un
+ * timeout long (upload EPS + révisions d'annonces peuvent prendre du temps). */
+export function useEbayApplyImageToListings() {
+  return useMutation({
+    mutationFn: (body: { offset: number; batch: number }) => (
+      apiFetch<EbayApplyImageBatchResult>(
+        '/ebay/account/apply-image-to-listings',
+        { method: 'POST', body: JSON.stringify(body) },
+        120000,
+      )
+    ),
+  });
+}
+
 export function useEbayLocationCreate() {
   const qc = useQueryClient();
   return useMutation({

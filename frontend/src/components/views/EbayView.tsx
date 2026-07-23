@@ -16,6 +16,7 @@ import {
   LogOut,
   MapPin,
   PackageCheck,
+  RefreshCcw,
   Save,
   ShoppingBag,
   Tag,
@@ -25,6 +26,7 @@ import {
 import { useCards } from '../../hooks/useCards';
 import {
   useEbayAccountStatus,
+  useEbayApplyImageToListings,
   useEbayConnect,
   useEbayDisconnect,
   useEbayLocationCreate,
@@ -32,6 +34,7 @@ import {
   useEbaySellerImageSave,
   useEbaySellerSetup,
 } from '../../hooks/useEbayAccount';
+import type { EbayApplyImageError } from '../../hooks/useEbayAccount';
 import { EbayLogo } from '../shared/EbayLogo';
 import { cdnImg } from '../../lib/cdn';
 import { downloadImage } from '../../lib/downloadImage';
@@ -86,14 +89,21 @@ function SetupStep({
   );
 }
 
+const APPLY_IMAGE_BATCH = 20;
+
 function SellerImageCard() {
   const { data: settings, isLoading } = useEbaySellerImage();
   const save = useEbaySellerImageSave();
+  const applyBatch = useEbayApplyImageToListings();
   const inputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [applying, setApplying] = useState(false);
+  const [applyProgress, setApplyProgress] = useState<{ done: number; total: number } | null>(null);
+  const [applyError, setApplyError] = useState('');
+  const [applySummary, setApplySummary] = useState<{ updated: number; skipped: number; errors: EbayApplyImageError[] } | null>(null);
 
   async function handleFile(file: File) {
     if (!file.type.startsWith('image/')) return;
@@ -150,6 +160,38 @@ function SellerImageCard() {
       setTimeout(() => setCopied(false), 2000);
     } catch (e) {
       setError((e as Error).message || 'Copie du lien impossible.');
+    }
+  }
+
+  async function handleApplyToListings() {
+    setApplyError('');
+    setApplySummary(null);
+    setApplying(true);
+    let offset = 0;
+    let updated = 0;
+    let skipped = 0;
+    let errors: EbayApplyImageError[] = [];
+    try {
+      for (;;) {
+        const result = await applyBatch.mutateAsync({ offset, batch: APPLY_IMAGE_BATCH });
+        if ('connected' in result) {
+          setApplyError('Connecte d’abord ton compte eBay.');
+          return;
+        }
+        updated += result.updated;
+        skipped += result.skipped;
+        errors = errors.concat(result.errors);
+        setApplyProgress({ done: Math.min(result.next_offset, result.total), total: result.total });
+        offset = result.next_offset;
+        if (result.done) break;
+      }
+      setApplySummary({ updated, skipped, errors });
+    } catch (e) {
+      setApplySummary(updated || skipped || errors.length ? { updated, skipped, errors } : null);
+      setApplyError((e as Error).message || 'Erreur réseau pendant le traitement.');
+    } finally {
+      setApplying(false);
+      setApplyProgress(null);
     }
   }
 
@@ -213,8 +255,46 @@ function SellerImageCard() {
               Retirer
             </button>
           </div>
+
+          <div className="flex flex-col gap-2 pt-1" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+            <button
+              onClick={handleApplyToListings}
+              disabled={applying || busy}
+              className="self-start flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50 mt-3"
+              style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', color: 'var(--text-primary)' }}
+            >
+              {applying ? <Loader2 size={15} className="animate-spin" /> : <RefreshCcw size={15} />}
+              {applying
+                ? applyProgress
+                  ? `Traitement… ${applyProgress.done}/${applyProgress.total} annonces`
+                  : 'Traitement…'
+                : 'Ajouter à mes annonces existantes'}
+            </button>
+            <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+              Uploade l’image dans le système photo eBay puis l’ajoute à chacune de tes annonces actives déjà en ligne. Opération sans risque à relancer : les annonces déjà mises à jour sont détectées et ignorées automatiquement.
+            </p>
+            {applyError && <p className="text-xs" style={{ color: 'var(--red)' }}>{applyError}</p>}
+            {applySummary && (
+              <div className="flex flex-col gap-1.5">
+                <p className="text-xs font-bold" style={{ color: 'var(--green)' }}>
+                  ✅ {applySummary.updated} mise{applySummary.updated > 1 ? 's' : ''} à jour · {applySummary.skipped} avaient déjà l’image
+                  {applySummary.errors.length > 0 ? ` · ${applySummary.errors.length} échec${applySummary.errors.length > 1 ? 's' : ''}` : ''}
+                </p>
+                {applySummary.errors.length > 0 && (
+                  <ul className="flex flex-col gap-0.5 max-h-32 overflow-y-auto rounded-lg px-2 py-1.5" style={{ background: 'rgba(239,68,68,0.06)' }}>
+                    {applySummary.errors.map((err, i) => (
+                      <li key={`${err.item_id}-${i}`} className="text-[11px]" style={{ color: 'var(--red)' }}>
+                        {(err.title || err.item_id)} — {err.message}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+
           <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-            Pour tes annonces créées directement sur eBay : télécharge l’image puis ajoute-la via l’éditeur photo eBay (eBay n’accepte pas les liens externes dans une annonce existante).
+            Pour tes annonces créées directement sur eBay : télécharge l’image puis ajoute-la via l’éditeur photo eBay (eBay n’accepte pas les liens externes dans une annonce existante), ou utilise le bouton ci-dessus qui le fait automatiquement.
           </p>
         </div>
       ) : (
