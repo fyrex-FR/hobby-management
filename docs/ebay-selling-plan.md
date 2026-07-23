@@ -244,6 +244,24 @@ avant l'app.
   que les annonces à variations sont bien exclues proprement plutôt que de
   planter tout le lot ; que la taille des lots (20) reste sous la limite de
   temps d'un éventuel proxy/Cloudflare devant le backend.
+- **Correctif post-premier-run réel** : sur l'annonce 336700702189, `ReviseItem`
+  a échoué avec l'erreur Trading API classique « cet outil ne prend pas en
+  charge la gestion des annonces en fonction de l'inventaire » (annonces
+  créées via l'Inventory API, typiquement celles publiées par l'app elle-même
+  via `publish_card` — sku = `card.id`), plus deux warnings (Gestionnaire des
+  conditions de vente, Offre directe) concaténés à tort dans le message
+  d'erreur. Corrigé : `ebay_trading._call` ne garde plus que les
+  `SeverityCode=Error` dans le message (`EbayTradingApiError.error_codes`
+  expose les codes) ; `is_inventory_based_error` détecte ce cas par code
+  (`INVENTORY_BASED_ERROR_CODES`, codes partiellement supposés faute d'accès
+  à la doc eBay depuis ce sandbox) et par repli texte français ; l'endpoint
+  bascule alors sur `ebay_selling.add_image_to_inventory_item` (PATCH de
+  `product.imageUrls` via l'Inventory API, avec l'URL R2 d'origine — pas
+  l'URL EPS — pour rester homogène avec les autres photos de l'inventory
+  item) quand un sku est disponible (`GetItem` renvoie maintenant
+  `Item.SKU`), sinon remonte une erreur par-annonce explicite. La détection
+  « déjà présente » couvre aussi le cas où `extra_image_url` (URL R2) est
+  déjà dans les `PictureURL` de l'annonce.
 
 ## Reste à faire
 

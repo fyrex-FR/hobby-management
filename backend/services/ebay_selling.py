@@ -671,3 +671,44 @@ async def update_offer_price(card: dict, access_token: str, new_price: float) ->
 
     await update_card_fields(card["id"], card["user_id"], {"price": new_price})
     return {"updated": True, "price": new_price}
+
+
+async def add_image_to_inventory_item(access_token: str, sku: str, image_url: str) -> str:
+    """Ajoute `image_url` aux photos d'un inventory item (annonce publiée par
+    CardVaults via `publish_card`, sku = card.id), pour les annonces où
+    `ebay_trading.revise_item_pictures` (Trading API) échoue avec l'erreur
+    « annonce créée via l'Inventory API, utilisez l'outil qui l'a créée »
+    (voir `ebay_trading.is_inventory_based_error`). Renvoie "updated" si
+    l'image a été ajoutée, "skipped" si elle était déjà présente.
+
+    NOTE : on ajoute ici l'URL R2 d'origine (`image_url`, l'extra_image_url
+    du vendeur), PAS l'URL EPS obtenue via `upload_image_to_eps`. Les autres
+    photos d'un inventory item CardVaults sont déjà des URLs R2
+    (`image_front_url`/`image_back_url`, voir `publish_card`) ; contrairement
+    à la Trading API, l'Inventory API n'a aucune contrainte contre le mélange
+    d'hébergeurs d'images externes, donc rien n'oblige — ni ne sert — à passer
+    par EPS ici. On reste simplement homogène avec le reste de l'annonce.
+    """
+    step = "Lecture de la fiche produit"
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(f"{INVENTORY_API}/inventory_item/{sku}", headers=_sell_headers(access_token))
+        if resp.status_code != 200:
+            raise EbayApiError(step, resp.status_code, resp.text)
+        item = resp.json()
+
+        product = item.setdefault("product", {})
+        image_urls = product.get("imageUrls") or []
+        if image_url in image_urls:
+            return "skipped"
+        product["imageUrls"] = [*image_urls, image_url]
+
+        step = "Mise à jour de la fiche produit"
+        resp = await client.put(
+            f"{INVENTORY_API}/inventory_item/{sku}",
+            headers=_sell_headers(access_token),
+            json=item,
+        )
+        if resp.status_code not in (200, 201, 204):
+            raise EbayApiError(step, resp.status_code, resp.text)
+
+    return "updated"

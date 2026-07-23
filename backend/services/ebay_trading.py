@@ -41,6 +41,46 @@ NS = {"e": "urn:ebay:apis:eBLBaseComponents"}
 ENTRIES_PER_PAGE = 200
 MAX_PAGES_SAFETY = 5  # 5 * 200 = 1000 annonces, cap de sécurité anti-boucle infinie
 
+# Codes d'erreur Trading API observés (ou probables, cf. `is_inventory_based_error`)
+# quand ReviseItem/ReviseFixedPriceItem cible une annonce créée via l'Inventory
+# API ("inventory-based listing") : eBay refuse alors la modification et
+# demande d'utiliser "l'outil utilisé pour créer l'annonce" (donc l'Inventory
+# API, pas la Trading API). Ces codes n'ont pas pu être vérifiés contre la
+# documentation eBay à jour (réseau eBay bloqué depuis ce sandbox) : le code
+# 21916635 a été confirmé en production sur l'annonce 336700702189, les deux
+# autres sont des variantes documentées ailleurs pour la même famille
+# d'erreur. D'où l'importance du repli sur le texte du message
+# (`is_inventory_based_error`) qui ne dépend pas de l'exhaustivité de cette liste.
+INVENTORY_BASED_ERROR_CODES = {"21916635", "21916636", "21919474"}
+_INVENTORY_BASED_TEXT_MARKERS = (
+    "en fonction de l'inventaire",
+    "inventory-based",
+)
+
+
+class EbayTradingApiError(EbayApiError):
+    """EbayApiError enrichie des ErrorCode Trading API en échec (Ack=Failure
+    ou PartialFailure), pour permettre un routage par code sans reparser le
+    message. Le message hérité (`body`/`str(exc)`) ne contient déjà que les
+    erreurs SeverityCode=Error — les warnings sont filtrés avant construction
+    (voir `_call`)."""
+
+    def __init__(self, step: str, status_code: int, body: str, error_codes: Optional[list[str]] = None):
+        super().__init__(step, status_code, body)
+        self.error_codes: list[str] = error_codes or []
+
+
+def is_inventory_based_error(exc: Exception) -> bool:
+    """Vrai si `exc` correspond à l'erreur Trading API « cette annonce a été
+    créée via l'Inventory API, ReviseItem ne peut pas la modifier » : elle
+    doit être mise à jour via l'Inventory API (voir
+    `add_image_to_inventory_item`) plutôt que via `revise_item_pictures`."""
+    codes = getattr(exc, "error_codes", None) or []
+    if any(code in INVENTORY_BASED_ERROR_CODES for code in codes):
+        return True
+    message = str(exc).lower()
+    return any(marker.lower() in message for marker in _INVENTORY_BASED_TEXT_MARKERS)
+
 
 def _headers(call_name: str, access_token: str) -> dict:
     return {
@@ -70,16 +110,28 @@ async def _call(client: httpx.AsyncClient, call_name: str, access_token: str, bo
         raise EbayApiError(step, resp.status_code, f"Réponse XML illisible : {e}")
 
     ack = root.findtext(_ns_tag("Ack"), default="", namespaces=NS)
+    # Ack=Warning est un succès (eBay signale un point d'attention mais a bien
+    # appliqué la requête) ; seuls Failure/PartialFailure sont des échecs.
     if ack not in ("Success", "Warning"):
         messages = []
+        error_codes: list[str] = []
         for error_el in root.findall(_ns_tag("Errors"), NS):
+            severity = (error_el.findtext(_ns_tag("SeverityCode"), default="", namespaces=NS) or "").strip()
+            # Les warnings imbriqués dans une réponse Failure sont du bruit
+            # (ex. "Gestionnaire des conditions de vente", "Offre directe") :
+            # seules les erreurs SeverityCode=Error expliquent l'échec réel.
+            if severity == "Warning":
+                continue
             short = (error_el.findtext(_ns_tag("ShortMessage"), default="", namespaces=NS) or "").strip()
             long_msg = (error_el.findtext(_ns_tag("LongMessage"), default="", namespaces=NS) or "").strip()
             message = long_msg or short
             if message:
                 messages.append(message)
+            code = (error_el.findtext(_ns_tag("ErrorCode"), default="", namespaces=NS) or "").strip()
+            if code:
+                error_codes.append(code)
         detail = " ; ".join(messages) or f"Ack={ack or 'inconnu'}"
-        raise EbayApiError(step, resp.status_code, detail)
+        raise EbayTradingApiError(step, resp.status_code, detail, error_codes)
     return root
 
 
@@ -151,13 +203,16 @@ async def get_active_item_ids(access_token: str) -> list[str]:
 
 
 async def get_item_pictures(access_token: str, item_id: str) -> dict:
-    """Renvoie {"picture_urls": [...], "has_variations": bool, "title": str}
-    pour une annonce."""
+    """Renvoie {"picture_urls": [...], "has_variations": bool, "title": str,
+    "sku": str} pour une annonce. `sku` est vide si l'annonce n'en a pas
+    (annonces créées via la Trading API sans SKU) — utile pour router vers
+    l'Inventory API en repli quand ReviseItem échoue (voir
+    `is_inventory_based_error` dans le routeur)."""
     body = (
         '<?xml version="1.0" encoding="utf-8"?>\n'
         '<GetItemRequest xmlns="urn:ebay:apis:eBLBaseComponents">\n'
         f"  <ItemID>{xml_escape(item_id)}</ItemID>\n"
-        "  <OutputSelector>Item.PictureDetails,Item.Variations,Item.Title</OutputSelector>\n"
+        "  <OutputSelector>Item.PictureDetails,Item.Variations,Item.Title,Item.SKU</OutputSelector>\n"
         "</GetItemRequest>"
     )
     step = f"Lecture de l'annonce {item_id}"
@@ -168,7 +223,8 @@ async def get_item_pictures(access_token: str, item_id: str) -> dict:
     picture_urls = [el.text for el in root.findall(picture_path, NS) if el.text]
     has_variations = root.find(f"{_ns_tag('Item')}/{_ns_tag('Variations')}", NS) is not None
     title = root.findtext(f"{_ns_tag('Item')}/{_ns_tag('Title')}", default="", namespaces=NS)
-    return {"picture_urls": picture_urls, "has_variations": has_variations, "title": title}
+    sku = root.findtext(f"{_ns_tag('Item')}/{_ns_tag('SKU')}", default="", namespaces=NS) or ""
+    return {"picture_urls": picture_urls, "has_variations": has_variations, "title": title, "sku": sku}
 
 
 async def revise_item_pictures(access_token: str, item_id: str, picture_urls: list[str]) -> None:

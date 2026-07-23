@@ -10,7 +10,13 @@ from .auth import current_user
 from services import ebay_oauth, ebay_settings_store, ebay_trading
 from services.ebay_oauth import OAuthError
 from services.ebay_oauth import get_valid_access_token
-from services.ebay_selling import EbayApiError, create_inventory_location, get_business_policies, list_inventory_locations
+from services.ebay_selling import (
+    EbayApiError,
+    add_image_to_inventory_item,
+    create_inventory_location,
+    get_business_policies,
+    list_inventory_locations,
+)
 from services.ebay_token_crypto import EncryptionNotConfigured
 
 router = APIRouter()
@@ -222,6 +228,7 @@ async def apply_image_to_listings(body: ApplyImageRequest, user: dict = Depends(
                     return
 
                 title = info.get("title") or item_id
+                sku = info.get("sku") or ""
                 if info.get("has_variations"):
                     errors.append({
                         "item_id": item_id,
@@ -231,7 +238,11 @@ async def apply_image_to_listings(body: ApplyImageRequest, user: dict = Depends(
                     return
 
                 picture_urls = info.get("picture_urls") or []
-                if ebay_trading.image_already_present(eps_image_url, picture_urls):
+                # Déjà présente soit comme image EPS (annonces créées à la main
+                # sur eBay, cf. upload_image_to_eps), soit directement comme URL
+                # R2 d'origine (annonces publiées par l'app, cf. publish_card /
+                # add_image_to_inventory_item ci-dessous).
+                if ebay_trading.image_already_present(eps_image_url, picture_urls) or extra_image_url in picture_urls:
                     skipped += 1
                     return
 
@@ -247,7 +258,33 @@ async def apply_image_to_listings(body: ApplyImageRequest, user: dict = Depends(
                     await ebay_trading.revise_item_pictures(access_token, item_id, picture_urls + [eps_image_url])
                     updated += 1
                 except EbayApiError as e:
-                    errors.append({"item_id": item_id, "title": title, "message": f"{e.step} : {e.body}"})
+                    if not ebay_trading.is_inventory_based_error(e):
+                        errors.append({"item_id": item_id, "title": title, "message": f"{e.step} : {e.body}"})
+                        return
+
+                    # Annonce créée via l'Inventory API (typiquement publiée par
+                    # l'app elle-même, cf. ebay_selling.publish_card) : la
+                    # Trading API refuse ReviseItem, il faut passer par
+                    # l'Inventory API (modifier l'inventory item directement).
+                    if not sku:
+                        errors.append({
+                            "item_id": item_id,
+                            "title": title,
+                            "message": "Annonce créée via un outil d'inventaire sans SKU accessible — non modifiable automatiquement.",
+                        })
+                        return
+                    try:
+                        result = await add_image_to_inventory_item(access_token, sku, extra_image_url)
+                        if result == "skipped":
+                            skipped += 1
+                        else:
+                            updated += 1
+                    except EbayApiError as fallback_error:
+                        errors.append({
+                            "item_id": item_id,
+                            "title": title,
+                            "message": f"(annonce créée via l'app) {fallback_error.step} : {fallback_error.body}",
+                        })
 
         await asyncio.gather(*(process(item_id) for item_id in batch_ids))
 
