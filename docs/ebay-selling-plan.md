@@ -356,7 +356,31 @@ choisie par les règles prix → mode d'envoi. Il ne restait aucun champ à sais
   une catégorie pour chaque carte ; le temps total sur un gros lot vs limites
   d'un éventuel proxy/Cloudflare devant le backend.
 
+### Restructuration en sous-onglets Annonces / Réglages ✅
+
+But : la page eBay devenait un fourre-tout (setup, image vendeur, règles de
+livraison, statut connexion, cartes en ligne) et on va y ajouter beaucoup
+(sync vendu, watchers, édition d'annonce). Découpée en deux sous-onglets, un
+seul point d'entrée dans le menu.
+
+- `EbayView.tsx` — sélecteur d'onglets **Annonces** (par défaut) / **Réglages** :
+  - **Annonces** (`ListingsTab`) = cockpit opérationnel, la « vue dédiée des
+    cartes sur eBay » : segments **En ligne** / **Vendues** / **Prêtes**
+    (compteurs cliquables). En ligne : prix + lien Voir. Vendues : prix + tag
+    (prix réel de vente à venir avec le sync). Prêtes : bouton « Publier » qui
+    ouvre `EbayPublishModal` (publication unitaire rapide). Gère le cas non
+    connecté (renvoi vers Réglages).
+  - **Réglages** = l'ancien centre de contrôle quasi tel quel (setup steps,
+    connexion, lieu d'expédition, `SellerImageCard`, `ShippingRulesCard`).
+- Point d'ancrage pour les features suivantes (voir « Reste à faire ») : sync
+  vendu → segment Vendues ; watchers/offres → actions du segment En ligne ;
+  édition → bouton « Modifier » du segment En ligne.
+
 ## Reste à faire
+
+Roadmap validée avec l'utilisateur (dans l'ordre) : **1) sync vendu (#1)**,
+**2) modifier une annonce depuis l'app**, **3) watchers + offres (#4)**. La
+coquille à onglets ci-dessus est faite en premier pour leur donner un foyer.
 
 ### PR4 — Sync automatique du statut vendu
 
