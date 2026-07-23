@@ -1,8 +1,9 @@
+import asyncio
 import logging
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from .auth import current_user
 from services import ebay_selling, ebay_settings_store
@@ -27,6 +28,26 @@ class PublishRequest(BaseModel):
 
 class PriceUpdateRequest(BaseModel):
     price: float
+
+
+class PublishBatchRequest(BaseModel):
+    """Un lot de cartes à publier d'un coup. Le frontend découpe la liste des
+    cartes prêtes en lots (par ex. 5) et rappelle cet endpoint pour chaque lot
+    afin d'afficher la progression et rester sous les limites de temps/débit."""
+    card_ids: List[str]
+    include_extra_image: bool = True
+
+    @field_validator("card_ids")
+    @classmethod
+    def _limit_batch(cls, value: List[str]) -> List[str]:
+        if not value:
+            raise ValueError("Aucune carte à publier.")
+        if len(value) > 10:
+            raise ValueError("10 cartes maximum par lot.")
+        return value
+
+
+PUBLISH_BATCH_CONCURRENCY = 2
 
 
 @router.get("/ebay/selling/preview/{card_id}")
@@ -131,6 +152,121 @@ async def publish_listing(card_id: str, body: PublishRequest, user: dict = Depen
     except Exception as e:
         logger.exception("Publication eBay: erreur inattendue pour la carte %s", card_id)
         raise HTTPException(status_code=500, detail=f"Erreur inattendue lors de la publication : {e}")
+
+
+@router.post("/ebay/selling/publish-batch")
+async def publish_listings_batch(body: PublishBatchRequest, user: dict = Depends(current_user)):
+    """Publie en masse un lot de cartes avec des valeurs entièrement
+    automatiques : titre/description/catégorie générés, prix déjà saisi sur la
+    carte, politique d'expédition choisie selon les règles prix -> livraison
+    (repli sur la policy par défaut), paiement/retours par défaut du compte.
+    Chaque carte est traitée indépendamment : une erreur sur une carte
+    n'interrompt pas le lot. `publish_card` étant idempotent, une carte déjà en
+    ligne est ignorée."""
+    try:
+        access_token = await get_valid_access_token(user["sub"])
+        if not access_token:
+            return {"connected": False}
+
+        policies = await ebay_selling.get_business_policies(access_token)
+        if not policies.get("configured"):
+            missing = [k for k in ("payment", "return", "fulfillment") if not policies.get(k)]
+            raise HTTPException(
+                status_code=422,
+                detail=f"Configure d'abord tes options de vente sur eBay (manquant : {', '.join(missing)}).",
+            )
+        policy_options = policies.get("options") or {}
+        fulfillment_ids = {p["id"] for p in policy_options.get("fulfillment", []) if p.get("id")}
+
+        settings = await ebay_settings_store.get_settings(user["sub"])
+        shipping_rules = (settings or {}).get("shipping_rules") or []
+        extra_image_url = (settings or {}).get("extra_image_url") if body.include_extra_image else None
+
+        semaphore = asyncio.Semaphore(PUBLISH_BATCH_CONCURRENCY)
+        results: List[dict] = []
+
+        async def process(card_id: str) -> None:
+            async with semaphore:
+                entry: dict = {"card_id": card_id, "status": "error", "title": None, "price": None}
+                try:
+                    card = await ebay_selling.get_card(card_id, user["sub"])
+                    if not card:
+                        entry["message"] = "Carte introuvable."
+                        results.append(entry)
+                        return
+
+                    price = card.get("price")
+                    entry["price"] = price
+                    if card.get("ebay_url"):
+                        entry.update(status="skipped", message="Déjà en ligne sur eBay.")
+                        results.append(entry)
+                        return
+                    if not card.get("image_front_url"):
+                        entry["message"] = "Photo recto manquante."
+                        results.append(entry)
+                        return
+                    if not price or price <= 0:
+                        entry["message"] = "Prix de vente manquant."
+                        results.append(entry)
+                        return
+
+                    title = ebay_selling.build_listing_title(card)
+                    entry["title"] = title
+                    if len(title) > 80:
+                        title = title[:80]
+
+                    category = await ebay_selling.suggest_category(access_token, title)
+                    if not category or not category.get("id"):
+                        entry["message"] = "Catégorie eBay introuvable."
+                        results.append(entry)
+                        return
+
+                    fulfillment = ebay_selling.match_shipping_rule(shipping_rules, price) or policies["fulfillment"]
+                    if fulfillment_ids and fulfillment not in fulfillment_ids:
+                        fulfillment = policies["fulfillment"]
+                    selected_policies = {
+                        "payment": policies["payment"],
+                        "return": policies["return"],
+                        "fulfillment": fulfillment,
+                    }
+
+                    result = await ebay_selling.publish_card(
+                        card,
+                        access_token,
+                        title,
+                        price,
+                        category["id"],
+                        selected_policies,
+                        None,
+                        extra_image_url=extra_image_url,
+                    )
+                    entry.update(status="published", ebay_url=result.get("ebay_url"))
+                    results.append(entry)
+                except EbayApiError as e:
+                    entry["message"] = f"{e.step} : {e.body}"
+                    results.append(entry)
+                except Exception as e:  # noqa: BLE001 - on isole l'échec d'une carte
+                    logger.exception("Publication de masse: échec inattendu sur la carte %s", card_id)
+                    entry["message"] = f"Erreur inattendue : {e}"
+                    results.append(entry)
+
+        await asyncio.gather(*(process(card_id) for card_id in body.card_ids))
+
+        # Réordonne selon l'ordre d'entrée (asyncio.gather préserve l'ordre des
+        # tâches mais les append concurrents non ; on réaligne pour le front).
+        by_id = {r["card_id"]: r for r in results}
+        ordered = [by_id[cid] for cid in body.card_ids if cid in by_id]
+        return {
+            "results": ordered,
+            "published": sum(1 for r in ordered if r["status"] == "published"),
+            "skipped": sum(1 for r in ordered if r["status"] == "skipped"),
+            "errors": sum(1 for r in ordered if r["status"] == "error"),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Publication de masse eBay: erreur inattendue")
+        raise HTTPException(status_code=500, detail=f"Erreur inattendue lors de la publication de masse : {e}")
 
 
 @router.post("/ebay/selling/withdraw/{card_id}")
