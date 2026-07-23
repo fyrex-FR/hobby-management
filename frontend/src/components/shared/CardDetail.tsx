@@ -38,6 +38,7 @@ import { cdnImg } from '../../lib/cdn';
 import { RookieBadge } from './RookieBadge';
 import { normalizeParallelName } from '../../lib/cardQuality';
 import { apiFetch } from '../../api/client';
+import { downloadImage } from '../../lib/downloadImage';
 
 
 const inputCls = 'w-full rounded-xl px-3 py-2 text-sm outline-none transition-all bg-white/5 border border-white/10 focus:border-[var(--accent)]/50 focus:bg-white/10';
@@ -93,21 +94,6 @@ function buildPhotoFilename(card: Card, side: 'front' | 'back'): string {
     .join(' ');
   const slug = slugify(base) || 'carte';
   return `${slug}_${side === 'front' ? 'recto' : 'verso'}.jpg`;
-}
-
-async function downloadImage(url: string, filename: string): Promise<void> {
-  const proxied = cdnImg(url) || url;
-  const res = await fetch(proxied);
-  if (!res.ok) throw new Error('Téléchargement impossible');
-  const blob = await res.blob();
-  const objectUrl = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = objectUrl;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(objectUrl);
 }
 
 interface Props {
