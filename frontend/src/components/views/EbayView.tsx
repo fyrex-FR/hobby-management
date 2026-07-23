@@ -36,6 +36,7 @@ import {
   useEbaySellerSetup,
   useEbayShippingRules,
   useEbayShippingRulesSave,
+  useEbaySyncSold,
 } from '../../hooks/useEbayAccount';
 import type { EbayApplyImageError, EbayPolicyOption, EbayShippingRule } from '../../hooks/useEbayAccount';
 import { EbayLogo } from '../shared/EbayLogo';
@@ -544,6 +545,26 @@ function ListingsTab({
 }) {
   const [segment, setSegment] = useState<ListingSegment>('online');
   const [publishCard, setPublishCard] = useState<Card | null>(null);
+  const syncSold = useEbaySyncSold();
+  const [syncMsg, setSyncMsg] = useState('');
+
+  async function handleSync() {
+    setSyncMsg('');
+    try {
+      const res = await syncSold.mutateAsync();
+      if ('connected' in res) {
+        setSyncMsg('Connecte d’abord ton compte eBay.');
+        return;
+      }
+      setSyncMsg(
+        res.synced > 0
+          ? `${res.synced} vente${res.synced > 1 ? 's' : ''} synchronisée${res.synced > 1 ? 's' : ''} ✓`
+          : 'Aucune nouvelle vente détectée.',
+      );
+    } catch (e) {
+      setSyncMsg((e as Error).message || 'Synchronisation impossible.');
+    }
+  }
 
   if (!connected) {
     return (
@@ -571,6 +592,21 @@ function ListingsTab({
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+          {syncMsg || 'Synchronise pour remonter tes ventes eBay ici.'}
+        </p>
+        <button
+          onClick={handleSync}
+          disabled={syncSold.isPending}
+          className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all active:scale-95 disabled:opacity-50 shrink-0"
+          style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)' }}
+        >
+          {syncSold.isPending ? <Loader2 size={14} className="animate-spin" /> : <RefreshCcw size={14} />}
+          {syncSold.isPending ? 'Synchronisation…' : 'Synchroniser'}
+        </button>
+      </div>
+
       <div className="grid grid-cols-3 gap-2">
         {segments.map((s) => {
           const active = segment === s.value;
@@ -618,14 +654,19 @@ function ListingsTab({
               );
             }
             if (segment === 'sold') {
+              const soldPrice = card.ebay_sold_price ?? card.price;
               return (
                 <ListingRow
                   key={card.id}
                   card={card}
                   right={
-                    <div className="flex items-center gap-2 shrink-0">
-                      {card.price != null && <span className="text-sm font-black" style={{ color: 'var(--green)' }}>{card.price} €</span>}
-                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg" style={{ background: 'rgba(34,197,94,0.12)', color: 'var(--green)' }}>Vendue</span>
+                    <div className="flex flex-col items-end gap-0.5 shrink-0">
+                      {soldPrice != null && <span className="text-sm font-black" style={{ color: 'var(--green)' }}>{soldPrice} €</span>}
+                      {card.ebay_sold_at && (
+                        <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                          {new Date(card.ebay_sold_at).toLocaleDateString('fr-FR')}
+                        </span>
+                      )}
                     </div>
                   }
                 />

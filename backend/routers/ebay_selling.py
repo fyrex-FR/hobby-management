@@ -269,6 +269,27 @@ async def publish_listings_batch(body: PublishBatchRequest, user: dict = Depends
         raise HTTPException(status_code=500, detail=f"Erreur inattendue lors de la publication de masse : {e}")
 
 
+@router.post("/ebay/selling/sync-sold")
+async def sync_sold(user: dict = Depends(current_user)):
+    """Synchronise le statut « vendu » : interroge les commandes eBay récentes
+    et marque en vendu les cartes correspondantes (prix réel + date). Déclenché
+    manuellement depuis l'onglet Annonces."""
+    try:
+        access_token = await get_valid_access_token(user["sub"])
+        if not access_token:
+            return {"connected": False}
+        try:
+            return await ebay_selling.sync_sold_cards(access_token, user["sub"])
+        except EbayApiError as e:
+            logger.warning("Sync vendu eBay refusé pour %s: %s", user["sub"], e)
+            raise HTTPException(status_code=502, detail=f"{e.step} : {e.body}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Sync vendu eBay: erreur inattendue")
+        raise HTTPException(status_code=500, detail=f"Erreur inattendue lors de la synchronisation : {e}")
+
+
 @router.post("/ebay/selling/withdraw/{card_id}")
 async def withdraw_listing(card_id: str, user: dict = Depends(current_user)):
     try:

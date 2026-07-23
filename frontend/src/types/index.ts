@@ -42,6 +42,8 @@ export interface Card {
   ebay_url: string | null;
   ebay_offer_id: string | null;
   ebay_listing_id: string | null;
+  ebay_sold_price: number | null;
+  ebay_sold_at: string | null;
   quantity: number | null;
   folder_ids: string[] | null;
 }
