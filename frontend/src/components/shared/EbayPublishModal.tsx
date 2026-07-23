@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
-import { X, Loader2, ExternalLink, CheckCircle2, AlertCircle } from 'lucide-react';
+import { X, Loader2, ExternalLink, CheckCircle2, AlertCircle, Truck } from 'lucide-react';
 import { apiFetch } from '../../api/client';
 import { EbayLogo } from './EbayLogo';
 import { cdnImg } from '../../lib/cdn';
+import { matchShippingRule } from '../../hooks/useEbayAccount';
+import type { EbayShippingRule } from '../../hooks/useEbayAccount';
 import type { Card } from '../../types';
 
 interface PreviewData {
@@ -24,6 +26,7 @@ interface PreviewData {
   price?: number | null;
   marketplace_id?: string;
   extra_image_url?: string | null;
+  shipping_rules?: EbayShippingRule[];
 }
 
 interface PolicyOption {
@@ -46,6 +49,9 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
   const [paymentPolicyId, setPaymentPolicyId] = useState('');
   const [returnPolicyId, setReturnPolicyId] = useState('');
   const [fulfillmentPolicyId, setFulfillmentPolicyId] = useState('');
+  // Tant que le vendeur n'a pas choisi manuellement l'envoi, la politique
+  // d'expédition suit les règles prix -> livraison (cf. shipping_rules).
+  const [fulfillmentAuto, setFulfillmentAuto] = useState(true);
   const [allowOffers, setAllowOffers] = useState(false);
   const [minimumOfferPrice, setMinimumOfferPrice] = useState('');
   const [includeExtraImage, setIncludeExtraImage] = useState(true);
@@ -70,6 +76,17 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
   }, [card.id, card.price]);
+
+  // Pré-sélection auto de la politique d'expédition selon le prix saisi, via
+  // les règles prix -> livraison — tant que le vendeur ne l'a pas changée à la
+  // main (fulfillmentAuto). Se recalcule en direct quand il ajuste le prix.
+  const shippingRules = preview?.shipping_rules ?? [];
+  const autoMatchedFulfillment = matchShippingRule(shippingRules, parseFloat(price));
+  useEffect(() => {
+    if (fulfillmentAuto && autoMatchedFulfillment) {
+      setFulfillmentPolicyId(autoMatchedFulfillment);
+    }
+  }, [fulfillmentAuto, autoMatchedFulfillment]);
 
   async function publish() {
     setPublishing(true);
@@ -226,9 +243,20 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {renderPolicySelect('Paiement', paymentPolicyId, setPaymentPolicyId, policyOptions?.payment)}
-                  {renderPolicySelect('Livraison', fulfillmentPolicyId, setFulfillmentPolicyId, policyOptions?.fulfillment)}
+                  {renderPolicySelect(
+                    'Livraison',
+                    fulfillmentPolicyId,
+                    (v) => { setFulfillmentAuto(false); setFulfillmentPolicyId(v); },
+                    policyOptions?.fulfillment,
+                  )}
                   {renderPolicySelect('Retours', returnPolicyId, setReturnPolicyId, policyOptions?.return)}
                 </div>
+                {shippingRules.length > 0 && fulfillmentAuto && autoMatchedFulfillment && (
+                  <p className="flex items-center gap-1.5 text-[11px] font-medium" style={{ color: 'var(--green)' }}>
+                    <Truck size={12} />
+                    Livraison choisie automatiquement selon le prix
+                  </p>
+                )}
               </div>
             )}
 

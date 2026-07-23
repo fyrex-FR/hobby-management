@@ -262,6 +262,54 @@ avant l'app.
   `Item.SKU`), sinon remonte une erreur par-annonce explicite. La détection
   « déjà présente » couvre aussi le cas où `extra_image_url` (URL R2) est
   déjà dans les `PictureURL` de l'annonce.
+- **Correctif post-premier-run réel #2** (PR #49) : sur les annonces créées
+  via l'app (bascule Inventory API ci-dessus), le PUT de la fiche produit
+  échouait parfois avec `errorId 25709 « Valeur non valide pour weight.value »`.
+  Cause : `add_image_to_inventory_item` doit re-PUT la fiche entière pour
+  ajouter une photo, en renvoyant tel quel le `packageWeightAndSize` renvoyé
+  au GET — or eBay renvoie parfois un poids/dimensions à 0 ou vide au GET mais
+  le refuse au PUT. Corrigé par `_sanitize_package_weight_and_size` qui retire
+  les valeurs de poids/dimensions invalides (absentes, nulles ou ≤ 0) avant
+  l'écriture, en conservant les valeurs valides.
+
+### Règles de livraison prix → mode d'envoi ✅ (à tester en conditions réelles)
+
+But : ne plus oublier de choisir le bon mode d'envoi (lettre suivie, colis
+R1, R2…) à la publication. Le vendeur définit des tranches de prix, chacune
+associée à une de ses politiques d'expédition eBay ; à la publication, la
+fulfillment policy est pré-sélectionnée automatiquement selon le prix saisi
+(toujours modifiable à la main).
+
+- Décisions actées : tranches **configurables** par vendeur ; prix de
+  référence = **prix saisi dans le modal** (recalcul en direct si on ajuste
+  le prix depuis le median eBay).
+- `backend/add_ebay_shipping_rules_migration.sql` — colonne
+  `ebay_seller_settings.shipping_rules` (jsonb). **À PASSER dans Supabase.**
+  Tableau ordonné `[{max_price, fulfillment_policy_id}, …]`, dernière tranche
+  `max_price: null` = « et au-delà » ; une tranche couvre les prix
+  `<= max_price` (et au-dessus de la précédente).
+- `backend/routers/ebay_account.py` — `GET/PUT /ebay/account/shipping-rules`
+  (endpoints dédiés, séparés de `/settings` pour ne pas écraser l'image
+  vendeur). Validation : seuils strictement croissants, une seule tranche
+  « et au-delà » et en dernier, 20 tranches max.
+- `backend/routers/ebay_selling.py` — le preview renvoie désormais
+  `shipping_rules` (pour la pré-sélection côté modal).
+- **Frontend** :
+  - `useEbayAccount.ts` — `useEbayShippingRules` / `useEbayShippingRulesSave`
+    + helper pur `matchShippingRule(rules, price)` (1re tranche dont le seuil
+    couvre le prix, sinon la tranche « et au-delà »).
+  - `EbayView.tsx` — carte « Règles de livraison » (`ShippingRulesCard`) :
+    éditeur de tranches (seuil € + select politique d'expédition + ajout/
+    suppression), aperçu lisible des tranches, validation locale. N'apparaît
+    que si des politiques d'expédition existent sur le compte.
+  - `EbayPublishModal.tsx` — pré-sélection auto de la politique d'expédition
+    via `matchShippingRule` tant que le vendeur ne l'a pas changée à la main
+    (`fulfillmentAuto`) ; recalcul en direct au changement de prix ; indice
+    « Livraison choisie automatiquement selon le prix ».
+- **À vérifier au premier run réel** : que les `fulfillment_policy_id` des
+  règles correspondent bien aux options du compte (le publish valide déjà
+  l'id envoyé contre les options autorisées) ; le comportement aux bornes de
+  tranches ; que la pré-sélection ne prime pas sur un choix manuel.
 
 ## Reste à faire
 
