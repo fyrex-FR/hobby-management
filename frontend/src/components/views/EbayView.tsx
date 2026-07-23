@@ -26,27 +26,23 @@ import {
 } from 'lucide-react';
 import { useCards } from '../../hooks/useCards';
 import {
-  matchShippingRule,
   useEbayAccountStatus,
   useEbayApplyImageToListings,
   useEbayConnect,
   useEbayDisconnect,
   useEbayLocationCreate,
-  useEbayPublishBatch,
   useEbaySellerImage,
   useEbaySellerImageSave,
   useEbaySellerSetup,
   useEbayShippingRules,
   useEbayShippingRulesSave,
 } from '../../hooks/useEbayAccount';
-import type { EbayApplyImageError, EbayPolicyOption, EbayPublishResult, EbayShippingRule } from '../../hooks/useEbayAccount';
-import { useQueryClient } from '@tanstack/react-query';
+import type { EbayApplyImageError, EbayPolicyOption, EbayShippingRule } from '../../hooks/useEbayAccount';
 import { EbayLogo } from '../shared/EbayLogo';
 import { cdnImg } from '../../lib/cdn';
 import { downloadImage } from '../../lib/downloadImage';
 import { supabase } from '../../lib/supabase';
 import { compressImage } from '../../lib/storage';
-import type { Card } from '../../types';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
@@ -528,193 +524,6 @@ function ShippingRulesCard({ fulfillmentOptions }: { fulfillmentOptions: EbayPol
   );
 }
 
-function BulkPublishCard({ readyCards, fulfillmentOptions }: { readyCards: Card[]; fulfillmentOptions: EbayPolicyOption[] }) {
-  const { data: rulesData } = useEbayShippingRules();
-  const { data: sellerImage } = useEbaySellerImage();
-  const publishBatch = useEbayPublishBatch();
-  const qc = useQueryClient();
-  const rules: EbayShippingRule[] = rulesData?.rules ?? [];
-  const hasImage = Boolean(sellerImage?.extra_image_url);
-
-  const [deselected, setDeselected] = useState<Set<string>>(new Set());
-  const [includeImage, setIncludeImage] = useState(true);
-  const [publishing, setPublishing] = useState(false);
-  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
-  const [results, setResults] = useState<EbayPublishResult[] | null>(null);
-  const [error, setError] = useState('');
-
-  const selected = readyCards.filter((c) => !deselected.has(c.id));
-  const resultById = new Map((results ?? []).map((r) => [r.card_id, r]));
-
-  function shippingName(price: number | null): string {
-    const id = price != null ? matchShippingRule(rules, price) : null;
-    if (!id) return 'Défaut du compte';
-    return fulfillmentOptions.find((p) => p.id === id)?.name || 'Défaut du compte';
-  }
-
-  function toggle(id: string) {
-    setDeselected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }
-
-  const BATCH = 5;
-  async function publishSelected() {
-    const ids = selected.map((c) => c.id);
-    if (!ids.length) return;
-    setPublishing(true);
-    setError('');
-    setResults(null);
-    setProgress({ done: 0, total: ids.length });
-    let all: EbayPublishResult[] = [];
-    try {
-      for (let i = 0; i < ids.length; i += BATCH) {
-        const slice = ids.slice(i, i + BATCH);
-        const res = await publishBatch.mutateAsync({ card_ids: slice, include_extra_image: hasImage && includeImage });
-        if ('connected' in res) {
-          setError('Connecte d’abord ton compte eBay.');
-          break;
-        }
-        all = all.concat(res.results);
-        setResults(all);
-        setProgress({ done: Math.min(i + BATCH, ids.length), total: ids.length });
-      }
-      qc.invalidateQueries({ queryKey: ['cards'] });
-    } catch (e) {
-      setError((e as Error).message || 'Erreur réseau pendant la publication.');
-    } finally {
-      setPublishing(false);
-      setProgress(null);
-    }
-  }
-
-  const published = (results ?? []).filter((r) => r.status === 'published').length;
-  const skipped = (results ?? []).filter((r) => r.status === 'skipped').length;
-  const failed = (results ?? []).filter((r) => r.status === 'error').length;
-
-  return (
-    <div className="glass rounded-2xl p-5 flex flex-col gap-3">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(255,255,255,0.06)' }}>
-          <ShoppingBag size={18} style={{ color: 'var(--accent)' }} />
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-bold text-white">Publier en masse</p>
-          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            {readyCards.length} carte{readyCards.length > 1 ? 's' : ''} prête{readyCards.length > 1 ? 's' : ''} · titre, catégorie et livraison automatiques
-          </p>
-        </div>
-      </div>
-
-      {fulfillmentOptions.length === 0 ? (
-        <p className="text-xs leading-relaxed rounded-xl px-3 py-2" style={{ background: 'rgba(245,158,11,0.08)', color: 'var(--accent)' }}>
-          Configure d’abord tes options de vente eBay (paiement, livraison, retours) pour pouvoir publier.
-        </p>
-      ) : (
-        <div className="flex flex-col gap-3">
-          <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-            Chaque carte est publiée avec son prix déjà saisi, un titre et une catégorie générés, et le mode d’envoi choisi selon tes règles de livraison. Décoche celles à ne pas publier.
-          </p>
-
-          <div className="flex flex-col gap-1 max-h-80 overflow-y-auto rounded-xl" style={{ background: 'rgba(255,255,255,0.02)' }}>
-            {readyCards.map((card) => {
-              const res = resultById.get(card.id);
-              const checked = !deselected.has(card.id);
-              return (
-                <label
-                  key={card.id}
-                  className="flex items-center gap-3 py-2 px-2.5 rounded-xl cursor-pointer transition-colors hover:bg-white/5"
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    disabled={publishing || res?.status === 'published'}
-                    onChange={() => toggle(card.id)}
-                    className="w-4 h-4 accent-[var(--accent)] shrink-0"
-                  />
-                  {card.image_front_url ? (
-                    <img src={cdnImg(card.image_front_url)} alt="" className="w-8 h-11 object-cover rounded-lg shrink-0" />
-                  ) : (
-                    <div className="w-8 h-11 rounded-lg shrink-0 flex items-center justify-center text-xs" style={{ background: 'var(--bg-elevated)' }}>🃏</div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white truncate">{card.player ?? '—'}</p>
-                    <p className="text-[11px] truncate" style={{ color: 'var(--text-muted)' }}>
-                      {[card.year, shippingName(card.price)].filter(Boolean).join(' · ')}
-                    </p>
-                  </div>
-                  {res ? (
-                    <span
-                      className="text-[11px] font-bold shrink-0"
-                      style={{ color: res.status === 'published' ? 'var(--green)' : res.status === 'skipped' ? 'var(--text-muted)' : 'var(--red)' }}
-                    >
-                      {res.status === 'published' ? '✓ Publiée' : res.status === 'skipped' ? 'Ignorée' : 'Échec'}
-                    </span>
-                  ) : card.price != null ? (
-                    <span className="text-sm font-black shrink-0" style={{ color: 'var(--accent)' }}>{card.price} €</span>
-                  ) : (
-                    <span className="text-[11px] font-bold shrink-0" style={{ color: 'var(--red)' }}>Sans prix</span>
-                  )}
-                </label>
-              );
-            })}
-          </div>
-
-          {hasImage && (
-            <label className="flex items-center gap-3 rounded-xl px-3 py-2.5" style={{ background: 'rgba(255,255,255,0.04)' }}>
-              <input
-                type="checkbox"
-                checked={includeImage}
-                disabled={publishing}
-                onChange={(e) => setIncludeImage(e.target.checked)}
-                className="w-4 h-4 accent-[var(--accent)]"
-              />
-              <span className="text-sm font-medium text-white">Ajouter mon image d’annonce (3e photo)</span>
-            </label>
-          )}
-
-          {error && <p className="text-xs" style={{ color: 'var(--red)' }}>{error}</p>}
-
-          {results && !publishing && (
-            <div className="flex flex-col gap-1.5">
-              <p className="text-xs font-bold" style={{ color: 'var(--green)' }}>
-                ✅ {published} publiée{published > 1 ? 's' : ''}
-                {skipped > 0 ? ` · ${skipped} ignorée${skipped > 1 ? 's' : ''}` : ''}
-                {failed > 0 ? ` · ${failed} échec${failed > 1 ? 's' : ''}` : ''}
-              </p>
-              {failed > 0 && (
-                <ul className="flex flex-col gap-0.5 max-h-32 overflow-y-auto rounded-lg px-2 py-1.5" style={{ background: 'rgba(239,68,68,0.06)' }}>
-                  {(results ?? []).filter((r) => r.status === 'error').map((r) => (
-                    <li key={r.card_id} className="text-[11px]" style={{ color: 'var(--red)' }}>
-                      {(r.title || r.card_id)} — {r.message}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-
-          <button
-            onClick={publishSelected}
-            disabled={publishing || selected.length === 0}
-            className="self-start flex items-center justify-center gap-2 px-5 py-3 rounded-2xl text-sm font-black transition-all active:scale-95 disabled:opacity-50"
-            style={{ background: 'var(--accent)', color: '#09090B' }}
-          >
-            {publishing ? <Loader2 size={16} className="animate-spin" /> : <EbayLogo width={32} height={13} mono="#09090B" />}
-            {publishing
-              ? progress
-                ? `Publication… ${progress.done}/${progress.total}`
-                : 'Publication…'
-              : `Publier la sélection (${selected.length})`}
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 export function EbayView() {
   const { data: cards = [] } = useCards();
   const { data: status, isLoading } = useEbayAccountStatus();
@@ -849,10 +658,6 @@ export function EbayView() {
 
       {status?.connected && (
         <ShippingRulesCard fulfillmentOptions={policies?.options?.fulfillment ?? []} />
-      )}
-
-      {status?.connected && readyNotListed.length > 0 && (
-        <BulkPublishCard readyCards={readyNotListed} fulfillmentOptions={policies?.options?.fulfillment ?? []} />
       )}
 
       {/* Statut de connexion */}
