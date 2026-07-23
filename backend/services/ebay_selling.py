@@ -198,14 +198,27 @@ async def _get_category_tree_id(access_token: str) -> Optional[str]:
 
 
 async def suggest_category(access_token: str, query: str) -> Optional[dict]:
-    """Suggère une catégorie eBay (id + nom) à partir d'un texte libre."""
+    """Suggère une catégorie eBay (id + nom) pour une carte.
+
+    L'app ne gère que des cartes de sport à l'unité : on vise la catégorie
+    « cartes à l'unité » (SPORTS_CARD_SINGLE_CATEGORY_ID), la seule pour
+    laquelle notre code d'état (conditionId 4000 + descriptors, cf.
+    DEFAULT_CONDITION) est valide. On ne se rabat JAMAIS sur la première
+    suggestion venue : eBay renvoie parfois une catégorie générique
+    (« Autres ») qui rejette ensuite notre état au publish (erreur 25021). Si
+    on ne retrouve pas la catégorie carte dans les suggestions, on force donc
+    la catégorie carte de sport connue plutôt qu'une catégorie inadaptée."""
+    fallback = {"id": SPORTS_CARD_SINGLE_CATEGORY_ID, "name": "Cartes de sport"}
     if not query.strip():
-        return None
+        return fallback
     tree_id = await _get_category_tree_id(access_token)
     if not tree_id:
-        return None
+        return fallback
     try:
         async with httpx.AsyncClient(timeout=10) as client:
+            # On balaie les DEUX variantes de requête à la recherche de la
+            # catégorie carte de sport avant tout repli (l'ancienne version
+            # renvoyait dès la 1re requête, ratant parfois la bonne catégorie).
             for category_query in (f"sports trading card basketball {query}", query):
                 resp = await client.get(
                     f"{TAXONOMY_API}/category_tree/{tree_id}/get_category_suggestions",
@@ -214,18 +227,13 @@ async def suggest_category(access_token: str, query: str) -> Optional[dict]:
                 )
                 if resp.status_code != 200:
                     continue
-                suggestions = resp.json().get("categorySuggestions", [])
-                if not suggestions:
-                    continue
-                for suggestion in suggestions:
-                    preferred = suggestion.get("category", {})
-                    if preferred.get("categoryId") == SPORTS_CARD_SINGLE_CATEGORY_ID:
-                        return {"id": preferred.get("categoryId"), "name": preferred.get("categoryName")}
-                cat = suggestions[0].get("category", {})
-                return {"id": cat.get("categoryId"), "name": cat.get("categoryName")}
-        return None
+                for suggestion in resp.json().get("categorySuggestions", []):
+                    cat = suggestion.get("category", {})
+                    if cat.get("categoryId") == SPORTS_CARD_SINGLE_CATEGORY_ID:
+                        return {"id": cat.get("categoryId"), "name": cat.get("categoryName")}
+        return fallback
     except Exception:
-        return None
+        return fallback
 
 
 def _truncate_title(text: str, max_len: int = TITLE_MAX_LEN) -> str:
