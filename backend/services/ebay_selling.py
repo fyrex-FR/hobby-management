@@ -503,6 +503,24 @@ async def create_inventory_location(
     }
 
 
+def match_shipping_rule(shipping_rules: Optional[list], price: float) -> Optional[str]:
+    """Renvoie le fulfillment_policy_id de la 1re tranche dont le seuil couvre
+    `price` (tranches `{max_price, fulfillment_policy_id}` triées par seuil
+    croissant, la tranche `max_price: null` couvrant tout le reste), ou None si
+    aucune règle ne s'applique. Pendant de `matchShippingRule` côté frontend."""
+    if not shipping_rules or not price or price <= 0:
+        return None
+    capped = sorted(
+        (r for r in shipping_rules if r.get("max_price") is not None),
+        key=lambda r: r["max_price"],
+    )
+    for rule in capped:
+        if price <= rule["max_price"]:
+            return rule.get("fulfillment_policy_id") or None
+    open_ended = next((r for r in shipping_rules if r.get("max_price") is None), None)
+    return (open_ended or {}).get("fulfillment_policy_id") or None
+
+
 async def publish_card(
     card: dict,
     access_token: str,

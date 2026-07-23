@@ -157,6 +157,35 @@ export function matchShippingRule(rules: EbayShippingRule[], price: number): str
   return openEnded?.fulfillment_policy_id || null;
 }
 
+export interface EbayPublishResult {
+  card_id: string;
+  status: 'published' | 'skipped' | 'error';
+  ebay_url?: string | null;
+  message?: string;
+  title?: string | null;
+  price?: number | null;
+}
+
+export type EbayPublishBatchResult =
+  | { connected: false }
+  | { results: EbayPublishResult[]; published: number; skipped: number; errors: number };
+
+/** Publie un lot de cartes (le composant appelant découpe la liste des cartes
+ * prêtes et rappelle en boucle pour afficher la progression). Timeout long :
+ * chaque carte enchaîne plusieurs appels eBay (catégorie + inventory + offer +
+ * publish). */
+export function useEbayPublishBatch() {
+  return useMutation({
+    mutationFn: (body: { card_ids: string[]; include_extra_image: boolean }) => (
+      apiFetch<EbayPublishBatchResult>(
+        '/ebay/selling/publish-batch',
+        { method: 'POST', body: JSON.stringify(body) },
+        120000,
+      )
+    ),
+  });
+}
+
 export interface EbayApplyImageError {
   item_id: string;
   title: string | null;

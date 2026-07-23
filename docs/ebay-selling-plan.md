@@ -311,6 +311,46 @@ fulfillment policy est pré-sélectionnée automatiquement selon le prix saisi
   l'id envoyé contre les options autorisées) ; le comportement aux bornes de
   tranches ; que la pré-sélection ne prime pas sur un choix manuel.
 
+### Publication de masse ✅ (à tester en conditions réelles)
+
+But : publier plusieurs cartes d'un coup sans ouvrir le modal une par une.
+Rendu possible par les règles de livraison : titre/description/catégorie sont
+déjà auto-générés, le prix est celui saisi sur la carte, et la livraison est
+choisie par les règles prix → mode d'envoi. Il ne restait aucun champ à saisir
+à la main.
+
+- Décisions actées : v1 = **uniquement les cartes déjà avec un prix** (statut
+  « à vendre », photo recto, prix > 0, pas encore listées) ; déclenché depuis
+  le **centre de contrôle eBay**. (Auto-prix depuis le median eBay = évolution
+  future volontairement écartée pour la v1 : lent + risque de prix erronés en
+  masse.)
+- `backend/services/ebay_selling.py` — `match_shipping_rule(shipping_rules,
+  price)` : pendant Python du helper frontend `matchShippingRule`.
+- `backend/routers/ebay_selling.py` — `POST /ebay/selling/publish-batch`
+  (body `{card_ids[], include_extra_image}`, 10 cartes max/lot) : récupère
+  policies + settings une fois, puis pour chaque carte (semaphore 2) valide
+  (photo/prix/pas déjà en ligne), génère titre + catégorie, choisit la
+  fulfillment policy via `match_shipping_rule` (repli sur défaut + garde-fou
+  contre un id hors options), publie via `publish_card` (paiement/retours =
+  défauts du compte, description auto). Erreurs isolées par carte ; réponse
+  `{results[], published, skipped, errors}` réordonnée selon l'entrée.
+  Idempotent (une carte avec `ebay_url` est « skipped »).
+- **Frontend** :
+  - `useEbayAccount.ts` — `useEbayPublishBatch` (timeout 120 s), types
+    `EbayPublishResult` / `EbayPublishBatchResult`.
+  - `EbayView.tsx` — carte « Publier en masse » (`BulkPublishCard`) : liste
+    des cartes prêtes avec cases (toutes cochées par défaut, décochables via
+    un Set `deselected`), aperçu prix + nom du mode d'envoi auto par carte,
+    case globale « image d'annonce » si configurée. Le bouton « Publier la
+    sélection (N) » boucle par lots de 5, affiche la progression `n/total` et
+    le statut par carte (✓ Publiée / Ignorée / Échec), puis un résumé avec les
+    motifs d'échec ; invalide le cache `['cards']` à la fin. N'apparaît que si
+    connecté, policies configurées et au moins une carte prête.
+- **À vérifier au premier run réel** : tenue des rate limits eBay avec la
+  concurrence (semaphore 2, lots de 5) ; que `suggest_category` renvoie bien
+  une catégorie pour chaque carte ; le temps total sur un gros lot vs limites
+  d'un éventuel proxy/Cloudflare devant le backend.
+
 ## Reste à faire
 
 ### PR4 — Sync automatique du statut vendu
