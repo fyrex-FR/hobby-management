@@ -11,6 +11,7 @@ import html
 import logging
 import os
 import re
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import httpx
@@ -24,6 +25,7 @@ logger = logging.getLogger("ebay_selling")
 ACCOUNT_API = "https://api.ebay.com/sell/account/v1"
 TAXONOMY_API = "https://api.ebay.com/commerce/taxonomy/v1"
 INVENTORY_API = "https://api.ebay.com/sell/inventory/v1"
+FULFILLMENT_API = "https://api.ebay.com/sell/fulfillment/v1"
 
 TITLE_MAX_LEN = 80
 SELL_CONTENT_LANGUAGE = "fr-FR"
@@ -297,6 +299,82 @@ async def update_card_fields(card_id: str, user_id: str, fields: dict) -> None:
         )
     if resp.status_code not in (200, 204):
         raise RuntimeError(f"Supabase update cards {resp.status_code}: {resp.text[:300]}")
+
+
+async def _fetch_recent_orders(access_token: str, days: int = 90) -> list[dict]:
+    """Commandes du vendeur créées dans les `days` derniers jours via la
+    Fulfillment API (paginé). Une commande = une vente : chaque lineItem porte
+    le `sku` (= `card.id` pour les annonces publiées par l'app)."""
+    since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    orders: list[dict] = []
+    offset = 0
+    async with httpx.AsyncClient(timeout=20) as client:
+        while True:
+            resp = await client.get(
+                f"{FULFILLMENT_API}/order",
+                headers=_sell_headers(access_token),
+                params={"filter": f"creationdate:[{since}..]", "limit": 200, "offset": offset},
+            )
+            if resp.status_code != 200:
+                raise EbayApiError("Récupération des commandes eBay", resp.status_code, resp.text)
+            data = resp.json()
+            batch = data.get("orders") or []
+            orders.extend(batch)
+            offset += len(batch)
+            total = data.get("total") or 0
+            if not batch or offset >= total:
+                break
+    return orders
+
+
+def _line_item_price(line_item: dict) -> Optional[float]:
+    for key in ("total", "lineItemCost"):
+        value = (line_item.get(key) or {}).get("value")
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+async def sync_sold_cards(access_token: str, user_id: str) -> dict:
+    """Marque en `vendu` les cartes dont le sku correspond à une commande eBay
+    récente, en enregistrant le prix réel de vente et la date. Idempotent : une
+    carte déjà `vendu` est ignorée. Ne touche que les cartes de l'utilisateur
+    (sku = card.id) — les ventes d'annonces non issues de l'app sont ignorées
+    faute de sku connu."""
+    orders = await _fetch_recent_orders(access_token)
+    synced = 0
+    details: list[dict] = []
+    seen_skus: set[str] = set()
+
+    for order in orders:
+        # Ignore les commandes annulées (remboursées / non abouties).
+        cancel_state = (order.get("cancelStatus") or {}).get("cancelState")
+        if cancel_state and cancel_state != "NONE_REQUESTED":
+            continue
+        creation = order.get("creationDate")
+        for line_item in order.get("lineItems") or []:
+            sku = line_item.get("sku")
+            if not sku or sku in seen_skus:
+                continue
+            seen_skus.add(sku)
+
+            card = await get_card(sku, user_id)
+            if not card or card.get("status") == "vendu":
+                continue
+
+            fields: dict = {"status": "vendu"}
+            price = _line_item_price(line_item)
+            if price is not None:
+                fields["ebay_sold_price"] = price
+            if creation:
+                fields["ebay_sold_at"] = creation
+            await update_card_fields(sku, user_id, fields)
+            synced += 1
+            details.append({"card_id": sku, "player": card.get("player"), "price": price})
+
+    return {"synced": synced, "orders": len(orders), "details": details}
 
 
 def _html_description_from_text(text: str) -> str:

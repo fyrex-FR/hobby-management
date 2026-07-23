@@ -186,6 +186,20 @@ export function useEbayPublishBatch() {
   });
 }
 
+export type EbaySyncSoldResult =
+  | { connected: false }
+  | { synced: number; orders: number; details: { card_id: string; player: string | null; price: number | null }[] };
+
+/** Synchronise le statut « vendu » depuis les commandes eBay (déclenché
+ * manuellement). Timeout long : parcourt les commandes récentes du compte. */
+export function useEbaySyncSold() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch<EbaySyncSoldResult>('/ebay/selling/sync-sold', { method: 'POST' }, 120000),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cards'] }),
+  });
+}
+
 export interface EbayApplyImageError {
   item_id: string;
   title: string | null;

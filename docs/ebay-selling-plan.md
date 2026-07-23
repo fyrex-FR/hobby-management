@@ -376,24 +376,57 @@ seul point d'entrée dans le menu.
   vendu → segment Vendues ; watchers/offres → actions du segment En ligne ;
   édition → bouton « Modifier » du segment En ligne.
 
+### Sync du statut vendu (#1) ✅ (à tester en conditions réelles)
+
+Décision actée : **déclenchement manuel** (bouton « Synchroniser » dans
+l'onglet Annonces), pas de cron pour l'instant.
+
+- `backend/add_ebay_sold_tracking_migration.sql` — colonnes
+  `cards.ebay_sold_price` (prix RÉEL de vente) et `cards.ebay_sold_at` (date de
+  commande), distinctes de `price` (prix demandé). **À PASSER dans Supabase.**
+- `backend/services/ebay_selling.py` :
+  - `_fetch_recent_orders(access_token, days=90)` — Fulfillment API
+    `GET /sell/fulfillment/v1/order` paginé, filtre `creationdate:[…..]`.
+  - `sync_sold_cards(access_token, user_id)` — pour chaque lineItem d'une
+    commande non annulée, matche `sku` == `card.id` ; si la carte existe et
+    n'est pas déjà `vendu`, la passe en `vendu` avec `ebay_sold_price`
+    (via `_line_item_price` : `total` puis `lineItemCost`) et `ebay_sold_at`.
+    Idempotent ; ignore les sku inconnus (annonces non issues de l'app) et les
+    commandes annulées. Renvoie `{synced, orders, details}`.
+- `backend/routers/ebay_selling.py` — `POST /ebay/selling/sync-sold`.
+- **Frontend** : `useEbaySyncSold` (invalide `['cards']`) ; bouton
+  « Synchroniser » dans `ListingsTab` (message de résultat) ; le segment
+  Vendues affiche `ebay_sold_price ?? price` + date.
+- Testé unitairement (mocks) : vente marquée avec prix réel + date, carte déjà
+  vendue ignorée, commande annulée non prise, sku inconnu ignoré. **Jamais
+  appelé contre le vrai eBay.**
+- **À vérifier au premier run réel** : format exact des objets `order` /
+  `lineItem` de la Fulfillment API (champ prix : `total` vs `lineItemCost`) ;
+  que le `sku` renvoyé est bien `card.id` ; le fenêtrage à 90 jours.
+
 ## Reste à faire
 
-Roadmap validée avec l'utilisateur (dans l'ordre) : **1) sync vendu (#1)**,
-**2) modifier une annonce depuis l'app**, **3) watchers + offres (#4)**. La
-coquille à onglets ci-dessus est faite en premier pour leur donner un foyer.
+Roadmap validée (dans l'ordre) : ~~1) sync vendu~~ ✅, **2) modifier une
+annonce depuis l'app** (prochaine), **3) watchers + offres (#4)**.
 
-### PR4 — Sync automatique du statut vendu
+### Modifier une annonce depuis l'app (prochaine)
 
-- Endpoint/cron léger : `GET /sell/fulfillment/v1/order` (Fulfillment API,
-  auth par utilisateur connecté) à l'ouverture de `EbayView` ou 1×/jour.
-  Pour chaque commande trouvée correspondant à un `sku` connu (= un
-  `card.id`), passer la carte en statut `vendu`.
-- Alternative plus tard (hors v1) : eBay Notification API (push) au lieu du
-  polling.
-- Permettrait aussi de faire remonter dans `EbayView` les annonces créées à
-  la main sur eBay.com (pas seulement celles publiées depuis l'app) en
-  cherchant les `getOffers`/`getInventoryItems` du compte et en proposant de
-  les rattacher à une carte existante.
+- Bouton « Modifier » sur le segment En ligne de `ListingsTab` → modal
+  d'édition (titre / description / prix / état). On a déjà `update_offer_price`
+  (Inventory API `PUT offer`) ; étendre à titre/description (PUT inventory_item
+  `product.title`/`description`) puis re-publish si nécessaire.
+
+### Watchers + offres (#4)
+
+- Compteurs vues/watchers par annonce (Analytics/Trading `GetMyeBaySelling`) et
+  envoi d'offres aux watchers (Negotiation API
+  `SendOfferToInterestedBuyers`).
+
+### Remonter les annonces créées hors app
+
+- Faire remonter dans l'onglet Annonces les annonces créées à la main sur
+  eBay.com via `getOffers`/`getInventoryItems`, en proposant de les rattacher à
+  une carte existante.
 
 ## Notes techniques transverses
 
