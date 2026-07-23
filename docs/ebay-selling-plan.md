@@ -188,6 +188,63 @@ dépendre de l'historique de conversation. Mis à jour à chaque étape.
     `preview.extra_image_url` est renseigné ; envoie `include_extra_image`
     au publish.
 
+### Ajout auto aux annonces existantes (EPS/Trading API) ✅
+
+Problème résolu : l'image vendeur (3e photo, ci-dessus) n'était ajoutée
+qu'aux annonces **publiées depuis CardVaults** — eBay interdit de mélanger,
+dans une même annonce, des photos hébergées eBay/EPS et des photos
+hébergées ailleurs (notre CDN R2), donc impossible de référencer
+`extra_image_url` directement sur une annonce créée à la main sur eBay
+avant l'app.
+
+- `backend/add_ebay_eps_image_migration.sql` — colonnes
+  `ebay_seller_settings.eps_image_url` (URL EPS générée) et
+  `eps_source_url` (URL R2 source, pour savoir quand régénérer).
+- `backend/services/ebay_trading.py` — client minimal pour la Trading API
+  (XML, `POST api.ebay.com/ws/api.dll`, token OAuth utilisateur transmis en
+  header `X-EBAY-API-IAF-TOKEN`) :
+  - `upload_image_to_eps` — `UploadSiteHostedPictures`, héberge
+    `extra_image_url` dans EPS au nom du vendeur (EPS + EPS = autorisé sur
+    une même annonce).
+  - `get_active_item_ids` — `GetMyeBaySelling` paginé, jusqu'à 1000
+    annonces (cap de sécurité).
+  - `get_item_pictures` — `GetItem`, lit photos actuelles + variations +
+    titre.
+  - `revise_item_pictures` — `ReviseItem`, réécrit la liste complète des
+    photos (pas d'ajout unitaire côté Trading API).
+  - `eps_image_id` / `image_already_present` — détecte si l'image vendeur
+    est déjà sur l'annonce (comparaison par identifiant EPS extrait de
+    l'URL, robuste aux variantes de taille), pour rendre l'opération
+    idempotente.
+- `backend/routers/ebay_account.py` — `POST
+  /ebay/account/apply-image-to-listings` (body `{offset, batch}`, `batch`
+  borné à 25) : upload/réutilise l'image EPS, liste les annonces actives,
+  traite un lot en parallèle (semaphore 4) — par annonce : déjà à jour
+  (skip), à variations (erreur, non prise en charge), 24 photos déjà
+  atteintes (erreur), sinon révision. Erreurs par-annonce capturées sans
+  faire échouer le lot ; réponse `{done, next_offset, total, updated,
+  skipped, errors, eps_image_url}`.
+- **Frontend** : `useEbayApplyImageToListings` (hooks/useEbayAccount.ts,
+  timeout 120 s) ; bouton « Ajouter à mes annonces existantes » dans
+  `SellerImageCard` (EbayView.tsx) qui boucle sur l'endpoint jusqu'à
+  `done`, affiche la progression (`n/total annonces`), puis un résumé
+  (mises à jour / déjà présentes / échecs) avec la liste compacte des
+  erreurs.
+- Testé unitairement : parsing XML (succès + `Ack=Failure` avec
+  `LongMessage`), pagination `GetMyeBaySelling` sur 2 pages,
+  extraction/matching `eps_image_id`, contenu du XML `ReviseItem` ; + tests
+  `TestClient` de l'endpoint (422 sans image, `connected:false`, lot avec
+  updated/skipped/erreur variations, réutilisation vs régénération EPS
+  selon `eps_source_url`) — **jamais appelé contre le vrai eBay**.
+- **À vérifier au premier run réel** (voir aussi la note générale plus
+  bas) : que la Trading API accepte bien le token OAuth (IAF token) délivré
+  par le flux Sell API existant — l'app n'a jamais utilisé la Trading API
+  jusqu'ici, uniquement les Sell APIs REST modernes ; le format exact des
+  erreurs XML retournées en pratique (peut différer des exemples mockés) ;
+  que les annonces à variations sont bien exclues proprement plutôt que de
+  planter tout le lot ; que la taille des lots (20) reste sous la limite de
+  temps d'un éventuel proxy/Cloudflare devant le backend.
+
 ## Reste à faire
 
 ### PR4 — Sync automatique du statut vendu
