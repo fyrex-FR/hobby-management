@@ -319,11 +319,12 @@ déjà auto-générés, le prix est celui saisi sur la carte, et la livraison es
 choisie par les règles prix → mode d'envoi. Il ne restait aucun champ à saisir
 à la main.
 
-- Décisions actées : v1 = **uniquement les cartes déjà avec un prix** (statut
-  « à vendre », photo recto, prix > 0, pas encore listées) ; déclenché depuis
-  le **centre de contrôle eBay**. (Auto-prix depuis le median eBay = évolution
-  future volontairement écartée pour la v1 : lent + risque de prix erronés en
-  masse.)
+- Décisions actées : v1 = **uniquement les cartes déjà avec un prix** (photo
+  recto, prix > 0, pas encore listées) ; déclenché depuis la **vue Collection**
+  (mode sélection multiple existant), *pas* le centre de contrôle eBay
+  (déplacé sur demande : on sélectionne les cartes là où elles sont).
+  (Auto-prix depuis le median eBay = évolution future volontairement écartée
+  pour la v1 : lent + risque de prix erronés en masse.)
 - `backend/services/ebay_selling.py` — `match_shipping_rule(shipping_rules,
   price)` : pendant Python du helper frontend `matchShippingRule`.
 - `backend/routers/ebay_selling.py` — `POST /ebay/selling/publish-batch`
@@ -338,14 +339,18 @@ choisie par les règles prix → mode d'envoi. Il ne restait aucun champ à sais
 - **Frontend** :
   - `useEbayAccount.ts` — `useEbayPublishBatch` (timeout 120 s), types
     `EbayPublishResult` / `EbayPublishBatchResult`.
-  - `EbayView.tsx` — carte « Publier en masse » (`BulkPublishCard`) : liste
-    des cartes prêtes avec cases (toutes cochées par défaut, décochables via
-    un Set `deselected`), aperçu prix + nom du mode d'envoi auto par carte,
-    case globale « image d'annonce » si configurée. Le bouton « Publier la
-    sélection (N) » boucle par lots de 5, affiche la progression `n/total` et
-    le statut par carte (✓ Publiée / Ignorée / Échec), puis un résumé avec les
-    motifs d'échec ; invalide le cache `['cards']` à la fin. N'apparaît que si
-    connecté, policies configurées et au moins une carte prête.
+  - `shared/EbayBulkPublishModal.tsx` — modal ouvert depuis la barre d'actions
+    groupées de la Collection. Reçoit les cartes sélectionnées, sépare
+    éligibles / inéligibles (déjà en ligne, sans photo, sans prix → affichées
+    grisées avec le motif, non publiées), cases décochables (Set `deselected`),
+    aperçu prix + nom du mode d'envoi auto par carte, case globale « image
+    d'annonce » si configurée. Bouton « Publier la sélection (N) » : boucle par
+    lots de 5, progression `n/total`, statut par carte (✓ Publiée / Ignorée /
+    Échec), résumé avec motifs d'échec ; invalide le cache `['cards']`. Gère
+    les cas non connecté / policies non configurées.
+  - `CollectionView.tsx` — bouton « Publier » (logo eBay) dans la barre
+    d'actions groupées (mode sélection multiple), ouvre le modal avec
+    `cards.filter(selectedIds)`.
 - **À vérifier au premier run réel** : tenue des rate limits eBay avec la
   concurrence (semaphore 2, lots de 5) ; que `suggest_category` renvoie bien
   une catégorie pour chaque carte ; le temps total sur un gros lot vs limites

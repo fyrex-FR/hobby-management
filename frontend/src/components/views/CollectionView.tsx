@@ -37,6 +37,8 @@ import type { Card, CardStatus, CardType, Folder } from '../../types';
 import { GradingBadge } from '../shared/GradingBadge';
 import { StatusBadge } from '../shared/StatusBadge';
 import { CardDetail } from '../shared/CardDetail';
+import { EbayBulkPublishModal } from '../shared/EbayBulkPublishModal';
+import { EbayLogo } from '../shared/EbayLogo';
 import { cdnImg } from '../../lib/cdn';
 import { RookieBadge } from '../shared/RookieBadge';
 
@@ -785,6 +787,7 @@ export function CollectionView() {
   const [selectMode, setSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [ebayBulkOpen, setEbayBulkOpen] = useState(false);
   const updateCard = useUpdateCard();
   const deleteCard = useDeleteCard();
   const deleteFolder = useDeleteFolder();
@@ -1462,6 +1465,15 @@ export function CollectionView() {
               Prix de vente…
             </button>
 
+            <button
+              onClick={() => setEbayBulkOpen(true)}
+              disabled={bulkBusy || selectedIds.size === 0}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--accent)]/30 bg-[var(--accent-dim)] px-3 py-2 text-xs font-bold text-[var(--accent)] transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <EbayLogo width={26} height={11} mono="var(--accent)" />
+              Publier
+            </button>
+
             {folders.length > 0 && (
               <>
                 <div className="h-6 w-px bg-white/10" />
@@ -1516,6 +1528,13 @@ export function CollectionView() {
 
       {selectedCard && (
         <CardDetail card={selectedCard} onClose={() => setSelectedCard(null)} />
+      )}
+
+      {ebayBulkOpen && (
+        <EbayBulkPublishModal
+          cards={cards.filter((c) => selectedIds.has(c.id))}
+          onClose={() => setEbayBulkOpen(false)}
+        />
       )}
 
       {manageFolders && (
