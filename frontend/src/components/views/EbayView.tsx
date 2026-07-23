@@ -15,10 +15,10 @@ import {
   Loader2,
   LogOut,
   MapPin,
-  PackageCheck,
   Plus,
   RefreshCcw,
   Save,
+  Settings,
   ShoppingBag,
   Tag,
   Trash2,
@@ -43,24 +43,10 @@ import { cdnImg } from '../../lib/cdn';
 import { downloadImage } from '../../lib/downloadImage';
 import { supabase } from '../../lib/supabase';
 import { compressImage } from '../../lib/storage';
+import { EbayPublishModal } from '../shared/EbayPublishModal';
+import type { Card } from '../../types';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
-
-function StatTile({ label, value, icon: Icon, accent }: { label: string; value: number; icon: any; accent?: boolean }) {
-  return (
-    <div className="glass rounded-2xl p-4 flex flex-col items-start gap-3">
-      <div className={`p-2 rounded-xl ${accent ? 'bg-[var(--accent-glow)]' : 'bg-white/5'}`}>
-        <Icon size={18} className={accent ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)]'} />
-      </div>
-      <div className="flex flex-col">
-        <span className="text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">{label}</span>
-        <span className="text-2xl font-black tabular-nums tracking-tight mt-0.5" style={{ color: accent ? 'var(--accent)' : 'var(--text-primary)' }}>
-          {value}
-        </span>
-      </div>
-    </div>
-  );
-}
 
 function SetupStep({
   title,
@@ -524,6 +510,160 @@ function ShippingRulesCard({ fulfillmentOptions }: { fulfillmentOptions: EbayPol
   );
 }
 
+type ListingSegment = 'online' | 'sold' | 'ready';
+
+function ListingRow({ card, right }: { card: Card; right: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 py-2 px-1.5 rounded-xl transition-colors hover:bg-white/5">
+      {card.image_front_url ? (
+        <img src={cdnImg(card.image_front_url)} alt="" className="w-9 h-12 object-cover rounded-lg shrink-0" />
+      ) : (
+        <div className="w-9 h-12 rounded-lg shrink-0 flex items-center justify-center text-sm" style={{ background: 'var(--bg-elevated)' }}>🃏</div>
+      )}
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-white truncate">{card.player ?? '—'}</p>
+        <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{[card.team, card.year].filter(Boolean).join(' · ')}</p>
+      </div>
+      {right}
+    </div>
+  );
+}
+
+function ListingsTab({
+  listed,
+  sold,
+  ready,
+  connected,
+  onGoSettings,
+}: {
+  listed: Card[];
+  sold: Card[];
+  ready: Card[];
+  connected: boolean;
+  onGoSettings: () => void;
+}) {
+  const [segment, setSegment] = useState<ListingSegment>('online');
+  const [publishCard, setPublishCard] = useState<Card | null>(null);
+
+  if (!connected) {
+    return (
+      <div className="glass rounded-2xl p-6 flex flex-col gap-3">
+        <p className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+          Connecte ton compte eBay pour voir et gérer tes annonces ici.
+        </p>
+        <button
+          onClick={onGoSettings}
+          className="self-start py-3 px-5 rounded-2xl text-sm font-black transition-all active:scale-95"
+          style={{ background: 'var(--accent)', color: '#09090B' }}
+        >
+          Aller dans Réglages
+        </button>
+      </div>
+    );
+  }
+
+  const segments: { value: ListingSegment; label: string; count: number; icon: typeof ShoppingBag }[] = [
+    { value: 'online', label: 'En ligne', count: listed.length, icon: ShoppingBag },
+    { value: 'sold', label: 'Vendues', count: sold.length, icon: CheckCircle2 },
+    { value: 'ready', label: 'Prêtes', count: ready.length, icon: Tag },
+  ];
+  const rows = segment === 'online' ? listed : segment === 'sold' ? sold : ready;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-3 gap-2">
+        {segments.map((s) => {
+          const active = segment === s.value;
+          return (
+            <button
+              key={s.value}
+              onClick={() => setSegment(s.value)}
+              className="flex flex-col items-start gap-1 rounded-2xl px-3 py-2.5 transition-all active:scale-95"
+              style={{
+                background: active ? 'var(--accent-glow)' : 'rgba(255,255,255,0.04)',
+                border: `1px solid ${active ? 'var(--accent)' : 'transparent'}`,
+              }}
+            >
+              <s.icon size={15} style={{ color: active ? 'var(--accent)' : 'var(--text-muted)' }} />
+              <span className="text-lg font-black tabular-nums leading-none" style={{ color: active ? 'var(--accent)' : 'var(--text-primary)' }}>{s.count}</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{s.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="glass rounded-2xl p-4 flex flex-col gap-1">
+        {rows.length === 0 ? (
+          <p className="text-sm py-6 text-center" style={{ color: 'var(--text-muted)' }}>
+            {segment === 'online' && 'Aucune carte en ligne sur eBay pour le moment.'}
+            {segment === 'sold' && 'Aucune vente eBay enregistrée. Le suivi automatique du statut « vendu » arrive bientôt.'}
+            {segment === 'ready' && 'Aucune carte prête à publier (photo recto + prix requis).'}
+          </p>
+        ) : (
+          rows.map((card) => {
+            if (segment === 'online') {
+              return (
+                <ListingRow
+                  key={card.id}
+                  card={card}
+                  right={
+                    <div className="flex items-center gap-3 shrink-0">
+                      {card.price != null && <span className="text-sm font-black" style={{ color: 'var(--accent)' }}>{card.price} €</span>}
+                      <a href={card.ebay_url!} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>
+                        <ExternalLink size={13} /> Voir
+                      </a>
+                    </div>
+                  }
+                />
+              );
+            }
+            if (segment === 'sold') {
+              return (
+                <ListingRow
+                  key={card.id}
+                  card={card}
+                  right={
+                    <div className="flex items-center gap-2 shrink-0">
+                      {card.price != null && <span className="text-sm font-black" style={{ color: 'var(--green)' }}>{card.price} €</span>}
+                      <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-lg" style={{ background: 'rgba(34,197,94,0.12)', color: 'var(--green)' }}>Vendue</span>
+                    </div>
+                  }
+                />
+              );
+            }
+            return (
+              <ListingRow
+                key={card.id}
+                card={card}
+                right={
+                  <div className="flex items-center gap-3 shrink-0">
+                    {card.price != null && <span className="text-sm font-black" style={{ color: 'var(--accent)' }}>{card.price} €</span>}
+                    <button
+                      onClick={() => setPublishCard(card)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95"
+                      style={{ background: 'var(--accent)', color: '#09090B' }}
+                    >
+                      <EbayLogo width={24} height={10} mono="#09090B" /> Publier
+                    </button>
+                  </div>
+                }
+              />
+            );
+          })
+        )}
+      </div>
+
+      {publishCard && (
+        <EbayPublishModal
+          card={publishCard}
+          onClose={() => setPublishCard(null)}
+          onPublished={() => setPublishCard(null)}
+        />
+      )}
+    </div>
+  );
+}
+
 export function EbayView() {
   const { data: cards = [] } = useCards();
   const { data: status, isLoading } = useEbayAccountStatus();
@@ -551,9 +691,14 @@ export function EbayView() {
     window.history.replaceState({}, '', window.location.pathname + (query ? `?${query}` : ''));
   }, []);
 
-  const listed = useMemo(() => cards.filter((c) => c.ebay_url), [cards]);
+  const [tab, setTab] = useState<'annonces' | 'reglages'>('annonces');
+  const listed = useMemo(() => cards.filter((c) => c.ebay_url && c.status !== 'vendu'), [cards]);
+  const sold = useMemo(
+    () => cards.filter((c) => c.status === 'vendu' && (c.ebay_url || c.ebay_listing_id)),
+    [cards],
+  );
   const readyNotListed = useMemo(
-    () => cards.filter((c) => c.status === 'a_vendre' && !c.ebay_url),
+    () => cards.filter((c) => c.status === 'a_vendre' && !c.ebay_url && c.image_front_url && (c.price ?? 0) > 0),
     [cards],
   );
   const location = setup?.locations?.[0];
@@ -583,10 +728,33 @@ export function EbayView() {
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3">
         <EbayLogo width={56} height={22} />
         <div>
-          <h1 className="text-xl font-black text-white leading-tight">Centre de contrôle eBay</h1>
-          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Connexion, statut et cartes en vente</p>
+          <h1 className="text-xl font-black text-white leading-tight">eBay</h1>
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Tes annonces et tes réglages vendeur</p>
         </div>
       </motion.div>
+
+      <div className="flex items-center gap-1 p-1 rounded-2xl self-start" style={{ background: 'rgba(255,255,255,0.04)' }}>
+        {([
+          { value: 'annonces', label: 'Annonces', icon: ShoppingBag },
+          { value: 'reglages', label: 'Réglages', icon: Settings },
+        ] as const).map((t) => {
+          const active = tab === t.value;
+          return (
+            <button
+              key={t.value}
+              onClick={() => setTab(t.value)}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all"
+              style={{
+                background: active ? 'var(--accent)' : 'transparent',
+                color: active ? '#09090B' : 'var(--text-secondary)',
+              }}
+            >
+              <t.icon size={15} />
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
 
       {notice && (
         <div
@@ -600,6 +768,8 @@ export function EbayView() {
         </div>
       )}
 
+      {tab === 'reglages' ? (
+      <div className="flex flex-col gap-6">
       <div className="glass rounded-2xl p-5 flex flex-col gap-4">
         <div className="flex flex-col gap-1">
           <p className="text-sm font-black text-white">Avant de publier</p>
@@ -757,45 +927,15 @@ export function EbayView() {
         </div>
       )}
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 gap-3">
-        <StatTile label="Sur eBay" value={listed.length} icon={ShoppingBag} accent={listed.length > 0} />
-        <StatTile label="Prêtes, pas encore listées" value={readyNotListed.length} icon={Tag} accent={readyNotListed.length > 0} />
       </div>
-
-      {/* Cartes déjà sur eBay */}
-      {listed.length > 0 && (
-        <div className="glass rounded-2xl p-4 flex flex-col gap-1">
-          <div className="flex items-center gap-2 px-1 pb-2">
-            <PackageCheck size={14} className="text-[var(--text-muted)]" />
-            <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-              Cartes sur eBay ({listed.length})
-            </span>
-          </div>
-          {listed.map((card) => (
-            <a
-              key={card.id}
-              href={card.ebay_url!}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-3 py-2 px-1.5 rounded-xl transition-colors hover:bg-white/5"
-            >
-              {card.image_front_url ? (
-                <img src={cdnImg(card.image_front_url)} alt="" className="w-9 h-12 object-cover rounded-lg shrink-0" />
-              ) : (
-                <div className="w-9 h-12 rounded-lg shrink-0 flex items-center justify-center text-sm" style={{ background: 'var(--bg-elevated)' }}>🃏</div>
-              )}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">{card.player ?? '—'}</p>
-                <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{[card.team, card.year].filter(Boolean).join(' · ')}</p>
-              </div>
-              {card.price != null && (
-                <span className="text-sm font-black shrink-0" style={{ color: 'var(--accent)' }}>{card.price} €</span>
-              )}
-              <ExternalLink size={14} className="shrink-0" style={{ color: 'var(--text-muted)' }} />
-            </a>
-          ))}
-        </div>
+      ) : (
+        <ListingsTab
+          listed={listed}
+          sold={sold}
+          ready={readyNotListed}
+          connected={Boolean(status?.connected)}
+          onGoSettings={() => setTab('reglages')}
+        />
       )}
     </div>
   );
