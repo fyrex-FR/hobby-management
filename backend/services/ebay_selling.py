@@ -673,6 +673,36 @@ async def update_offer_price(card: dict, access_token: str, new_price: float) ->
     return {"updated": True, "price": new_price}
 
 
+def _sanitize_package_weight_and_size(item: dict) -> None:
+    """Retire d'un inventory item les valeurs de poids/dimensions invalides
+    (absentes, nulles ou ≤ 0) que l'Inventory API renvoie parfois au GET mais
+    refuse au PUT (errorId 25709). Modifie `item` en place. Les valeurs valides
+    sont conservées telles quelles pour ne pas altérer l'annonce existante."""
+    pkg = item.get("packageWeightAndSize")
+    if not isinstance(pkg, dict):
+        return
+
+    def _valid_value(container: dict) -> bool:
+        try:
+            return float(container.get("value")) > 0
+        except (TypeError, ValueError):
+            return False
+
+    weight = pkg.get("weight")
+    if isinstance(weight, dict) and not _valid_value(weight):
+        pkg.pop("weight", None)
+
+    dimensions = pkg.get("dimensions")
+    if isinstance(dimensions, dict):
+        # Les dimensions sont un tout : si une seule cote est invalide, eBay
+        # rejette l'ensemble — on retire le bloc dimensions complet.
+        if not all(_valid_value({"value": dimensions.get(k)}) for k in ("length", "width", "height")):
+            pkg.pop("dimensions", None)
+
+    if not pkg:
+        item.pop("packageWeightAndSize", None)
+
+
 async def add_image_to_inventory_item(access_token: str, sku: str, image_url: str) -> str:
     """Ajoute `image_url` aux photos d'un inventory item (annonce publiée par
     CardVaults via `publish_card`, sku = card.id), pour les annonces où
@@ -701,6 +731,13 @@ async def add_image_to_inventory_item(access_token: str, sku: str, image_url: st
         if image_url in image_urls:
             return "skipped"
         product["imageUrls"] = [*image_urls, image_url]
+
+        # eBay renvoie parfois dans le GET un poids/dimensions invalide (0, vide)
+        # qu'il refuse ensuite en PUT (errorId 25709 « Valeur non valide pour
+        # weight.value »). Comme on doit re-PUT la fiche entière pour ajouter une
+        # photo, on nettoie ces champs facultatifs plutôt que de renvoyer une
+        # valeur que l'API rejette.
+        _sanitize_package_weight_and_size(item)
 
         step = "Mise à jour de la fiche produit"
         resp = await client.put(
