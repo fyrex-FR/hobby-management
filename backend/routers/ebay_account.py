@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
@@ -155,6 +155,68 @@ async def account_settings(user: dict = Depends(current_user)):
 async def account_settings_update(body: SellerSettingsRequest, user: dict = Depends(current_user)):
     await ebay_settings_store.upsert_settings(user["sub"], {"extra_image_url": body.extra_image_url})
     return {"extra_image_url": body.extra_image_url}
+
+
+class ShippingRule(BaseModel):
+    """Une tranche : les prix <= max_price (et au-dessus de la tranche
+    précédente) utilisent `fulfillment_policy_id`. La dernière tranche a
+    max_price = null (« et au-delà »)."""
+    max_price: Optional[float] = None
+    fulfillment_policy_id: str
+
+    @field_validator("max_price")
+    @classmethod
+    def _validate_max_price(cls, value: Optional[float]) -> Optional[float]:
+        if value is not None and value <= 0:
+            raise ValueError("Le seuil d'une tranche doit être un montant positif.")
+        return value
+
+    @field_validator("fulfillment_policy_id")
+    @classmethod
+    def _validate_policy(cls, value: str) -> str:
+        value = (value or "").strip()
+        if not value:
+            raise ValueError("Chaque tranche doit être associée à une politique d'expédition.")
+        return value
+
+
+class ShippingRulesRequest(BaseModel):
+    rules: List[ShippingRule]
+
+    @field_validator("rules")
+    @classmethod
+    def _validate_rules(cls, rules: List[ShippingRule]) -> List[ShippingRule]:
+        if len(rules) > 20:
+            raise ValueError("20 tranches maximum.")
+        # Tranches ordonnées par seuil croissant, une seule tranche « et au-delà »
+        # (max_price null) et elle doit être la dernière ; seuils strictement
+        # croissants pour éviter les tranches ambiguës qui se chevauchent.
+        capped = [r for r in rules if r.max_price is not None]
+        open_ended = [r for r in rules if r.max_price is None]
+        if len(open_ended) > 1:
+            raise ValueError("Une seule tranche « et au-delà » est autorisée.")
+        thresholds = [r.max_price for r in capped]
+        if thresholds != sorted(thresholds) or len(set(thresholds)) != len(thresholds):
+            raise ValueError("Les seuils des tranches doivent être strictement croissants.")
+        if open_ended and rules[-1].max_price is not None:
+            raise ValueError("La tranche « et au-delà » doit être la dernière.")
+        return rules
+
+
+@router.get("/ebay/account/shipping-rules")
+async def account_shipping_rules(user: dict = Depends(current_user)):
+    """Règles de livraison par tranche de prix (pré-sélection auto de la
+    politique d'expédition à la publication). Renvoie une liste éventuellement
+    vide si jamais configuré."""
+    settings = await ebay_settings_store.get_settings(user["sub"])
+    return {"rules": (settings or {}).get("shipping_rules") or []}
+
+
+@router.put("/ebay/account/shipping-rules")
+async def account_shipping_rules_update(body: ShippingRulesRequest, user: dict = Depends(current_user)):
+    rules = [rule.model_dump() for rule in body.rules]
+    await ebay_settings_store.upsert_settings(user["sub"], {"shipping_rules": rules})
+    return {"rules": rules}
 
 
 class ApplyImageRequest(BaseModel):

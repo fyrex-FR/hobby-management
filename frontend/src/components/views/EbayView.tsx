@@ -16,6 +16,7 @@ import {
   LogOut,
   MapPin,
   PackageCheck,
+  Plus,
   RefreshCcw,
   Save,
   ShoppingBag,
@@ -33,8 +34,10 @@ import {
   useEbaySellerImage,
   useEbaySellerImageSave,
   useEbaySellerSetup,
+  useEbayShippingRules,
+  useEbayShippingRulesSave,
 } from '../../hooks/useEbayAccount';
-import type { EbayApplyImageError } from '../../hooks/useEbayAccount';
+import type { EbayApplyImageError, EbayPolicyOption, EbayShippingRule } from '../../hooks/useEbayAccount';
 import { EbayLogo } from '../shared/EbayLogo';
 import { cdnImg } from '../../lib/cdn';
 import { downloadImage } from '../../lib/downloadImage';
@@ -327,6 +330,200 @@ function SellerImageCard() {
   );
 }
 
+interface RuleRow {
+  key: string;
+  maxPrice: string; // '' = tranche « et au-delà »
+  policyId: string;
+}
+
+let ruleRowSeq = 0;
+const newRuleRow = (maxPrice = '', policyId = ''): RuleRow => ({ key: `r${ruleRowSeq++}`, maxPrice, policyId });
+
+function ShippingRulesCard({ fulfillmentOptions }: { fulfillmentOptions: EbayPolicyOption[] }) {
+  const { data, isLoading } = useEbayShippingRules();
+  const saveRules = useEbayShippingRulesSave();
+  const [rows, setRows] = useState<RuleRow[] | null>(null);
+  const [error, setError] = useState('');
+  const [saved, setSaved] = useState(false);
+
+  // Initialise les lignes depuis les règles enregistrées (une seule fois).
+  useEffect(() => {
+    if (rows !== null || !data) return;
+    const loaded = data.rules.map((r) => newRuleRow(r.max_price == null ? '' : String(r.max_price), r.fulfillment_policy_id));
+    setRows(loaded.length ? loaded : [newRuleRow('', '')]);
+  }, [data, rows]);
+
+  const current = rows ?? [];
+  const policyName = (id: string) => fulfillmentOptions.find((p) => p.id === id)?.name || '—';
+
+  function update(key: string, patch: Partial<RuleRow>) {
+    setSaved(false);
+    setRows((rs) => (rs ?? []).map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  }
+  function addRow() {
+    setSaved(false);
+    setRows((rs) => [...(rs ?? []), newRuleRow('', '')]);
+  }
+  function removeRow(key: string) {
+    setSaved(false);
+    setRows((rs) => (rs ?? []).filter((r) => r.key !== key));
+  }
+
+  function save() {
+    setError('');
+    setSaved(false);
+    const filled = current.filter((r) => r.policyId);
+    if (filled.some((r) => !r.policyId)) {
+      setError('Choisis une politique d’expédition pour chaque tranche.');
+      return;
+    }
+    const capped = filled.filter((r) => r.maxPrice.trim() !== '');
+    const openEnded = filled.filter((r) => r.maxPrice.trim() === '');
+    if (openEnded.length > 1) {
+      setError('Une seule tranche « et au-delà » (sans montant) est autorisée.');
+      return;
+    }
+    const parsed = capped.map((r) => ({ ...r, value: parseFloat(r.maxPrice) }));
+    if (parsed.some((r) => !(r.value > 0))) {
+      setError('Chaque seuil doit être un montant positif.');
+      return;
+    }
+    parsed.sort((a, b) => a.value - b.value);
+    if (parsed.some((r, i) => i > 0 && r.value === parsed[i - 1].value)) {
+      setError('Deux tranches ne peuvent pas avoir le même seuil.');
+      return;
+    }
+    const rules: EbayShippingRule[] = [
+      ...parsed.map((r) => ({ max_price: r.value, fulfillment_policy_id: r.policyId })),
+      ...openEnded.map((r) => ({ max_price: null, fulfillment_policy_id: r.policyId })),
+    ];
+    saveRules.mutate(rules, {
+      onSuccess: () => {
+        setSaved(true);
+        setRows([
+          ...parsed.map((r) => newRuleRow(String(r.value), r.policyId)),
+          ...openEnded.map((r) => newRuleRow('', r.policyId)),
+        ]);
+      },
+      onError: (e) => setError((e as Error).message),
+    });
+  }
+
+  const configuredCount = current.filter((r) => r.policyId).length;
+
+  return (
+    <div className="glass rounded-2xl p-5 flex flex-col gap-3">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(255,255,255,0.06)' }}>
+          <Truck size={18} style={{ color: configuredCount > 0 ? 'var(--green)' : 'var(--accent)' }} />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-bold text-white">Règles de livraison</p>
+          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            Le bon mode d’envoi pré-sélectionné selon le prix, à la publication
+          </p>
+        </div>
+      </div>
+
+      {fulfillmentOptions.length === 0 ? (
+        <p className="text-xs leading-relaxed rounded-xl px-3 py-2" style={{ background: 'rgba(245,158,11,0.08)', color: 'var(--accent)' }}>
+          Configure d’abord tes politiques d’expédition sur eBay (une par mode : lettre suivie, colis R1, R2…) pour pouvoir les associer à des tranches de prix ici.
+        </p>
+      ) : isLoading || rows === null ? (
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Chargement…</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+            Chaque tranche s’applique aux prix <b>jusqu’à</b> son seuil inclus. Laisse le montant vide pour la tranche « et au-delà ». Au moment de publier, la politique d’expédition est choisie automatiquement d’après le prix (toujours modifiable).
+          </p>
+
+          <div className="flex flex-col gap-2">
+            {current.map((row) => (
+              <div key={row.key} className="grid grid-cols-[1fr_1.4fr_auto] gap-2 items-center">
+                <div className="flex items-center gap-1.5 rounded-xl px-2.5 py-2" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)' }}>
+                  <span className="text-[11px] font-bold shrink-0" style={{ color: 'var(--text-muted)' }}>≤</span>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    value={row.maxPrice}
+                    onChange={(e) => update(row.key, { maxPrice: e.target.value })}
+                    placeholder="au-delà"
+                    className="w-full bg-transparent text-sm outline-none"
+                    style={{ color: 'var(--text-primary)' }}
+                  />
+                  <span className="text-[11px] font-bold shrink-0" style={{ color: 'var(--text-muted)' }}>€</span>
+                </div>
+                <select
+                  value={row.policyId}
+                  onChange={(e) => update(row.key, { policyId: e.target.value })}
+                  className="w-full rounded-xl px-2.5 py-2 text-sm outline-none"
+                  style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                >
+                  <option value="">Choisir un envoi…</option>
+                  {fulfillmentOptions.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => removeRow(row.key)}
+                  className="w-9 h-9 flex items-center justify-center rounded-xl shrink-0 transition-colors hover:bg-white/5"
+                  style={{ color: 'var(--red)' }}
+                  aria-label="Supprimer la tranche"
+                >
+                  <Trash2 size={15} />
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <button
+            onClick={addRow}
+            className="self-start flex items-center gap-1.5 text-xs font-bold"
+            style={{ color: 'var(--text-secondary)' }}
+          >
+            <Plus size={13} /> Ajouter une tranche
+          </button>
+
+          {current.length > 0 && (
+            <p className="text-[11px] leading-relaxed rounded-lg px-2.5 py-2" style={{ background: 'rgba(255,255,255,0.03)', color: 'var(--text-muted)' }}>
+              Aperçu :{' '}
+              {[...current]
+                .filter((r) => r.policyId)
+                .sort((a, b) => {
+                  const av = a.maxPrice.trim() === '' ? Infinity : parseFloat(a.maxPrice);
+                  const bv = b.maxPrice.trim() === '' ? Infinity : parseFloat(b.maxPrice);
+                  return av - bv;
+                })
+                .map((r, i, arr) => {
+                  const prev = i > 0 ? arr[i - 1].maxPrice : '';
+                  const lo = prev.trim() === '' ? 0 : parseFloat(prev);
+                  const label = r.maxPrice.trim() === ''
+                    ? `> ${lo} €`
+                    : i === 0 ? `≤ ${parseFloat(r.maxPrice)} €` : `${lo}–${parseFloat(r.maxPrice)} €`;
+                  return `${label} → ${policyName(r.policyId)}`;
+                })
+                .join('  ·  ') || '—'}
+            </p>
+          )}
+
+          {error && <p className="text-xs" style={{ color: 'var(--red)' }}>{error}</p>}
+
+          <button
+            onClick={save}
+            disabled={saveRules.isPending}
+            className="self-start flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50"
+            style={{ background: 'var(--accent)', color: '#09090B' }}
+          >
+            {saveRules.isPending ? <Loader2 size={15} className="animate-spin" /> : saved ? <Check size={15} /> : <Save size={15} />}
+            {saveRules.isPending ? 'Enregistrement…' : saved ? 'Enregistré ✓' : 'Enregistrer les règles'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function EbayView() {
   const { data: cards = [] } = useCards();
   const { data: status, isLoading } = useEbayAccountStatus();
@@ -458,6 +655,10 @@ export function EbayView() {
       </div>
 
       <SellerImageCard />
+
+      {status?.connected && (
+        <ShippingRulesCard fulfillmentOptions={policies?.options?.fulfillment ?? []} />
+      )}
 
       {/* Statut de connexion */}
       {isLoading ? (

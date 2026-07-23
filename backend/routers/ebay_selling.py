@@ -45,6 +45,7 @@ async def preview_listing(card_id: str, user: dict = Depends(current_user)):
         preview = await ebay_selling.build_preview(card, access_token)
         settings = await ebay_settings_store.get_settings(user["sub"])
         preview["extra_image_url"] = (settings or {}).get("extra_image_url")
+        preview["shipping_rules"] = (settings or {}).get("shipping_rules") or []
         return preview
     except Exception as e:
         logger.exception("Preview eBay: erreur inattendue pour la carte %s", card_id)

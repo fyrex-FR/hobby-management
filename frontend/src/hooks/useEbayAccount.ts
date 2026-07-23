@@ -116,6 +116,47 @@ export function useEbaySellerImageSave() {
   });
 }
 
+export interface EbayShippingRule {
+  /** Seuil haut inclus de la tranche ; null = tranche « et au-delà ». */
+  max_price: number | null;
+  fulfillment_policy_id: string;
+}
+
+export function useEbayShippingRules() {
+  return useQuery<{ rules: EbayShippingRule[] }>({
+    queryKey: ['ebay-shipping-rules'],
+    queryFn: () => apiFetch<{ rules: EbayShippingRule[] }>('/ebay/account/shipping-rules'),
+  });
+}
+
+export function useEbayShippingRulesSave() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (rules: EbayShippingRule[]) => (
+      apiFetch<{ rules: EbayShippingRule[] }>('/ebay/account/shipping-rules', {
+        method: 'PUT',
+        body: JSON.stringify({ rules }),
+      })
+    ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ebay-shipping-rules'] }),
+  });
+}
+
+/** Renvoie l'id de politique d'expédition de la 1re tranche dont le seuil
+ * couvre `price` (tranches triées par seuil croissant, la tranche `max_price:
+ * null` couvrant tout le reste), ou null si aucune règle ne s'applique. */
+export function matchShippingRule(rules: EbayShippingRule[], price: number): string | null {
+  if (!Number.isFinite(price) || price <= 0) return null;
+  const capped = rules
+    .filter((r) => r.max_price != null)
+    .sort((a, b) => (a.max_price as number) - (b.max_price as number));
+  for (const rule of capped) {
+    if (price <= (rule.max_price as number)) return rule.fulfillment_policy_id || null;
+  }
+  const openEnded = rules.find((r) => r.max_price == null);
+  return openEnded?.fulfillment_policy_id || null;
+}
+
 export interface EbayApplyImageError {
   item_id: string;
   title: string | null;
