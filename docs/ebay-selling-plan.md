@@ -406,15 +406,31 @@ l'onglet Annonces), pas de cron pour l'instant.
 
 ## Reste à faire
 
-Roadmap validée (dans l'ordre) : ~~1) sync vendu~~ ✅, **2) modifier une
-annonce depuis l'app** (prochaine), **3) watchers + offres (#4)**.
+Roadmap validée (dans l'ordre) : ~~1) sync vendu~~ ✅, ~~2) modifier une
+annonce~~ ✅, **3) watchers + offres (#4)** (prochaine).
 
-### Modifier une annonce depuis l'app (prochaine)
+### Modifier une annonce depuis l'app ✅ (à tester en conditions réelles)
 
-- Bouton « Modifier » sur le segment En ligne de `ListingsTab` → modal
-  d'édition (titre / description / prix / état). On a déjà `update_offer_price`
-  (Inventory API `PUT offer`) ; étendre à titre/description (PUT inventory_item
-  `product.title`/`description`) puis re-publish si nécessaire.
+- `backend/services/ebay_selling.py` — `update_listing(card, access_token, *,
+  title, price, description)` : met à jour titre + description sur l'inventory
+  item (préserve aspects/images/état, réutilise `_sanitize_package_weight_and_size`),
+  prix + description sur l'offre, puis republie (`publish`) pour pousser en
+  direct. `description` = texte brut converti en HTML via
+  `build_listing_description` (comme à la publication).
+- `backend/routers/ebay_selling.py` — `PUT /ebay/selling/listing/{card_id}`
+  (valide titre ≤ 80 / description ≤ 5000 / prix > 0 ; 422 si la carte n'a pas
+  d'annonce en ligne).
+- **Frontend** : `shared/EbayEditModal.tsx` — se pré-remplit via le **preview
+  existant** (`GET /ebay/selling/preview/{id}` : titre + description texte +
+  prix), sauve via le PUT, invalide `['cards']`. Bouton « Modifier » (icône
+  Pencil) sur chaque ligne du segment En ligne de `ListingsTab`.
+- v1 volontairement limité à **titre / description / prix** ; l'**état** est
+  écarté pour l'instant (changer le conditionId/descriptors sur une annonce en
+  ligne est le plus risqué — cf. erreurs 25021/état déjà rencontrées).
+- **À vérifier au premier run réel** : que la republication d'une offre déjà
+  publiée applique bien les changements sans erreur ; que le titre modifié
+  n'est pas re-généré ailleurs (l'app ne stocke pas de titre custom — le modal
+  repart du titre généré à chaque ouverture).
 
 ### Watchers + offres (#4)
 
