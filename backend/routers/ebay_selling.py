@@ -30,6 +30,12 @@ class PriceUpdateRequest(BaseModel):
     price: float
 
 
+class ListingUpdateRequest(BaseModel):
+    title: str
+    description: Optional[str] = None
+    price: float
+
+
 class PublishBatchRequest(BaseModel):
     """Un lot de cartes à publier d'un coup. Le frontend découpe la liste des
     cartes prêtes en lots (par ex. 5) et rappelle cet endpoint pour chaque lot
@@ -267,6 +273,46 @@ async def publish_listings_batch(body: PublishBatchRequest, user: dict = Depends
     except Exception as e:
         logger.exception("Publication de masse eBay: erreur inattendue")
         raise HTTPException(status_code=500, detail=f"Erreur inattendue lors de la publication de masse : {e}")
+
+
+@router.put("/ebay/selling/listing/{card_id}")
+async def update_listing_endpoint(card_id: str, body: ListingUpdateRequest, user: dict = Depends(current_user)):
+    """Modifie une annonce eBay en ligne (titre / description / prix) et la
+    republie pour appliquer les changements."""
+    try:
+        title = body.title.strip()
+        if not title:
+            raise HTTPException(status_code=422, detail="Le titre ne peut pas être vide.")
+        if len(title) > 80:
+            raise HTTPException(status_code=422, detail="Le titre doit faire 80 caractères maximum.")
+        description = body.description.strip() if body.description and body.description.strip() else None
+        if description and len(description) > 5000:
+            raise HTTPException(status_code=422, detail="La description doit faire 5000 caractères maximum.")
+        if body.price <= 0:
+            raise HTTPException(status_code=422, detail="Le prix doit être positif.")
+
+        card = await ebay_selling.get_card(card_id, user["sub"])
+        if not card:
+            raise HTTPException(status_code=404, detail="Carte introuvable")
+        if not card.get("ebay_url"):
+            raise HTTPException(status_code=422, detail="Cette carte n'a pas d'annonce eBay en ligne.")
+
+        access_token = await get_valid_access_token(user["sub"])
+        if not access_token:
+            return {"connected": False}
+
+        try:
+            return await ebay_selling.update_listing(
+                card, access_token, title=title, price=body.price, description=description
+            )
+        except EbayApiError as e:
+            logger.warning("Modification annonce eBay refusée pour la carte %s: %s", card_id, e)
+            raise HTTPException(status_code=502, detail=f"{e.step} : {e.body}")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Modification annonce eBay: erreur inattendue pour la carte %s", card_id)
+        raise HTTPException(status_code=500, detail=f"Erreur inattendue lors de la modification : {e}")
 
 
 @router.post("/ebay/selling/sync-sold")

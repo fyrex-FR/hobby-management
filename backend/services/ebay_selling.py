@@ -777,6 +777,68 @@ async def update_offer_price(card: dict, access_token: str, new_price: float) ->
     return {"updated": True, "price": new_price}
 
 
+async def update_listing(
+    card: dict,
+    access_token: str,
+    *,
+    title: str,
+    price: float,
+    description: Optional[str] = None,
+) -> dict:
+    """Modifie une annonce eBay en ligne (créée par l'app) : met à jour le
+    titre + la description sur l'inventory item, le prix + la description sur
+    l'offre, puis republie pour pousser les changements en direct. `description`
+    est du texte brut (converti en HTML comme à la publication)."""
+    offer_id = card.get("ebay_offer_id")
+    sku = card["id"]
+    if not offer_id:
+        raise EbayApiError("Modification de l'annonce", 400, "Cette carte n'a pas d'annonce eBay connue.")
+
+    listing_description = build_listing_description(card, title, description)
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        # 1. Fiche produit : titre + description (on préserve aspects/images/état).
+        item_resp = await client.get(f"{INVENTORY_API}/inventory_item/{sku}", headers=_sell_headers(access_token))
+        if item_resp.status_code != 200:
+            raise EbayApiError("Lecture de la fiche produit", item_resp.status_code, item_resp.text)
+        item = item_resp.json()
+        product = item.setdefault("product", {})
+        product["title"] = title
+        product["description"] = listing_description
+        _sanitize_package_weight_and_size(item)
+        put_item = await client.put(
+            f"{INVENTORY_API}/inventory_item/{sku}", headers=_sell_headers(access_token), json=item
+        )
+        if put_item.status_code not in (200, 201, 204):
+            raise EbayApiError("Mise à jour de la fiche produit", put_item.status_code, put_item.text)
+
+        # 2. Offre : prix + description.
+        offer_resp = await client.get(f"{INVENTORY_API}/offer/{offer_id}", headers=_sell_headers(access_token))
+        if offer_resp.status_code != 200:
+            raise EbayApiError("Lecture de l'offre", offer_resp.status_code, offer_resp.text)
+        offer = offer_resp.json()
+        offer["pricingSummary"] = {**offer.get("pricingSummary", {}), "price": {"value": str(price), "currency": "EUR"}}
+        offer["listingDescription"] = listing_description
+        for ro_field in ("offerId", "listing", "status"):
+            offer.pop(ro_field, None)
+        put_offer = await client.put(
+            f"{INVENTORY_API}/offer/{offer_id}", headers=_sell_headers(access_token), json=offer
+        )
+        if put_offer.status_code not in (200, 204):
+            raise EbayApiError("Mise à jour de l'offre", put_offer.status_code, put_offer.text)
+
+        # 3. Republication pour pousser les changements sur l'annonce en ligne.
+        pub = await client.post(
+            f"{INVENTORY_API}/offer/{offer_id}/publish", headers=_sell_headers(access_token), json={}
+        )
+        if pub.status_code not in (200, 201):
+            raise EbayApiError("Publication de l'annonce", pub.status_code, pub.text)
+        listing_id = pub.json().get("listingId") or card.get("ebay_listing_id")
+
+    await update_card_fields(sku, card["user_id"], {"price": price})
+    return {"updated": True, "price": price, "listing_id": listing_id}
+
+
 def _sanitize_package_weight_and_size(item: dict) -> None:
     """Retire d'un inventory item les valeurs de poids/dimensions invalides
     (absentes, nulles ou ≤ 0) que l'Inventory API renvoie parfois au GET mais

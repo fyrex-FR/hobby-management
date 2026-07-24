@@ -15,6 +15,7 @@ import {
   Loader2,
   LogOut,
   MapPin,
+  Pencil,
   Plus,
   RefreshCcw,
   Save,
@@ -45,6 +46,7 @@ import { downloadImage } from '../../lib/downloadImage';
 import { supabase } from '../../lib/supabase';
 import { compressImage } from '../../lib/storage';
 import { EbayPublishModal } from '../shared/EbayPublishModal';
+import { EbayEditModal } from '../shared/EbayEditModal';
 import type { Card } from '../../types';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
@@ -545,6 +547,7 @@ function ListingsTab({
 }) {
   const [segment, setSegment] = useState<ListingSegment>('online');
   const [publishCard, setPublishCard] = useState<Card | null>(null);
+  const [editCard, setEditCard] = useState<Card | null>(null);
   const syncSold = useEbaySyncSold();
   const [syncMsg, setSyncMsg] = useState('');
 
@@ -643,8 +646,11 @@ function ListingsTab({
                   key={card.id}
                   card={card}
                   right={
-                    <div className="flex items-center gap-3 shrink-0">
+                    <div className="flex items-center gap-2.5 shrink-0">
                       {card.price != null && <span className="text-sm font-black" style={{ color: 'var(--accent)' }}>{card.price} €</span>}
+                      <button onClick={() => setEditCard(card)} className="flex items-center gap-1 text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>
+                        <Pencil size={12} /> Modifier
+                      </button>
                       <a href={card.ebay_url!} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>
                         <ExternalLink size={13} /> Voir
                       </a>
@@ -700,6 +706,10 @@ function ListingsTab({
           onClose={() => setPublishCard(null)}
           onPublished={() => setPublishCard(null)}
         />
+      )}
+
+      {editCard && (
+        <EbayEditModal card={editCard} onClose={() => setEditCard(null)} />
       )}
     </div>
   );
