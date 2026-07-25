@@ -924,22 +924,42 @@ async def update_listing_quantity(card: dict, access_token: str, quantity: int) 
     return {"updated": True, "quantity": quantity, "unchanged": False}
 
 
+SUPABASE_PAGE_SIZE = 1000
+
+
 async def list_live_listing_cards(user_id: str) -> list[dict]:
-    """Cartes de l'utilisateur ayant une annonce eBay en ligne (offre connue)."""
-    async with httpx.AsyncClient(timeout=15) as client:
-        resp = await client.get(
-            f"{SUPABASE_URL}/rest/v1/cards",
-            headers=_supabase_headers(),
-            params={
-                "user_id": f"eq.{user_id}",
-                "ebay_offer_id": "not.is.null",
-                "ebay_url": "not.is.null",
-                "select": "*",
-            },
-        )
-    if resp.status_code != 200:
-        raise RuntimeError(f"Supabase list cards {resp.status_code}: {resp.text[:300]}")
-    return resp.json()
+    """Cartes de l'utilisateur ayant une annonce eBay en ligne (offre connue).
+
+    Paginé : PostgREST plafonne le nombre de lignes par requête (1000 par
+    défaut) et tronque SILENCIEUSEMENT au-delà — sans pagination, un vendeur
+    avec plus de 1000 annonces n'en verrait jamais synchroniser davantage.
+    L'ordre est fixé explicitement, sinon la pagination peut sauter ou répéter
+    des lignes d'une page à l'autre."""
+    rows: list[dict] = []
+    offset = 0
+    async with httpx.AsyncClient(timeout=20) as client:
+        while True:
+            resp = await client.get(
+                f"{SUPABASE_URL}/rest/v1/cards",
+                headers=_supabase_headers(),
+                params={
+                    "user_id": f"eq.{user_id}",
+                    "ebay_offer_id": "not.is.null",
+                    "ebay_url": "not.is.null",
+                    "select": "*",
+                    "order": "id.asc",
+                    "limit": str(SUPABASE_PAGE_SIZE),
+                    "offset": str(offset),
+                },
+            )
+            if resp.status_code != 200:
+                raise RuntimeError(f"Supabase list cards {resp.status_code}: {resp.text[:300]}")
+            batch = resp.json()
+            rows.extend(batch)
+            if len(batch) < SUPABASE_PAGE_SIZE:
+                break
+            offset += SUPABASE_PAGE_SIZE
+    return rows
 
 
 SYNC_STOCK_CONCURRENCY = 3
