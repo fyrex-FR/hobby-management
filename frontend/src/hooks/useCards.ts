@@ -20,11 +20,23 @@ export function useCreateCard() {
   });
 }
 
+/** Résultat de la répercussion du stock sur l'annonce eBay, renvoyé par le
+ * backend quand la mise à jour touche `quantity` et que la carte a une annonce
+ * en ligne. Absent sinon. Best-effort : la carte est enregistrée même si eBay
+ * échoue. */
+export interface EbayQuantitySync {
+  ok: boolean;
+  quantity?: number;
+  error?: string;
+}
+
+export type UpdatedCard = Card & { ebay_quantity_sync?: EbayQuantitySync | null };
+
 export function useUpdateCard() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...data }: Partial<Card> & { id: string }) =>
-      apiFetch<Card>(`/cards/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+      apiFetch<UpdatedCard>(`/cards/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['cards'] }),
   });
 }

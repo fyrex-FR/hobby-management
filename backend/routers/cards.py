@@ -1,3 +1,4 @@
+import logging
 import os
 from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
@@ -5,6 +6,8 @@ from typing import Optional
 import httpx
 
 from .auth import current_user
+
+logger = logging.getLogger("cards")
 
 ADMIN_EMAIL = "xavier.andrieux@gmail.com"
 
@@ -170,8 +173,38 @@ async def update_card(card_id: str, body: CardUpdate, user: dict = Depends(curre
     if isinstance(data, list):
         if not data:
             raise HTTPException(status_code=404, detail="Card not found")
-        return data[0]
-    return data
+        card = data[0]
+    else:
+        card = data
+
+    if "quantity" in payload:
+        card = {**card, "ebay_quantity_sync": await _push_quantity_to_ebay(card, user_id)}
+    return card
+
+
+async def _push_quantity_to_ebay(card: dict, user_id: str) -> Optional[dict]:
+    """Répercute le stock de la carte sur son annonce eBay en ligne (sens app ->
+    eBay). Best-effort : une erreur eBay ne doit jamais faire échouer la mise à
+    jour de la carte, qui est déjà enregistrée — on renvoie juste le résultat au
+    frontend pour qu'il puisse le signaler.
+
+    Renvoie None si la carte n'a pas d'annonce en ligne (cas courant)."""
+    if not card.get("ebay_offer_id") or not card.get("ebay_url"):
+        return None
+    try:
+        from services import ebay_selling
+        from services.ebay_oauth import get_valid_access_token
+
+        access_token = await get_valid_access_token(user_id)
+        if not access_token:
+            return {"ok": False, "error": "Compte eBay non connecté."}
+        result = await ebay_selling.update_listing_quantity(
+            card, access_token, int(card.get("quantity") or 0)
+        )
+        return {"ok": True, "quantity": result["quantity"]}
+    except Exception as e:
+        logger.exception("Sync stock -> eBay: échec pour la carte %s", card.get("id"))
+        return {"ok": False, "error": str(e)[:300]}
 
 
 @router.delete("/cards/{card_id}", status_code=204)
