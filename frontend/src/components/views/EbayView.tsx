@@ -647,6 +647,9 @@ function ListingsTab({
                   card={card}
                   right={
                     <div className="flex items-center gap-2.5 shrink-0">
+                      {(card.quantity ?? 1) > 1 && (
+                        <span className="text-[10px] font-black px-1.5 py-0.5 rounded" style={{ background: '#6366F1', color: 'white' }} title={`${card.quantity} exemplaires en ligne`}>×{card.quantity}</span>
+                      )}
                       {card.price != null && <span className="text-sm font-black" style={{ color: 'var(--accent)' }}>{card.price} €</span>}
                       <button onClick={() => setEditCard(card)} className="flex items-center gap-1 text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>
                         <Pencil size={12} /> Modifier

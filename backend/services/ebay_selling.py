@@ -337,6 +337,61 @@ def _line_item_price(line_item: dict) -> Optional[float]:
     return None
 
 
+def _card_quantity(card: dict) -> int:
+    """Nombre d'exemplaires de la carte (>= 1)."""
+    try:
+        return max(1, int(card.get("quantity") or 1))
+    except (TypeError, ValueError):
+        return 1
+
+
+async def _record_processed_sale(
+    user_id: str, order_id: str, line_item_id: str, sku: Optional[str],
+    quantity: Optional[int], unit_price: Optional[float],
+) -> bool:
+    """Marque une ligne de commande eBay comme traitée (idempotence du sync).
+    Renvoie True si c'est une nouvelle ligne (à appliquer), False si elle avait
+    déjà été traitée (grâce à la clé primaire user_id+order_id+line_item_id)."""
+    body = {
+        "user_id": user_id,
+        "order_id": order_id,
+        "line_item_id": line_item_id,
+        "sku": sku,
+        "quantity": quantity,
+        "unit_price": unit_price,
+    }
+    async with httpx.AsyncClient(timeout=10) as client:
+        resp = await client.post(
+            f"{SUPABASE_URL}/rest/v1/ebay_processed_sales",
+            headers={**_supabase_headers(), "Prefer": "resolution=ignore-duplicates,return=representation"},
+            json=body,
+        )
+    if resp.status_code not in (200, 201):
+        raise RuntimeError(f"Supabase insert ebay_processed_sales {resp.status_code}: {resp.text[:300]}")
+    try:
+        return bool(resp.json())
+    except ValueError:
+        return False
+
+
+async def _delete_processed_sale(user_id: str, order_id: str, line_item_id: str) -> None:
+    """Annule la marque « traitée » (best-effort) si l'application de la vente a
+    échoué, pour qu'un prochain sync réessaie."""
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            await client.delete(
+                f"{SUPABASE_URL}/rest/v1/ebay_processed_sales",
+                headers=_supabase_headers(),
+                params={
+                    "user_id": f"eq.{user_id}",
+                    "order_id": f"eq.{order_id}",
+                    "line_item_id": f"eq.{line_item_id}",
+                },
+            )
+    except Exception:
+        logger.warning("Rollback ebay_processed_sales échoué pour %s/%s", order_id, line_item_id)
+
+
 async def sync_sold_cards(access_token: str, user_id: str) -> dict:
     """Marque en `vendu` les cartes dont le sku correspond à une commande eBay
     récente, en enregistrant le prix réel de vente et la date. Idempotent : une
@@ -346,33 +401,63 @@ async def sync_sold_cards(access_token: str, user_id: str) -> dict:
     orders = await _fetch_recent_orders(access_token)
     synced = 0
     details: list[dict] = []
-    seen_skus: set[str] = set()
 
     for order in orders:
         # Ignore les commandes annulées (remboursées / non abouties).
         cancel_state = (order.get("cancelStatus") or {}).get("cancelState")
         if cancel_state and cancel_state != "NONE_REQUESTED":
             continue
+        order_id = order.get("orderId")
         creation = order.get("creationDate")
         for line_item in order.get("lineItems") or []:
             sku = line_item.get("sku")
-            if not sku or sku in seen_skus:
+            line_item_id = line_item.get("lineItemId")
+            if not sku or not line_item_id or not order_id:
                 continue
-            seen_skus.add(sku)
+            try:
+                sold_qty = max(1, int(line_item.get("quantity") or 1))
+            except (TypeError, ValueError):
+                sold_qty = 1
+            price = _line_item_price(line_item)
+
+            # Idempotence : ne traiter chaque ligne de commande qu'une fois
+            # (le sync est déclenché manuellement et re-cliquable).
+            is_new = await _record_processed_sale(user_id, order_id, line_item_id, sku, sold_qty, price)
+            if not is_new:
+                continue
 
             card = await get_card(sku, user_id)
-            if not card or card.get("status") == "vendu":
+            if not card:
+                # Vente d'une annonce non issue de l'app : rien à ajuster, on
+                # garde la ligne comme traitée pour ne plus la re-vérifier.
                 continue
 
-            fields: dict = {"status": "vendu"}
-            price = _line_item_price(line_item)
-            if price is not None:
-                fields["ebay_sold_price"] = price
-            if creation:
-                fields["ebay_sold_at"] = creation
-            await update_card_fields(sku, user_id, fields)
+            try:
+                remaining = _card_quantity(card) - sold_qty
+                if remaining > 0:
+                    # Il reste des exemplaires : on décrémente le stock, la carte
+                    # reste à vendre.
+                    fields: dict = {"quantity": remaining, "status": "a_vendre"}
+                else:
+                    fields = {"quantity": 0, "status": "vendu"}
+                    if price is not None:
+                        fields["ebay_sold_price"] = price
+                    if creation:
+                        fields["ebay_sold_at"] = creation
+                await update_card_fields(sku, user_id, fields)
+            except Exception:
+                # Rollback de la marque « traitée » pour réessayer au prochain sync.
+                await _delete_processed_sale(user_id, order_id, line_item_id)
+                raise
+
             synced += 1
-            details.append({"card_id": sku, "player": card.get("player"), "price": price})
+            details.append({
+                "card_id": sku,
+                "player": card.get("player"),
+                "price": price,
+                "sold_qty": sold_qty,
+                "remaining": max(remaining, 0),
+            })
 
     return {"synced": synced, "orders": len(orders), "details": details}
 
@@ -634,9 +719,10 @@ async def publish_card(
             "Aucune inventory location eBay configurée. Crée un lieu d'expédition vendeur sur eBay avant de publier.",
         )
 
+    quantity = _card_quantity(card)
     listing_description = build_listing_description(card, title, description)
     inventory_payload = {
-        "availability": {"shipToLocationAvailability": {"quantity": 1}},
+        "availability": {"shipToLocationAvailability": {"quantity": quantity}},
         "condition": DEFAULT_CONDITION,
         "conditionDescriptors": DEFAULT_CONDITION_DESCRIPTORS,
         "product": {
@@ -663,7 +749,7 @@ async def publish_card(
             "sku": sku,
             "marketplaceId": SELL_MARKETPLACE_ID,
             "format": "FIXED_PRICE",
-            "availableQuantity": 1,
+            "availableQuantity": quantity,
             "categoryId": category_id,
             "merchantLocationKey": merchant_location_key,
             "listingDescription": listing_description,
