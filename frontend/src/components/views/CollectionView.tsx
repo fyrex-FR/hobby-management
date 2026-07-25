@@ -20,6 +20,7 @@ import {
   Smile,
   Folder as FolderIcon,
   ArrowUpDown,
+  ShoppingBag,
   SlidersHorizontal,
 } from 'lucide-react';
 import {
@@ -841,9 +842,14 @@ function BulkMenuItem({
   );
 }
 
+/** Intitulé de section d'un menu groupé. Accepte un nœud (et pas seulement du
+ * texte) pour porter le logo de la plateforme : c'est la section qui identifie
+ * eBay ou Whatnot, pas le bouton du menu — celui-ci couvre les deux. */
 function BulkMenuLabel({ children }: { children: React.ReactNode }) {
   return (
-    <p className="px-3 pt-2 pb-1 text-[10px] font-black uppercase tracking-widest text-white/40">{children}</p>
+    <div className="flex items-center gap-1.5 px-3 pt-2 pb-1 text-[10px] font-black uppercase tracking-widest text-white/40">
+      {children}
+    </div>
   );
 }
 
@@ -1575,12 +1581,12 @@ export function CollectionView() {
             <BulkMenu
               label="Vendre"
               accent
-              icon={<EbayLogo width={22} height={9} mono="var(--accent)" />}
+              icon={<ShoppingBag size={14} />}
               disabled={bulkBusy || selectedIds.size === 0}
             >
               {(close) => (
                 <>
-                  <BulkMenuLabel>eBay</BulkMenuLabel>
+                  <BulkMenuLabel><EbayLogo width={30} height={12} /></BulkMenuLabel>
                   <BulkMenuItem onClick={() => { close(); setEbayBulkOpen(true); }}>
                     Publier les non listées
                   </BulkMenuItem>
