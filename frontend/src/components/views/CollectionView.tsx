@@ -39,6 +39,7 @@ import { StatusBadge } from '../shared/StatusBadge';
 import { CardDetail } from '../shared/CardDetail';
 import { EbayBulkPublishModal } from '../shared/EbayBulkPublishModal';
 import { WhatnotExportModal } from '../shared/WhatnotExportModal';
+import { EbayStockSyncModal } from '../shared/EbayStockSyncModal';
 import { EbayLogo } from '../shared/EbayLogo';
 import { cdnImg } from '../../lib/cdn';
 import { RookieBadge } from '../shared/RookieBadge';
@@ -763,6 +764,89 @@ function TableView({ table, onRowClick, selectMode, selectedIds, onToggleSelect 
   );
 }
 
+/** Menu déroulant de la barre d'actions groupées. S'ouvre vers le HAUT (la
+ * barre est ancrée en bas de l'écran) et se referme au clic extérieur. Regroupe
+ * les actions par intention pour éviter une rangée de dix boutons illisible sur
+ * mobile. */
+function BulkMenu({
+  label,
+  icon,
+  disabled,
+  accent,
+  children,
+}: {
+  label: string;
+  icon?: React.ReactNode;
+  disabled?: boolean;
+  accent?: boolean;
+  children: (close: () => void) => React.ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function handle(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        disabled={disabled}
+        className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-xs font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed ${
+          accent
+            ? 'border-[var(--accent)]/30 bg-[var(--accent-dim)] text-[var(--accent)] hover:opacity-90'
+            : 'border-white/10 bg-white/5 text-white/85 hover:bg-white/10'
+        }`}
+      >
+        {icon}
+        {label}
+        <ChevronDown size={13} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div
+          className="absolute bottom-full left-0 mb-2 min-w-[220px] max-h-[60vh] overflow-y-auto rounded-2xl border border-white/10 bg-[#18181b] p-1.5 shadow-2xl z-50"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {children(() => setOpen(false))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BulkMenuItem({
+  onClick,
+  children,
+  danger,
+}: {
+  onClick: () => void;
+  children: React.ReactNode;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold transition-colors ${
+        danger ? 'text-red-300 hover:bg-red-500/10' : 'text-white/85 hover:bg-white/10'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function BulkMenuLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="px-3 pt-2 pb-1 text-[10px] font-black uppercase tracking-widest text-white/40">{children}</p>
+  );
+}
+
 export function CollectionView() {
   const { data: cards = [], isLoading } = useCards();
   const { data: folders = [] } = useFolders();
@@ -790,6 +874,7 @@ export function CollectionView() {
   const [bulkBusy, setBulkBusy] = useState(false);
   const [ebayBulkOpen, setEbayBulkOpen] = useState(false);
   const [whatnotOpen, setWhatnotOpen] = useState(false);
+  const [ebayUpdateOpen, setEbayUpdateOpen] = useState(false);
   const updateCard = useUpdateCard();
   const deleteCard = useDeleteCard();
   const deleteFolder = useDeleteFolder();
@@ -1131,8 +1216,12 @@ export function CollectionView() {
     <div className="flex h-full flex-col overflow-hidden bg-[radial-gradient(circle_at_50%_-20%,_var(--accent-dim)_0%,_transparent_70%)]">
       {/* Toolbar */}
       <div className="flex flex-col gap-4 px-6 py-5 border-b border-white/5 bg-black/20 backdrop-blur-3xl shrink-0 relative z-40">
-        {/* Row 1: status tabs + right controls */}
-        <div className="flex items-center justify-between gap-4">
+        {/* Row 1: status tabs + right controls.
+            `flex-wrap` indispensable : en portrait mobile les onglets de statut
+            prennent toute la largeur et poussaient les contrôles de droite
+            (sélection multiple, export) hors de l'écran — ils passent
+            maintenant à la ligne au lieu de devenir inaccessibles. */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           {/* Status tabs */}
           <div className="flex gap-1 p-1 rounded-2xl bg-white/5 border border-white/5 shrink-0">
             {tabs.map((t) => (
@@ -1449,83 +1538,73 @@ export function CollectionView() {
 
             <div className="h-6 w-px bg-white/10" />
 
-            <span className="text-[10px] font-black uppercase tracking-widest text-white/40">Statut →</span>
-            {STATUS_OPTIONS.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => applyBulkStatus(opt.value)}
-                disabled={bulkBusy || selectedIds.size === 0}
-                className="rounded-xl border border-[var(--accent)]/30 bg-[var(--accent-dim)] px-3 py-2 text-xs font-bold text-[var(--accent)] transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {opt.label}
-              </button>
-            ))}
+            <BulkMenu label="Statut" accent disabled={bulkBusy || selectedIds.size === 0}>
+              {(close) => STATUS_OPTIONS.map((opt) => (
+                <BulkMenuItem key={opt.value} onClick={() => { close(); applyBulkStatus(opt.value); }}>
+                  {opt.label}
+                </BulkMenuItem>
+              ))}
+            </BulkMenu>
 
-            <div className="h-6 w-px bg-white/10" />
+            <BulkMenu label="Modifier" disabled={bulkBusy || selectedIds.size === 0}>
+              {(close) => (
+                <>
+                  <BulkMenuItem onClick={() => { close(); applyBulkPrice(); }}>
+                    Prix de vente…
+                  </BulkMenuItem>
+                  {folders.length > 0 && (
+                    <>
+                      <BulkMenuLabel>Ajouter au dossier</BulkMenuLabel>
+                      {folders.map((f) => (
+                        <BulkMenuItem key={`add-${f.id}`} onClick={() => { close(); applyBulkFolder(f.id, true); }}>
+                          {f.emoji ? `${f.emoji} ` : ''}{f.name}
+                        </BulkMenuItem>
+                      ))}
+                      <BulkMenuLabel>Retirer du dossier</BulkMenuLabel>
+                      {folders.map((f) => (
+                        <BulkMenuItem key={`rm-${f.id}`} onClick={() => { close(); applyBulkFolder(f.id, false); }}>
+                          {f.emoji ? `${f.emoji} ` : ''}{f.name}
+                        </BulkMenuItem>
+                      ))}
+                    </>
+                  )}
+                </>
+              )}
+            </BulkMenu>
 
-            <button
-              onClick={applyBulkPrice}
+            <BulkMenu
+              label="Vendre"
+              accent
+              icon={<EbayLogo width={22} height={9} mono="var(--accent)" />}
               disabled={bulkBusy || selectedIds.size === 0}
-              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white/85 transition-all hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Prix de vente…
-            </button>
-
-            <button
-              onClick={() => setEbayBulkOpen(true)}
-              disabled={bulkBusy || selectedIds.size === 0}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--accent)]/30 bg-[var(--accent-dim)] px-3 py-2 text-xs font-bold text-[var(--accent)] transition-all hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <EbayLogo width={26} height={11} mono="var(--accent)" />
-              Publier
-            </button>
-
-            <button
-              onClick={() => setWhatnotOpen(true)}
-              disabled={bulkBusy || selectedIds.size === 0}
-              className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white/85 transition-all hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <Download size={14} />
-              Whatnot
-            </button>
-
-            {folders.length > 0 && (
-              <>
-                <div className="h-6 w-px bg-white/10" />
-                <select
-                  value=""
-                  disabled={bulkBusy || selectedIds.size === 0}
-                  onChange={(e) => { if (e.target.value) applyBulkFolder(e.target.value, true); e.target.value = ''; }}
-                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white/85 outline-none transition-all hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <option value="" className="bg-[#18181b]">Ajouter au dossier…</option>
-                  {folders.map((f) => (
-                    <option key={f.id} value={f.id} className="bg-[#18181b]">{f.emoji ? `${f.emoji} ` : ''}{f.name}</option>
-                  ))}
-                </select>
-                <select
-                  value=""
-                  disabled={bulkBusy || selectedIds.size === 0}
-                  onChange={(e) => { if (e.target.value) applyBulkFolder(e.target.value, false); e.target.value = ''; }}
-                  className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white/85 outline-none transition-all hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  <option value="" className="bg-[#18181b]">Retirer du dossier…</option>
-                  {folders.map((f) => (
-                    <option key={f.id} value={f.id} className="bg-[#18181b]">{f.emoji ? `${f.emoji} ` : ''}{f.name}</option>
-                  ))}
-                </select>
-              </>
-            )}
+              {(close) => (
+                <>
+                  <BulkMenuLabel>eBay</BulkMenuLabel>
+                  <BulkMenuItem onClick={() => { close(); setEbayBulkOpen(true); }}>
+                    Publier les non listées
+                  </BulkMenuItem>
+                  <BulkMenuItem onClick={() => { close(); setEbayUpdateOpen(true); }}>
+                    Mettre à jour les annonces (prix + stock)
+                  </BulkMenuItem>
+                  <BulkMenuLabel>Whatnot</BulkMenuLabel>
+                  <BulkMenuItem onClick={() => { close(); setWhatnotOpen(true); }}>
+                    <Download size={13} /> Exporter en CSV
+                  </BulkMenuItem>
+                </>
+              )}
+            </BulkMenu>
 
             <div className="h-6 w-px bg-white/10" />
 
             <button
               onClick={bulkDelete}
               disabled={bulkBusy || selectedIds.size === 0}
+              title="Supprimer"
               className="inline-flex items-center gap-1.5 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-300 hover:bg-red-500/15 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Trash2 size={14} />
-              Supprimer
+              <span className="hidden sm:inline">Supprimer</span>
             </button>
 
             <div className="flex-1" />
@@ -1556,6 +1635,13 @@ export function CollectionView() {
         <WhatnotExportModal
           cards={cards.filter((c) => selectedIds.has(c.id))}
           onClose={() => setWhatnotOpen(false)}
+        />
+      )}
+
+      {ebayUpdateOpen && (
+        <EbayStockSyncModal
+          cardIds={[...selectedIds]}
+          onClose={() => setEbayUpdateOpen(false)}
         />
       )}
 
