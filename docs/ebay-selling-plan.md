@@ -595,6 +595,47 @@ de **sélection multiple** et l'export — hors de l'écran, rendant tout le mod
 sélection inatteignable sur téléphone. Ajout de `flex-wrap` sur la rangée :
 les contrôles passent à la ligne au lieu de disparaître.
 
+### Ventes à finaliser — réconciliation eBay / Vinted ✅
+
+Une carte peut être en ligne **sur eBay et sur Vinted en même temps** : quand
+elle se vend d'un côté, l'annonce de l'autre reste active → risque de la vendre
+deux fois. C'était entièrement manuel (« ça enlève de l'intérêt à la synchro »).
+
+**Décision actée : pas d'automatique.** Fermer une annonce tout seul est « un
+coup à se planter », d'autant que Vinted n'a aucune notion de quantité. Ce qui
+est livré est un **récap qu'on valide**, jamais une action silencieuse.
+
+- **Contrainte structurante** : Vinted n'a **aucune API d'annonce**
+  (`routers/vinted.py` = scraping de prix uniquement, `vinted_url` est saisi à
+  la main). On ne peut donc pas retirer une annonce Vinted depuis l'app — d'où
+  deux traitements distincts.
+- `frontend/src/lib/saleReconcile.ts` — détection **100 % côté client** (aucun
+  nouvel endpoint), le discriminant étant `ebay_sold_at`, posé uniquement par
+  `sync_sold_cards` :
+  - `vintedToRemove` : `ebay_sold_at != null && vinted_url != null` → vendue
+    **sur eBay** (l'annonce eBay est donc déjà close par la vente), encore en
+    ligne sur Vinted.
+  - `ebayToWithdraw` : `status === 'vendu' && ebay_url != null &&
+    ebay_sold_at == null` → passée en vendu **à la main** (vendue ailleurs),
+    annonce eBay toujours active.
+  - Une carte à quantité > 1 partiellement vendue n'est pas `vendu` : elle
+    n'est donc **jamais** signalée (pas de faux positif).
+- `shared/EbaySaleReconcileModal.tsx` — deux sections :
+  - **Vinted** : lien « Ouvrir » vers l'annonce + bouton « J'ai retiré » qui
+    efface `vinted_url` (la carte sort définitivement du récap).
+  - **eBay** : cases à cocher + « Retirer d'eBay (N) », boucle sur
+    `POST /ebay/selling/withdraw/{card_id}` (existant), erreurs isolées par
+    carte, résumé final. `withdraw_card` nettoie déjà les champs eBay de la
+    carte et tolère un 404 — aucun changement backend.
+- `EbayView.tsx` — **badge permanent** « N ventes à finaliser » dans l'onglet
+  Annonces (indispensable : une vente Vinted n'implique aucune synchro et ne
+  serait jamais signalée par un pop-up post-synchro seul) + **ouverture
+  automatique** de la modale après une synchro ayant détecté des ventes.
+- Testé : les 2 cas détectés correctement, et 4 faux positifs écartés (vendue
+  eBay sans Vinted, vente partielle, rien vendu, plus aucune annonce).
+- ⚠️ Dépend de la migration `add_ebay_sold_tracking_migration.sql` : sans
+  `ebay_sold_at`, la section Vinted reste toujours vide.
+
 ### Offres (Best Offer) à la publication en masse ✅
 
 Demande utilisateur : les offres n'étaient activables que dans la publication

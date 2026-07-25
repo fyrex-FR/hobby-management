@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   AlertCircle,
+  AlertTriangle,
   Camera,
   Check,
   CheckCircle2,
@@ -49,6 +50,8 @@ import { compressImage } from '../../lib/storage';
 import { EbayPublishModal } from '../shared/EbayPublishModal';
 import { EbayEditModal } from '../shared/EbayEditModal';
 import { EbayStockSyncModal } from '../shared/EbayStockSyncModal';
+import { EbaySaleReconcileModal } from '../shared/EbaySaleReconcileModal';
+import { pendingReconcileCount } from '../../lib/saleReconcile';
 import type { Card } from '../../types';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
@@ -538,12 +541,16 @@ function ListingsTab({
   listed,
   sold,
   ready,
+  allCards,
   connected,
   onGoSettings,
 }: {
   listed: Card[];
   sold: Card[];
   ready: Card[];
+  /** Toutes les cartes : la réconciliation se calcule sur l'ensemble, pas
+   * seulement sur les segments affichés. */
+  allCards: Card[];
   connected: boolean;
   onGoSettings: () => void;
 }) {
@@ -552,7 +559,15 @@ function ListingsTab({
   const [editCard, setEditCard] = useState<Card | null>(null);
   const syncSold = useEbaySyncSold();
   const [stockModalOpen, setStockModalOpen] = useState(false);
+  const [reconcileOpen, setReconcileOpen] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
+
+  // Ventes à finaliser : une annonce est encore en ligne sur l'autre
+  // plateforme alors que la carte est vendue (risque de double vente).
+  const pendingReconcile = useMemo(
+    () => pendingReconcileCount(allCards),
+    [allCards],
+  );
 
   async function handleSync() {
     setSyncMsg('');
@@ -562,6 +577,10 @@ function ListingsTab({
         setSyncMsg('Connecte d’abord ton compte eBay.');
         return;
       }
+      // Le sync vient de passer des cartes en vendu : leurs annonces Vinted
+      // peuvent être encore en ligne. On invite à finaliser plutôt que de
+      // fermer quoi que ce soit tout seul.
+      if (res.synced > 0) setReconcileOpen(true);
       setSyncMsg(
         res.synced > 0
           ? `${res.synced} vente${res.synced > 1 ? 's' : ''} synchronisée${res.synced > 1 ? 's' : ''} ✓`
@@ -602,7 +621,18 @@ function ListingsTab({
         <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
           {syncMsg || 'Synchronise pour remonter tes ventes eBay ici.'}
         </p>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+          {pendingReconcile > 0 && (
+            <button
+              onClick={() => setReconcileOpen(true)}
+              title="Des annonces sont encore en ligne alors que la carte est vendue"
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all active:scale-95"
+              style={{ background: 'rgba(245,158,11,0.12)', color: 'var(--accent)' }}
+            >
+              <AlertTriangle size={14} />
+              {pendingReconcile} vente{pendingReconcile > 1 ? 's' : ''} à finaliser
+            </button>
+          )}
           <button
             onClick={() => setStockModalOpen(true)}
             disabled={syncSold.isPending}
@@ -733,6 +763,10 @@ function ListingsTab({
 
       {stockModalOpen && (
         <EbayStockSyncModal onClose={() => setStockModalOpen(false)} />
+      )}
+
+      {reconcileOpen && (
+        <EbaySaleReconcileModal cards={allCards} onClose={() => setReconcileOpen(false)} />
       )}
     </div>
   );
@@ -1004,6 +1038,7 @@ export function EbayView() {
       </div>
       ) : (
         <ListingsTab
+          allCards={cards}
           listed={listed}
           sold={sold}
           ready={readyNotListed}
