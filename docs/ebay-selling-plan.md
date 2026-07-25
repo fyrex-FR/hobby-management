@@ -523,6 +523,20 @@ figée à 1 (`publish_card` la forçait). D'où un rattrapage global.
   `sync_stock_to_ebay(..., offset, batch, card_ids)` traite un lot et renvoie
   `{done, next_offset, total, updated, unchanged, errors}` ; le frontend boucle
   jusqu'à `done`. `card_ids` permet de **ne rejouer que les échecs**.
+- **Correctif post-run réel n°2 — plafond de 1000 annonces.** Deux causes
+  distinctes, toutes deux corrigées :
+  - `list_live_listing_cards` interrogeait Supabase **sans pagination** :
+    PostgREST plafonne à 1000 lignes par requête et tronque **silencieusement**
+    au-delà, donc un vendeur avec plus de 1000 annonces n'en resynchronisait
+    jamais davantage (et `total` était faux). Désormais paginé par pages de
+    1000 avec un `order=id.asc` explicite — sans ordre stable, la pagination
+    peut sauter ou répéter des lignes.
+  - `ebay_trading.get_active_item_ids` (image vendeur sur annonces existantes)
+    avait un cap **fonctionnel** de 1000 (`MAX_PAGES_SAFETY = 5` + un slice
+    final). Le slice est retiré et la borne passe à 50 pages : c'est désormais
+    un simple garde-fou anti-boucle infinie (si eBay renvoie un
+    `TotalNumberOfPages` incohérent), plus une limite du nombre d'annonces
+    traitables.
 - `shared/EbayStockSyncModal.tsx` — modale de progression (barre + `n/total`),
   résumé (mises à jour / déjà à jour / échecs avec motif par carte), bouton
   **« Réessayer les échecs »** ciblant uniquement les cartes en erreur, et

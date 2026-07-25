@@ -39,7 +39,10 @@ TRADING_API_COMPATIBILITY_LEVEL = "1193"
 NS = {"e": "urn:ebay:apis:eBLBaseComponents"}
 
 ENTRIES_PER_PAGE = 200
-MAX_PAGES_SAFETY = 5  # 5 * 200 = 1000 annonces, cap de sécurité anti-boucle infinie
+# Garde-fou anti-boucle infinie si eBay renvoie un TotalNumberOfPages incohérent.
+# Volontairement large : ce n'est PAS une limite fonctionnelle du nombre
+# d'annonces traitables, seulement une borne de sécurité (50 * 200 = 10 000).
+MAX_PAGES_SAFETY = 50
 
 # Codes d'erreur Trading API observés (ou probables, cf. `is_inventory_based_error`)
 # quand ReviseItem/ReviseFixedPriceItem cible une annonce créée via l'Inventory
@@ -199,7 +202,7 @@ async def get_active_item_ids(access_token: str) -> list[str]:
                 total_pages = page
             page += 1
 
-    return item_ids[: MAX_PAGES_SAFETY * ENTRIES_PER_PAGE]
+    return item_ids
 
 
 async def get_item_pictures(access_token: str, item_id: str) -> dict:
