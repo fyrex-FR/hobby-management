@@ -200,6 +200,25 @@ export function useEbaySyncSold() {
   });
 }
 
+export type EbaySyncStockResult =
+  | { connected: false }
+  | {
+      total: number;
+      updated: number;
+      unchanged: number;
+      errors: { card_id: string; player: string | null; message: string }[];
+    };
+
+/** Rattrapage app -> eBay : pousse le stock sur toutes les annonces en ligne
+ * (les cartes publiées avant la gestion du stock sont restées à quantité 1). */
+export function useEbaySyncStock() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiFetch<EbaySyncStockResult>('/ebay/selling/sync-stock', { method: 'POST' }, 180000),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cards'] }),
+  });
+}
+
 export interface EbayApplyImageError {
   item_id: string;
   title: string | null;

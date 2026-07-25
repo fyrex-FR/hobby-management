@@ -495,6 +495,29 @@ publication** ; la modifier ensuite dans l'app ne changeait rien sur eBay.
   nouvelle quantité sur une annonce déjà publiée (sans republication), comme le
   fait déjà `update_offer_price` pour le prix.
 
+#### Rattrapage des annonces existantes ✅
+
+Le push ci-dessus ne se déclenche qu'à l'enregistrement d'une carte : les
+annonces **déjà en ligne** restaient désynchronisées, en particulier toutes
+celles publiées **avant** la gestion du stock, dont la quantité eBay était
+figée à 1 (`publish_card` la forçait). D'où un rattrapage global.
+
+- `update_listing_quantity` lit maintenant la fiche produit **et** l'offre en
+  parallèle, compare, et n'écrit que ce qui diffère — aucune écriture si eBay
+  est déjà à la bonne quantité (`{"unchanged": true}`). Bénéficie aussi au
+  chemin « enregistrement de carte » (plus de PUT inutile à chaque sauvegarde).
+- `list_live_listing_cards(user_id)` — cartes ayant `ebay_offer_id` **et**
+  `ebay_url` non nuls.
+- `sync_stock_to_ebay(access_token, user_id)` — pousse le stock sur toutes ces
+  annonces (semaphore 3), une carte vendue étant poussée à 0. Erreurs isolées
+  par carte ; renvoie `{total, updated, unchanged, errors}`.
+- `POST /ebay/selling/sync-stock` + hook `useEbaySyncStock` (timeout 180 s) ;
+  bouton **« Pousser les stocks »** à côté de « Synchroniser » dans l'onglet
+  Annonces, avec le résumé en retour.
+- Testé unitairement (mocks) : déjà à jour → aucun PUT ; annonce pré-PR58
+  (1/1 → 3) → PUT fiche + offre ; désync partielle (3/1 → 3) → PUT offre
+  uniquement ; lot avec une carte en échec → les autres passent.
+
 ### Watchers + offres (#4)
 
 - Compteurs vues/watchers par annonce (Analytics/Trading `GetMyeBaySelling`) et

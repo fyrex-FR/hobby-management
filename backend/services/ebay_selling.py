@@ -877,34 +877,111 @@ async def update_listing_quantity(card: dict, access_token: str, quantity: int) 
     quantity = max(0, int(quantity))
 
     async with httpx.AsyncClient(timeout=20) as client:
-        item_resp = await client.get(f"{INVENTORY_API}/inventory_item/{sku}", headers=_sell_headers(access_token))
+        item_resp, offer_resp = await asyncio.gather(
+            client.get(f"{INVENTORY_API}/inventory_item/{sku}", headers=_sell_headers(access_token)),
+            client.get(f"{INVENTORY_API}/offer/{offer_id}", headers=_sell_headers(access_token)),
+        )
         if item_resp.status_code != 200:
             raise EbayApiError("Lecture de la fiche produit", item_resp.status_code, item_resp.text)
-        item = item_resp.json()
-        availability = item.setdefault("availability", {})
-        ship_to = availability.setdefault("shipToLocationAvailability", {})
-        ship_to["quantity"] = quantity
-        _sanitize_package_weight_and_size(item)
-        put_item = await client.put(
-            f"{INVENTORY_API}/inventory_item/{sku}", headers=_sell_headers(access_token), json=item
-        )
-        if put_item.status_code not in (200, 201, 204):
-            raise EbayApiError("Mise à jour du stock (fiche produit)", put_item.status_code, put_item.text)
-
-        offer_resp = await client.get(f"{INVENTORY_API}/offer/{offer_id}", headers=_sell_headers(access_token))
         if offer_resp.status_code != 200:
             raise EbayApiError("Lecture de l'offre", offer_resp.status_code, offer_resp.text)
-        offer = offer_resp.json()
-        offer["availableQuantity"] = quantity
-        for ro_field in ("offerId", "listing", "status"):
-            offer.pop(ro_field, None)
-        put_offer = await client.put(
-            f"{INVENTORY_API}/offer/{offer_id}", headers=_sell_headers(access_token), json=offer
-        )
-        if put_offer.status_code not in (200, 204):
-            raise EbayApiError("Mise à jour du stock (offre)", put_offer.status_code, put_offer.text)
+        item, offer = item_resp.json(), offer_resp.json()
 
-    return {"updated": True, "quantity": quantity}
+        def _as_int(value) -> Optional[int]:
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return None
+
+        item_qty = _as_int((item.get("availability", {}).get("shipToLocationAvailability", {})).get("quantity"))
+        offer_qty = _as_int(offer.get("availableQuantity"))
+        # Rien à écrire si eBay est déjà à la bonne quantité des deux côtés :
+        # évite un PUT inutile à chaque enregistrement de carte et permet de
+        # relancer un rattrapage global sans repousser tout le catalogue.
+        if item_qty == quantity and offer_qty == quantity:
+            return {"updated": False, "quantity": quantity, "unchanged": True}
+
+        if item_qty != quantity:
+            ship_to = item.setdefault("availability", {}).setdefault("shipToLocationAvailability", {})
+            ship_to["quantity"] = quantity
+            _sanitize_package_weight_and_size(item)
+            put_item = await client.put(
+                f"{INVENTORY_API}/inventory_item/{sku}", headers=_sell_headers(access_token), json=item
+            )
+            if put_item.status_code not in (200, 201, 204):
+                raise EbayApiError("Mise à jour du stock (fiche produit)", put_item.status_code, put_item.text)
+
+        if offer_qty != quantity:
+            offer["availableQuantity"] = quantity
+            for ro_field in ("offerId", "listing", "status"):
+                offer.pop(ro_field, None)
+            put_offer = await client.put(
+                f"{INVENTORY_API}/offer/{offer_id}", headers=_sell_headers(access_token), json=offer
+            )
+            if put_offer.status_code not in (200, 204):
+                raise EbayApiError("Mise à jour du stock (offre)", put_offer.status_code, put_offer.text)
+
+    return {"updated": True, "quantity": quantity, "unchanged": False}
+
+
+async def list_live_listing_cards(user_id: str) -> list[dict]:
+    """Cartes de l'utilisateur ayant une annonce eBay en ligne (offre connue)."""
+    async with httpx.AsyncClient(timeout=15) as client:
+        resp = await client.get(
+            f"{SUPABASE_URL}/rest/v1/cards",
+            headers=_supabase_headers(),
+            params={
+                "user_id": f"eq.{user_id}",
+                "ebay_offer_id": "not.is.null",
+                "ebay_url": "not.is.null",
+                "select": "*",
+            },
+        )
+    if resp.status_code != 200:
+        raise RuntimeError(f"Supabase list cards {resp.status_code}: {resp.text[:300]}")
+    return resp.json()
+
+
+SYNC_STOCK_CONCURRENCY = 3
+
+
+async def sync_stock_to_ebay(access_token: str, user_id: str) -> dict:
+    """Rattrapage global : pousse le stock de l'app sur TOUTES les annonces eBay
+    en ligne. Sert notamment aux cartes publiées avant la gestion du stock
+    (quantité 1 forcée à l'époque) et à celles dont la quantité a changé pendant
+    que le compte eBay était déconnecté. Les annonces déjà à la bonne quantité
+    sont ignorées (aucune écriture). Chaque carte est isolée : une erreur
+    n'interrompt pas le lot."""
+    cards = await list_live_listing_cards(user_id)
+    updated = 0
+    unchanged = 0
+    errors: list[dict] = []
+    semaphore = asyncio.Semaphore(SYNC_STOCK_CONCURRENCY)
+
+    async def process(card: dict) -> None:
+        nonlocal updated, unchanged
+        async with semaphore:
+            quantity = _card_quantity(card) if card.get("status") != "vendu" else 0
+            try:
+                result = await update_listing_quantity(card, access_token, quantity)
+            except EbayApiError as e:
+                errors.append({
+                    "card_id": card.get("id"),
+                    "player": card.get("player"),
+                    "message": f"{e.step} : {e.body}",
+                })
+                return
+            except Exception as e:  # noqa: BLE001 - on isole l'échec d'une carte
+                logger.exception("Rattrapage stock eBay: échec inattendu sur la carte %s", card.get("id"))
+                errors.append({"card_id": card.get("id"), "player": card.get("player"), "message": str(e)[:300]})
+                return
+            if result.get("unchanged"):
+                unchanged += 1
+            else:
+                updated += 1
+
+    await asyncio.gather(*(process(card) for card in cards))
+    return {"total": len(cards), "updated": updated, "unchanged": unchanged, "errors": errors}
 
 
 async def update_listing(
