@@ -463,6 +463,38 @@ seulement à 0).
   `lineItemId` et `quantity` par ligne ; que l'insert idempotent Supabase
   distingue bien nouvelle ligne vs doublon (retour `[]` sur conflit).
 
+### Stock app → annonce eBay (sens inverse) ✅
+
+Complément du stock synchronisé ci-dessus, demandé par un utilisateur : « si je
+récupère une carte que j'ai déjà, j'update juste le stock sur l'app » et
+l'annonce eBay suit. Jusqu'ici la quantité n'était poussée qu'**à la
+publication** ; la modifier ensuite dans l'app ne changeait rien sur eBay.
+
+- `backend/services/ebay_selling.py` — `update_listing_quantity(card,
+  access_token, quantity)` : met à jour `availability.shipToLocationAvailability
+  .quantity` sur l'inventory item **et** `availableQuantity` sur l'offre (les
+  deux doivent rester cohérents), en réutilisant
+  `_sanitize_package_weight_and_size` et le retrait des champs read-only. Une
+  quantité négative est ramenée à 0 ; 0 fait terminer l'annonce côté eBay, ce
+  qui est le comportement voulu quand le stock tombe à zéro.
+- `backend/routers/cards.py` — `PATCH /cards/{id}` appelle
+  `_push_quantity_to_ebay` quand le payload contient `quantity` **et** que la
+  carte a une annonce en ligne (`ebay_offer_id` + `ebay_url`). **Best-effort** :
+  toute erreur eBay est capturée et loguée, la mise à jour de la carte (déjà
+  écrite) n'échoue jamais ; le résultat est renvoyé dans le champ
+  `ebay_quantity_sync` de la réponse.
+- **Frontend** : `useUpdateCard` renvoie `UpdatedCard` (avec
+  `ebay_quantity_sync`) ; `CardDetail` affiche un bandeau d'avertissement
+  dismissible si la carte a bien été enregistrée mais que l'annonce eBay n'a pas
+  pu être mise à jour.
+- Testé unitairement (mocks) : quantité poussée sur les deux endpoints, poids
+  invalide retiré, champs read-only retirés, négatif ramené à 0, carte sans
+  offre → `EbayApiError` explicite ; côté routeur : pas d'appel si pas
+  d'annonce, succès, erreur eBay sans exception, compte non connecté.
+- **À vérifier au premier run réel** : que le `PUT offer` suffit à propager la
+  nouvelle quantité sur une annonce déjà publiée (sans republication), comme le
+  fait déjà `update_offer_price` pour le prix.
+
 ### Watchers + offres (#4)
 
 - Compteurs vues/watchers par annonce (Analytics/Trading `GetMyeBaySelling`) et

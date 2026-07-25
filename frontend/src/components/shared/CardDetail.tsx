@@ -108,6 +108,7 @@ export function CardDetail({ card, onClose }: Props) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [ebaySyncNotice, setEbaySyncNotice] = useState<string | null>(null);
   const [reanalyzeError, setReanalyzeError] = useState('');
   const [dragOver, setDragOver] = useState<'front' | 'back' | null>(null);
   const [uploadingImage, setUploadingImage] = useState<'front' | 'back' | null>(null);
@@ -167,7 +168,8 @@ export function CardDetail({ card, onClose }: Props) {
 
   async function handleSave() {
     setSaving(true);
-    await updateCard.mutateAsync({
+    setEbaySyncNotice(null);
+    const updated = await updateCard.mutateAsync({
       id: card.id,
       ...fields,
       card_type: (fields.card_type || null) as CardType | null,
@@ -186,6 +188,12 @@ export function CardDetail({ card, onClose }: Props) {
       grading_returned_at: fields.grading_returned_at || null,
       grading_cost: fields.grading_cost ? parseFloat(fields.grading_cost) : null,
     });
+    // Le backend répercute le stock sur l'annonce eBay en ligne (best-effort) :
+    // la carte est enregistrée quoi qu'il arrive, on signale juste l'échec.
+    const sync = updated?.ebay_quantity_sync;
+    if (sync && !sync.ok) {
+      setEbaySyncNotice(`Stock enregistré, mais l'annonce eBay n'a pas pu être mise à jour : ${sync.error}`);
+    }
     setSaving(false);
     setEditing(false);
   }
@@ -518,6 +526,15 @@ export function CardDetail({ card, onClose }: Props) {
           </div>
 
           <div className="overflow-y-auto flex-1 min-h-0 p-6 custom-scrollbar">
+            {ebaySyncNotice && (
+              <div className="mb-4 flex items-start gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold">
+                <AlertCircle size={14} className="shrink-0 mt-0.5" />
+                <span className="flex-1">{ebaySyncNotice}</span>
+                <button onClick={() => setEbaySyncNotice(null)} className="shrink-0 opacity-70 hover:opacity-100">
+                  <X size={13} />
+                </button>
+              </div>
+            )}
             {!editing ? (
               /* View mode */
               <motion.div

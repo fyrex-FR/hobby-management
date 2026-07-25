@@ -863,6 +863,50 @@ async def update_offer_price(card: dict, access_token: str, new_price: float) ->
     return {"updated": True, "price": new_price}
 
 
+async def update_listing_quantity(card: dict, access_token: str, quantity: int) -> dict:
+    """Pousse le stock de la carte sur son annonce eBay en ligne (sens app ->
+    eBay, l'inverse de `sync_sold_cards`) : met à jour la disponibilité de la
+    fiche produit ET la quantité de l'offre, qui doivent rester cohérentes.
+
+    Une quantité à 0 fait terminer l'annonce côté eBay — c'est le comportement
+    attendu quand le stock tombe à zéro dans l'app."""
+    offer_id = card.get("ebay_offer_id")
+    sku = card["id"]
+    if not offer_id:
+        raise EbayApiError("Mise à jour du stock", 400, "Cette carte n'a pas d'annonce eBay connue.")
+    quantity = max(0, int(quantity))
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        item_resp = await client.get(f"{INVENTORY_API}/inventory_item/{sku}", headers=_sell_headers(access_token))
+        if item_resp.status_code != 200:
+            raise EbayApiError("Lecture de la fiche produit", item_resp.status_code, item_resp.text)
+        item = item_resp.json()
+        availability = item.setdefault("availability", {})
+        ship_to = availability.setdefault("shipToLocationAvailability", {})
+        ship_to["quantity"] = quantity
+        _sanitize_package_weight_and_size(item)
+        put_item = await client.put(
+            f"{INVENTORY_API}/inventory_item/{sku}", headers=_sell_headers(access_token), json=item
+        )
+        if put_item.status_code not in (200, 201, 204):
+            raise EbayApiError("Mise à jour du stock (fiche produit)", put_item.status_code, put_item.text)
+
+        offer_resp = await client.get(f"{INVENTORY_API}/offer/{offer_id}", headers=_sell_headers(access_token))
+        if offer_resp.status_code != 200:
+            raise EbayApiError("Lecture de l'offre", offer_resp.status_code, offer_resp.text)
+        offer = offer_resp.json()
+        offer["availableQuantity"] = quantity
+        for ro_field in ("offerId", "listing", "status"):
+            offer.pop(ro_field, None)
+        put_offer = await client.put(
+            f"{INVENTORY_API}/offer/{offer_id}", headers=_sell_headers(access_token), json=offer
+        )
+        if put_offer.status_code not in (200, 204):
+            raise EbayApiError("Mise à jour du stock (offre)", put_offer.status_code, put_offer.text)
+
+    return {"updated": True, "quantity": quantity}
+
+
 async def update_listing(
     card: dict,
     access_token: str,
