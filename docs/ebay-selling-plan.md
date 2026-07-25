@@ -542,6 +542,30 @@ figée à 1 (`publish_card` la forçait). D'où un rattrapage global.
   **« Réessayer les échecs »** ciblant uniquement les cartes en erreur, et
   « Relancer » sinon. Le rattrapage démarre à l'ouverture ; la modale ne peut
   pas être fermée pendant le traitement.
+- **Correctif** : « Réessayer les échecs » envoyait **tous** les ids en une
+  requête et se faisait rejeter au-delà de la borne `card_ids` de l'endpoint
+  (25). Le réessai est maintenant découpé en lots comme le run initial.
+
+> **Note sur les limites « 10 » et « 25 » du code** : ce sont des bornes *par
+> requête HTTP* (taille de lot), **pas des limites eBay ni des plafonds sur le
+> nombre total de cartes**. Le frontend boucle sur les lots, donc le nombre de
+> cartes traitables n'est pas limité. Ne pas les présenter comme des
+> contraintes eBay.
+
+### Offres (Best Offer) à la publication en masse ✅
+
+Demande utilisateur : les offres n'étaient activables que dans la publication
+unitaire ; en masse il fallait les réactiver à la main sur eBay ensuite.
+
+- `PublishBatchRequest` accepte `allow_offers` et `minimum_offer_percent`. Le
+  seuil est exprimé en **pourcentage** et non en montant fixe : les cartes d'un
+  lot ont des prix différents, un montant unique n'aurait aucun sens. Le
+  backend calcule `price * pct / 100` **par carte**, borne le résultat
+  strictement sous le prix (eBay refuse un minimum ≥ prix) et l'ignore s'il
+  tombe à 0.
+- `EbayBulkPublishModal` — case « Autoriser les offres » + champ « Refuser
+  automatiquement sous (% du prix) » (défaut 80 %), avec un exemple chiffré et
+  validation locale (1–99).
 - Testé unitairement (mocks) : déjà à jour → aucun PUT ; annonce pré-PR58
   (1/1 → 3) → PUT fiche + offre ; désync partielle (3/1 → 3) → PUT offre
   uniquement ; lot avec une carte en échec → les autres passent.
