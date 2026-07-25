@@ -57,6 +57,8 @@ export function EbayBulkPublishModal({ cards, onClose, onDone }: Props) {
 
   const [deselected, setDeselected] = useState<Set<string>>(new Set());
   const [includeImage, setIncludeImage] = useState(true);
+  const [allowOffers, setAllowOffers] = useState(false);
+  const [minOfferPercent, setMinOfferPercent] = useState('80');
   const [publishing, setPublishing] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [results, setResults] = useState<EbayPublishResult[] | null>(null);
@@ -64,6 +66,8 @@ export function EbayBulkPublishModal({ cards, onClose, onDone }: Props) {
 
   const selected = eligibleCards.filter((c) => !deselected.has(c.id));
   const resultById = new Map((results ?? []).map((r) => [r.card_id, r]));
+  const parsedPercent = parseFloat(minOfferPercent);
+  const invalidPercent = allowOffers && !(parsedPercent >= 1 && parsedPercent < 100);
 
   function shippingName(price: number | null): string {
     const id = price != null ? matchShippingRule(rules, price) : null;
@@ -90,7 +94,12 @@ export function EbayBulkPublishModal({ cards, onClose, onDone }: Props) {
     try {
       for (let i = 0; i < ids.length; i += BATCH) {
         const slice = ids.slice(i, i + BATCH);
-        const res = await publishBatch.mutateAsync({ card_ids: slice, include_extra_image: hasImage && includeImage });
+        const res = await publishBatch.mutateAsync({
+          card_ids: slice,
+          include_extra_image: hasImage && includeImage,
+          allow_offers: allowOffers,
+          minimum_offer_percent: allowOffers ? parsedPercent : undefined,
+        });
         if ('connected' in res) {
           setError('Connecte d’abord ton compte eBay.');
           break;
@@ -215,6 +224,45 @@ export function EbayBulkPublishModal({ cards, onClose, onDone }: Props) {
               </label>
             )}
 
+            <div className="rounded-xl px-3 py-2.5 flex flex-col gap-2.5" style={{ background: 'rgba(255,255,255,0.04)' }}>
+              <label className="flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  checked={allowOffers}
+                  disabled={publishing}
+                  onChange={(e) => setAllowOffers(e.target.checked)}
+                  className="w-4 h-4 accent-[var(--accent)]"
+                />
+                <span className="text-sm font-medium text-white">Autoriser les offres</span>
+              </label>
+              {allowOffers && (
+                <div className="flex flex-col gap-1.5 pl-7">
+                  <label className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                    Refuser automatiquement sous (% du prix)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      min={1}
+                      max={99}
+                      value={minOfferPercent}
+                      disabled={publishing}
+                      onChange={(e) => setMinOfferPercent(e.target.value)}
+                      className="w-24 rounded-xl px-3 py-2 text-sm outline-none"
+                      style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                    />
+                    <span className="text-sm font-bold" style={{ color: 'var(--text-muted)' }}>%</span>
+                  </div>
+                  <p className="text-[11px] leading-relaxed" style={{ color: invalidPercent ? 'var(--red)' : 'var(--text-muted)' }}>
+                    {invalidPercent
+                      ? 'Indique un pourcentage entre 1 et 99.'
+                      : `Les cartes du lot ayant des prix différents, le seuil est calculé sur le prix de chacune (ex. une carte à 50 € refusera sous ${(50 * parsedPercent / 100).toFixed(2)} €).`}
+                  </p>
+                </div>
+              )}
+            </div>
+
             {error && <p className="text-xs" style={{ color: 'var(--red)' }}>{error}</p>}
 
             {results && !publishing && (
@@ -238,7 +286,7 @@ export function EbayBulkPublishModal({ cards, onClose, onDone }: Props) {
 
             <button
               onClick={publishSelected}
-              disabled={publishing || selected.length === 0}
+              disabled={publishing || selected.length === 0 || invalidPercent}
               className="py-3.5 rounded-2xl text-sm font-black transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
               style={{ background: 'var(--accent)', color: '#09090B' }}
             >

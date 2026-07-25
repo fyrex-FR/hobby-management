@@ -176,7 +176,13 @@ export type EbayPublishBatchResult =
  * publish). */
 export function useEbayPublishBatch() {
   return useMutation({
-    mutationFn: (body: { card_ids: string[]; include_extra_image: boolean }) => (
+    mutationFn: (body: {
+      card_ids: string[];
+      include_extra_image: boolean;
+      allow_offers?: boolean;
+      /** Seuil de refus auto, en % du prix de chaque carte (prix variables). */
+      minimum_offer_percent?: number;
+    }) => (
       apiFetch<EbayPublishBatchResult>(
         '/ebay/selling/publish-batch',
         { method: 'POST', body: JSON.stringify(body) },

@@ -34,10 +34,27 @@ export function EbayStockSyncModal({ onClose }: Props) {
     let errors: EbayStockSyncError[] = [];
     let offset = 0;
     try {
+      if (retryIds) {
+        // Le réessai doit lui aussi être découpé : l'endpoint borne `card_ids`
+        // par requête, donc envoyer tous les échecs d'un coup échouerait dès
+        // qu'ils dépassent la taille d'un lot.
+        for (let i = 0; i < retryIds.length; i += BATCH) {
+          const slice = retryIds.slice(i, i + BATCH);
+          const res = await syncStock.mutateAsync({ card_ids: slice });
+          if ('connected' in res) {
+            setError('Connecte d’abord ton compte eBay.');
+            return;
+          }
+          updated += res.updated;
+          unchanged += res.unchanged;
+          errors = errors.concat(res.errors);
+          setProgress({ done: Math.min(i + BATCH, retryIds.length), total: retryIds.length });
+        }
+        setSummary({ updated, unchanged, errors });
+        return;
+      }
       for (;;) {
-        const res = await syncStock.mutateAsync(
-          retryIds ? { card_ids: retryIds } : { offset, batch: BATCH },
-        );
+        const res = await syncStock.mutateAsync({ offset, batch: BATCH });
         if ('connected' in res) {
           setError('Connecte d’abord ton compte eBay.');
           return;

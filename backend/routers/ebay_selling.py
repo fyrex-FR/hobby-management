@@ -42,6 +42,11 @@ class PublishBatchRequest(BaseModel):
     afin d'afficher la progression et rester sous les limites de temps/débit."""
     card_ids: List[str]
     include_extra_image: bool = True
+    allow_offers: bool = False
+    # Les cartes d'un lot ont des prix différents : un montant minimum fixe
+    # n'aurait pas de sens, on exprime le seuil de refus automatique en % du
+    # prix de chaque carte.
+    minimum_offer_percent: Optional[float] = None
 
     @field_validator("card_ids")
     @classmethod
@@ -50,6 +55,15 @@ class PublishBatchRequest(BaseModel):
             raise ValueError("Aucune carte à publier.")
         if len(value) > 10:
             raise ValueError("10 cartes maximum par lot.")
+        return value
+
+    @field_validator("minimum_offer_percent")
+    @classmethod
+    def _validate_percent(cls, value: Optional[float]) -> Optional[float]:
+        if value is None:
+            return None
+        if not 1 <= value < 100:
+            raise ValueError("Le seuil de refus doit être compris entre 1 et 99 % du prix.")
         return value
 
 
@@ -236,6 +250,16 @@ async def publish_listings_batch(body: PublishBatchRequest, user: dict = Depends
                         "fulfillment": fulfillment,
                     }
 
+                    minimum_offer_price = None
+                    if body.allow_offers and body.minimum_offer_percent is not None:
+                        # Seuil calculé sur le prix de CETTE carte, puis borné
+                        # strictement sous le prix (eBay refuse un minimum >= prix).
+                        minimum_offer_price = round(price * body.minimum_offer_percent / 100, 2)
+                        if minimum_offer_price >= price:
+                            minimum_offer_price = round(price - 0.01, 2)
+                        if minimum_offer_price <= 0:
+                            minimum_offer_price = None
+
                     result = await ebay_selling.publish_card(
                         card,
                         access_token,
@@ -244,6 +268,8 @@ async def publish_listings_batch(body: PublishBatchRequest, user: dict = Depends
                         category["id"],
                         selected_policies,
                         None,
+                        allow_offers=body.allow_offers,
+                        minimum_offer_price=minimum_offer_price,
                         extra_image_url=extra_image_url,
                     )
                     entry.update(status="published", ebay_url=result.get("ebay_url"))
