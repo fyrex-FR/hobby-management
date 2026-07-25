@@ -315,6 +315,25 @@ async def update_listing_endpoint(card_id: str, body: ListingUpdateRequest, user
         raise HTTPException(status_code=500, detail=f"Erreur inattendue lors de la modification : {e}")
 
 
+@router.post("/ebay/selling/sync-stock")
+async def sync_stock(user: dict = Depends(current_user)):
+    """Rattrapage : pousse le stock de l'app sur toutes les annonces eBay en
+    ligne (sens app -> eBay). Utile pour les cartes publiées avant la gestion du
+    stock, dont l'annonce est restée à quantité 1."""
+    try:
+        access_token = await get_valid_access_token(user["sub"])
+        if not access_token:
+            return {"connected": False}
+        return await ebay_selling.sync_stock_to_ebay(access_token, user["sub"])
+    except HTTPException:
+        raise
+    except EbayApiError as e:
+        raise HTTPException(status_code=502, detail=f"{e.step} : {e.body}")
+    except Exception as e:
+        logger.exception("Rattrapage stock eBay: erreur inattendue")
+        raise HTTPException(status_code=500, detail=f"Erreur inattendue lors du rattrapage : {e}")
+
+
 @router.post("/ebay/selling/sync-sold")
 async def sync_sold(user: dict = Depends(current_user)):
     """Synchronise le statut « vendu » : interroge les commandes eBay récentes
