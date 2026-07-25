@@ -315,16 +315,50 @@ async def update_listing_endpoint(card_id: str, body: ListingUpdateRequest, user
         raise HTTPException(status_code=500, detail=f"Erreur inattendue lors de la modification : {e}")
 
 
+class SyncStockRequest(BaseModel):
+    """Un lot d'annonces à resynchroniser. Le frontend rappelle l'endpoint avec
+    `offset` croissant jusqu'à `done: true` ; `card_ids` sert à ne retraiter que
+    les échecs d'un run précédent."""
+    offset: int = 0
+    batch: int = 15
+    card_ids: Optional[List[str]] = None
+
+    @field_validator("offset")
+    @classmethod
+    def _clamp_offset(cls, value: int) -> int:
+        return max(0, value)
+
+    @field_validator("batch")
+    @classmethod
+    def _clamp_batch(cls, value: int) -> int:
+        return max(1, min(25, value))
+
+    @field_validator("card_ids")
+    @classmethod
+    def _limit_ids(cls, value: Optional[List[str]]) -> Optional[List[str]]:
+        if value is not None and len(value) > 25:
+            raise ValueError("25 cartes maximum par lot.")
+        return value
+
+
 @router.post("/ebay/selling/sync-stock")
-async def sync_stock(user: dict = Depends(current_user)):
-    """Rattrapage : pousse le stock de l'app sur toutes les annonces eBay en
-    ligne (sens app -> eBay). Utile pour les cartes publiées avant la gestion du
-    stock, dont l'annonce est restée à quantité 1."""
+async def sync_stock(body: SyncStockRequest | None = None, user: dict = Depends(current_user)):
+    """Rattrapage : pousse le stock de l'app sur les annonces eBay en ligne
+    (sens app -> eBay). Utile pour les cartes publiées avant la gestion du
+    stock, dont l'annonce est restée à quantité 1. Traité par lots pour ne pas
+    dépasser le timeout du proxy."""
+    body = body or SyncStockRequest()
     try:
         access_token = await get_valid_access_token(user["sub"])
         if not access_token:
             return {"connected": False}
-        return await ebay_selling.sync_stock_to_ebay(access_token, user["sub"])
+        return await ebay_selling.sync_stock_to_ebay(
+            access_token,
+            user["sub"],
+            offset=body.offset,
+            batch=body.batch,
+            card_ids=body.card_ids,
+        )
     except HTTPException:
         raise
     except EbayApiError as e:

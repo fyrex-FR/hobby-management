@@ -39,7 +39,6 @@ import {
   useEbayShippingRules,
   useEbayShippingRulesSave,
   useEbaySyncSold,
-  useEbaySyncStock,
 } from '../../hooks/useEbayAccount';
 import type { EbayApplyImageError, EbayPolicyOption, EbayShippingRule } from '../../hooks/useEbayAccount';
 import { EbayLogo } from '../shared/EbayLogo';
@@ -49,6 +48,7 @@ import { supabase } from '../../lib/supabase';
 import { compressImage } from '../../lib/storage';
 import { EbayPublishModal } from '../shared/EbayPublishModal';
 import { EbayEditModal } from '../shared/EbayEditModal';
+import { EbayStockSyncModal } from '../shared/EbayStockSyncModal';
 import type { Card } from '../../types';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
@@ -551,29 +551,8 @@ function ListingsTab({
   const [publishCard, setPublishCard] = useState<Card | null>(null);
   const [editCard, setEditCard] = useState<Card | null>(null);
   const syncSold = useEbaySyncSold();
-  const syncStock = useEbaySyncStock();
+  const [stockModalOpen, setStockModalOpen] = useState(false);
   const [syncMsg, setSyncMsg] = useState('');
-
-  async function handleSyncStock() {
-    setSyncMsg('');
-    try {
-      const res = await syncStock.mutateAsync();
-      if ('connected' in res) {
-        setSyncMsg('Connecte d’abord ton compte eBay.');
-        return;
-      }
-      const parts = [
-        res.updated > 0
-          ? `${res.updated} annonce${res.updated > 1 ? 's' : ''} mise${res.updated > 1 ? 's' : ''} à jour`
-          : 'Aucune annonce à corriger',
-        res.unchanged > 0 ? `${res.unchanged} déjà à jour` : null,
-        res.errors.length > 0 ? `${res.errors.length} échec${res.errors.length > 1 ? 's' : ''}` : null,
-      ].filter(Boolean);
-      setSyncMsg(`${parts.join(' · ')}${res.errors.length ? ` — ${res.errors[0].player ?? ''} : ${res.errors[0].message}` : ''}`);
-    } catch (e) {
-      setSyncMsg((e as Error).message || 'Rattrapage impossible.');
-    }
-  }
 
   async function handleSync() {
     setSyncMsg('');
@@ -625,18 +604,18 @@ function ListingsTab({
         </p>
         <div className="flex items-center gap-2 shrink-0">
           <button
-            onClick={handleSyncStock}
-            disabled={syncStock.isPending || syncSold.isPending}
+            onClick={() => setStockModalOpen(true)}
+            disabled={syncSold.isPending}
             title="Pousse le stock de l'app sur tes annonces eBay (utile pour les annonces publiées avant la gestion du stock, restées à 1)"
             className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
             style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)' }}
           >
-            {syncStock.isPending ? <Loader2 size={14} className="animate-spin" /> : <PackageCheck size={14} />}
-            {syncStock.isPending ? 'Envoi…' : 'Pousser les stocks'}
+            <PackageCheck size={14} />
+            Pousser les stocks
           </button>
           <button
             onClick={handleSync}
-            disabled={syncSold.isPending || syncStock.isPending}
+            disabled={syncSold.isPending}
             title="Récupère tes ventes eBay et met les cartes vendues à jour"
             className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
             style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)' }}
@@ -750,6 +729,10 @@ function ListingsTab({
 
       {editCard && (
         <EbayEditModal card={editCard} onClose={() => setEditCard(null)} />
+      )}
+
+      {stockModalOpen && (
+        <EbayStockSyncModal onClose={() => setStockModalOpen(false)} />
       )}
     </div>
   );

@@ -945,14 +945,41 @@ async def list_live_listing_cards(user_id: str) -> list[dict]:
 SYNC_STOCK_CONCURRENCY = 3
 
 
-async def sync_stock_to_ebay(access_token: str, user_id: str) -> dict:
-    """Rattrapage global : pousse le stock de l'app sur TOUTES les annonces eBay
-    en ligne. Sert notamment aux cartes publiées avant la gestion du stock
-    (quantité 1 forcée à l'époque) et à celles dont la quantité a changé pendant
-    que le compte eBay était déconnecté. Les annonces déjà à la bonne quantité
-    sont ignorées (aucune écriture). Chaque carte est isolée : une erreur
-    n'interrompt pas le lot."""
-    cards = await list_live_listing_cards(user_id)
+async def sync_stock_to_ebay(
+    access_token: str,
+    user_id: str,
+    *,
+    offset: int = 0,
+    batch: int = 15,
+    card_ids: Optional[list[str]] = None,
+) -> dict:
+    """Rattrapage : pousse le stock de l'app sur les annonces eBay en ligne.
+    Sert notamment aux cartes publiées avant la gestion du stock (quantité 1
+    forcée à l'époque). Les annonces déjà à la bonne quantité sont ignorées
+    (aucune écriture) ; chaque carte est isolée, une erreur n'interrompt pas le
+    lot.
+
+    Traité par LOTS (`offset`/`batch`) : un vendeur peut avoir des centaines
+    d'annonces, et chacune coûte 2 à 4 appels eBay — tout faire dans une seule
+    requête HTTP dépasserait le timeout du proxy devant le backend (le client
+    verrait « Connexion au serveur impossible » alors que le traitement
+    continue). Le frontend rappelle donc cet endpoint jusqu'à `done: true`.
+
+    `card_ids` permet de ne retraiter qu'une liste précise de cartes (bouton
+    « Réessayer les échecs ») ; dans ce cas le lot est traité en une fois."""
+    if card_ids:
+        fetched = await asyncio.gather(*(get_card(card_id, user_id) for card_id in card_ids))
+        selection = [c for c in fetched if c and c.get("ebay_offer_id") and c.get("ebay_url")]
+        total = len(card_ids)
+        next_offset = total
+        done = True
+    else:
+        cards = await list_live_listing_cards(user_id)
+        total = len(cards)
+        selection = cards[offset:offset + batch]
+        next_offset = offset + batch
+        done = next_offset >= total
+
     updated = 0
     unchanged = 0
     errors: list[dict] = []
@@ -980,8 +1007,15 @@ async def sync_stock_to_ebay(access_token: str, user_id: str) -> dict:
             else:
                 updated += 1
 
-    await asyncio.gather(*(process(card) for card in cards))
-    return {"total": len(cards), "updated": updated, "unchanged": unchanged, "errors": errors}
+    await asyncio.gather(*(process(card) for card in selection))
+    return {
+        "done": done,
+        "next_offset": next_offset,
+        "total": total,
+        "updated": updated,
+        "unchanged": unchanged,
+        "errors": errors,
+    }
 
 
 async def update_listing(
