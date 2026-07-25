@@ -1159,7 +1159,7 @@ export function CollectionView() {
   }
 
   const rookieCount = useMemo(() => cards.filter((c) => c.is_rookie).length, [cards]);
-  const activeFiltersCount = [playerFilter, teamFilter, brandFilter, setFilter, yearFilter, typeFilter, rookieOnly ? 'rookie' : null, listingFilter !== 'all' ? 'listing' : null].filter(Boolean).length;
+  const activeFiltersCount = [playerFilter, teamFilter, brandFilter, setFilter, yearFilter, typeFilter, rookieOnly ? 'rookie' : null, listingFilter !== 'all' ? 'listing' : null, folderFilter].filter(Boolean).length;
 
   function exportCSV() {
     const CSV_COLS: { key: keyof Card; label: string }[] = [
@@ -1276,13 +1276,6 @@ export function CollectionView() {
               <ListChecks size={16} />
             </button>
 
-            <button
-              onClick={exportCSV}
-              className="p-3 rounded-2xl bg-white/5 border border-white/5 text-[var(--text-secondary)] hover:bg-white/10 hover:text-white transition-all active:scale-95"
-              title="Exporter en CSV"
-            >
-              <Download size={16} />
-            </button>
           </div>
         </div>
 
@@ -1323,37 +1316,42 @@ export function CollectionView() {
             )}
           </button>
 
-          {/* Trier par */}
-          <div className="flex items-center gap-2 bg-white/5 border border-white/5 px-3 py-1.5 rounded-2xl shrink-0 w-fit max-w-full">
-            <ArrowUpDown size={12} className="text-white/20" />
-            <select
-              value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as SortBy)}
-              className="bg-transparent text-[10px] font-black uppercase tracking-[0.2em] outline-none cursor-pointer text-white/40 hover:text-white transition-colors appearance-none"
-              title="Trier par"
-            >
-              {(Object.keys(SORT_LABELS) as SortBy[]).map((k) => (
-                <option key={k} value={k} className="bg-[#18181b]">TRI : {SORT_LABELS[k].toUpperCase()}</option>
-              ))}
-            </select>
-          </div>
-
-          {/* Grouper par (grille uniquement) */}
-          {viewMode === 'grid' && (
-            <div className="flex items-center gap-2 bg-white/5 border border-white/5 px-3 py-1.5 rounded-2xl shrink-0 w-fit max-w-full">
-              <Group size={12} className="text-white/20" />
+          {/* Tri + Groupe : regroupés pour partager UNE rangée au lieu de
+              wrapper séparément. Le `tracking-[0.2em]` d'origine gonflait la
+              largeur au point de forcer deux lignes en portrait ; les icônes
+              portent déjà le sens, les préfixes verbeux sont donc inutiles. */}
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-1.5 bg-white/5 border border-white/5 px-2.5 py-1.5 rounded-2xl w-fit max-w-full">
+              <ArrowUpDown size={12} className="text-white/20 shrink-0" />
               <select
-                value={groupBy}
-                onChange={(e) => setGroupBy(e.target.value as GroupBy)}
-                className="bg-transparent text-[10px] font-black uppercase tracking-[0.2em] outline-none cursor-pointer text-white/40 hover:text-white transition-colors appearance-none"
-                title="Grouper par"
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortBy)}
+                className="bg-transparent text-[10px] font-black uppercase tracking-wider outline-none cursor-pointer text-white/40 hover:text-white transition-colors appearance-none"
+                title="Trier par"
               >
-                {(Object.keys(GROUP_BY_LABELS) as GroupBy[]).map((k) => (
-                  <option key={k} value={k} className="bg-[#18181b]">GROUPE : {GROUP_BY_LABELS[k].toUpperCase()}</option>
+                {(Object.keys(SORT_LABELS) as SortBy[]).map((k) => (
+                  <option key={k} value={k} className="bg-[#18181b]">{SORT_LABELS[k]}</option>
                 ))}
               </select>
             </div>
-          )}
+
+            {/* Grouper par (grille uniquement) */}
+            {viewMode === 'grid' && (
+              <div className="flex items-center gap-1.5 bg-white/5 border border-white/5 px-2.5 py-1.5 rounded-2xl w-fit max-w-full">
+                <Group size={12} className="text-white/20 shrink-0" />
+                <select
+                  value={groupBy}
+                  onChange={(e) => setGroupBy(e.target.value as GroupBy)}
+                  className="bg-transparent text-[10px] font-black uppercase tracking-wider outline-none cursor-pointer text-white/40 hover:text-white transition-colors appearance-none"
+                  title="Grouper par"
+                >
+                  {(Object.keys(GROUP_BY_LABELS) as GroupBy[]).map((k) => (
+                    <option key={k} value={k} className="bg-[#18181b]">{GROUP_BY_LABELS[k]}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Row 2b: dropdowns de filtres (repliables) */}
@@ -1393,68 +1391,88 @@ export function CollectionView() {
 
             {activeFiltersCount > 0 && (
               <button
-                onClick={() => { setPlayerFilter(null); setTeamFilter(null); setBrandFilter(null); setSetFilter(null); setYearFilter(null); setTypeFilter(null); setRookieOnly(false); setListingFilter('all'); clearDrillFilter(); }}
+                onClick={() => { setPlayerFilter(null); setTeamFilter(null); setBrandFilter(null); setSetFilter(null); setYearFilter(null); setTypeFilter(null); setRookieOnly(false); setListingFilter('all'); setFolderFilter(null); clearDrillFilter(); }}
                 className="flex items-center gap-2 px-3 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all active:scale-95"
                 style={{ color: 'var(--accent)', background: 'var(--accent-dim)', border: '1px solid var(--border-accent)' }}
               >
                 Effacer ({activeFiltersCount})
               </button>
             )}
-          </div>
-        )}
 
-        {/* Row 3: dossiers */}
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            onClick={() => setFolderFilter(null)}
-            className="px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 border"
-            style={folderFilter === null
-              ? { background: 'var(--accent)', color: '#09090B', borderColor: 'var(--border-accent)' }
-              : { background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
-          >
-            Tous
-          </button>
-          {folders.map((f) => (
+            {/* Dossiers : replié ici plutôt qu'en rangée permanente. Le
+                filtre reste compté dans activeFiltersCount, sinon un dossier
+                actif filtrerait la collection sans aucun indice visible. */}
+            <div className="w-full flex flex-col gap-2">
+              <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>Dossiers</p>
+          <div className="flex items-center gap-2 flex-wrap">
             <button
-              key={f.id}
-              onClick={() => setFolderFilter((prev) => (prev === f.id ? null : f.id))}
-              className="px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 border inline-flex items-center gap-1.5"
-              style={folderFilter === f.id
+              onClick={() => setFolderFilter(null)}
+              className="px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 border"
+              style={folderFilter === null
                 ? { background: 'var(--accent)', color: '#09090B', borderColor: 'var(--border-accent)' }
                 : { background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
             >
-              {f.emoji && <span>{f.emoji}</span>}
-              {f.name}
-              <span className={`px-1.5 py-0.5 rounded-lg text-[9px] font-black ${folderFilter === f.id ? 'bg-black/10' : 'bg-white/10'}`}>
-                {folderCounts.counts[f.id] ?? 0}
-              </span>
+              Tous
             </button>
-          ))}
-          {folderCounts.unfiled > 0 && (
+            {folders.map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setFolderFilter((prev) => (prev === f.id ? null : f.id))}
+                className="px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 border inline-flex items-center gap-1.5"
+                style={folderFilter === f.id
+                  ? { background: 'var(--accent)', color: '#09090B', borderColor: 'var(--border-accent)' }
+                  : { background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+              >
+                {f.emoji && <span>{f.emoji}</span>}
+                {f.name}
+                <span className={`px-1.5 py-0.5 rounded-lg text-[9px] font-black ${folderFilter === f.id ? 'bg-black/10' : 'bg-white/10'}`}>
+                  {folderCounts.counts[f.id] ?? 0}
+                </span>
+              </button>
+            ))}
+            {folderCounts.unfiled > 0 && (
+              <button
+                onClick={() => setFolderFilter((prev) => (prev === '__none__' ? null : '__none__'))}
+                className="px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 border"
+                style={folderFilter === '__none__'
+                  ? { background: 'var(--accent)', color: '#09090B', borderColor: 'var(--border-accent)' }
+                  : { background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}
+              >
+                Non classé ({folderCounts.unfiled})
+              </button>
+            )}
             <button
-              onClick={() => setFolderFilter((prev) => (prev === '__none__' ? null : '__none__'))}
-              className="px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 border"
-              style={folderFilter === '__none__'
-                ? { background: 'var(--accent)', color: '#09090B', borderColor: 'var(--border-accent)' }
-                : { background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-muted)' }}
+              onClick={() => setManageFolders(true)}
+              className="px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 border inline-flex items-center gap-1.5 bg-white/5 border-white/5 text-[var(--text-secondary)] hover:text-white hover:bg-white/10"
+              title="Gérer les dossiers"
             >
-              Non classé ({folderCounts.unfiled})
+              <Settings2 size={13} />
+              Gérer
             </button>
-          )}
-          <button
-            onClick={() => setManageFolders(true)}
-            className="px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 border inline-flex items-center gap-1.5 bg-white/5 border-white/5 text-[var(--text-secondary)] hover:text-white hover:bg-white/10"
-            title="Gérer les dossiers"
-          >
-            <Settings2 size={13} />
-            Gérer
-          </button>
-        </div>
+          </div>
+            </div>
+
+            {/* Export CSV : sorti de la rangée d'icônes, peu utilisé au
+                quotidien. Même handler qu'avant. */}
+            <button
+              onClick={exportCSV}
+              className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-[11px] font-bold transition-all active:scale-95 bg-white/5 border border-white/5 text-[var(--text-secondary)] hover:bg-white/10 hover:text-white"
+            >
+              <Download size={13} />
+              Exporter la collection en CSV
+            </button>
+          </div>
+        )}
+
       </div>
 
       <div className="min-h-0 flex-1 overflow-auto px-6 pb-6">
+        {/* Répertoire A-Z : 27 boutons de 24px (~650px) débordent forcément en
+            portrait. Une seule ligne qui défile plutôt que deux lignes
+            empilées — aucune lettre n'est perdue. Centré dès qu'il y a la
+            place (sm+). */}
         {!isLoading && filtered.length > 0 && (
-          <div className="sticky top-0 z-20 -mx-6 mb-4 flex flex-wrap items-center justify-center gap-0.5 border-b border-white/5 bg-[var(--bg-primary)]/90 px-6 py-1.5 backdrop-blur-xl">
+          <div className="no-scrollbar sticky top-0 z-20 -mx-6 mb-4 flex flex-nowrap items-center justify-start gap-0.5 overflow-x-auto border-b border-white/5 bg-[var(--bg-primary)]/90 px-6 py-1.5 backdrop-blur-xl sm:justify-center">
             {[...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''), '#'].map((letter) => {
               const has = availableInitials.has(letter);
               return (
@@ -1462,7 +1480,7 @@ export function CollectionView() {
                   key={letter}
                   disabled={!has}
                   onClick={() => jumpToLetter(letter)}
-                  className={`h-6 w-6 rounded-md text-[11px] font-black transition-colors ${
+                  className={`h-6 w-6 shrink-0 rounded-md text-[11px] font-black transition-colors ${
                     has
                       ? 'text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-black'
                       : 'cursor-default text-white/15'
