@@ -200,21 +200,37 @@ export function useEbaySyncSold() {
   });
 }
 
+export interface EbayStockSyncError {
+  card_id: string;
+  player: string | null;
+  message: string;
+}
+
 export type EbaySyncStockResult =
   | { connected: false }
   | {
+      done: boolean;
+      next_offset: number;
       total: number;
       updated: number;
       unchanged: number;
-      errors: { card_id: string; player: string | null; message: string }[];
+      errors: EbayStockSyncError[];
     };
 
-/** Rattrapage app -> eBay : pousse le stock sur toutes les annonces en ligne
- * (les cartes publiées avant la gestion du stock sont restées à quantité 1). */
+/** Rattrapage app -> eBay d'UN LOT d'annonces (les cartes publiées avant la
+ * gestion du stock sont restées à quantité 1 côté eBay). Le composant appelant
+ * rappelle cette mutation en boucle jusqu'à `done: true` : tout traiter en une
+ * seule requête dépassait le timeout du proxy. `card_ids` ne retraite que les
+ * cartes indiquées (réessai des échecs). */
 export function useEbaySyncStock() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => apiFetch<EbaySyncStockResult>('/ebay/selling/sync-stock', { method: 'POST' }, 180000),
+    mutationFn: (body: { offset?: number; batch?: number; card_ids?: string[] }) =>
+      apiFetch<EbaySyncStockResult>(
+        '/ebay/selling/sync-stock',
+        { method: 'POST', body: JSON.stringify(body) },
+        120000,
+      ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['cards'] }),
   });
 }

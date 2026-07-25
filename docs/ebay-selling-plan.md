@@ -511,9 +511,23 @@ figée à 1 (`publish_card` la forçait). D'où un rattrapage global.
 - `sync_stock_to_ebay(access_token, user_id)` — pousse le stock sur toutes ces
   annonces (semaphore 3), une carte vendue étant poussée à 0. Erreurs isolées
   par carte ; renvoie `{total, updated, unchanged, errors}`.
-- `POST /ebay/selling/sync-stock` + hook `useEbaySyncStock` (timeout 180 s) ;
-  bouton **« Pousser les stocks »** à côté de « Synchroniser » dans l'onglet
-  Annonces, avec le résumé en retour.
+- `POST /ebay/selling/sync-stock` + hook `useEbaySyncStock` ; bouton
+  **« Pousser les stocks »** à côté de « Synchroniser » dans l'onglet Annonces.
+- **Correctif post-premier-run réel** : la première version traitait TOUTES les
+  annonces dans une seule requête HTTP. Chez un vendeur avec beaucoup
+  d'annonces (2 à 4 appels eBay chacune), la requête dépassait le timeout du
+  proxy : le frontend affichait « Connexion au serveur impossible » alors que
+  le backend continuait — d'où des annonces mises à jour malgré l'erreur, et
+  aucun moyen de savoir lesquelles. Corrigé en reprenant le **pattern déjà
+  utilisé** par `apply-image-to-listings` et `publish-batch` :
+  `sync_stock_to_ebay(..., offset, batch, card_ids)` traite un lot et renvoie
+  `{done, next_offset, total, updated, unchanged, errors}` ; le frontend boucle
+  jusqu'à `done`. `card_ids` permet de **ne rejouer que les échecs**.
+- `shared/EbayStockSyncModal.tsx` — modale de progression (barre + `n/total`),
+  résumé (mises à jour / déjà à jour / échecs avec motif par carte), bouton
+  **« Réessayer les échecs »** ciblant uniquement les cartes en erreur, et
+  « Relancer » sinon. Le rattrapage démarre à l'ouverture ; la modale ne peut
+  pas être fermée pendant le traitement.
 - Testé unitairement (mocks) : déjà à jour → aucun PUT ; annonce pré-PR58
   (1/1 → 3) → PUT fiche + offre ; désync partielle (3/1 → 3) → PUT offre
   uniquement ; lot avec une carte en échec → les autres passent.
