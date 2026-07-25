@@ -432,6 +432,37 @@ annonce~~ ✅, **3) watchers + offres (#4)** (prochaine).
   n'est pas re-généré ailleurs (l'app ne stocke pas de titre custom — le modal
   repart du titre généré à chaque ouverture).
 
+### Gestion du stock (quantité) à la publication et à la vente ✅
+
+But (demande d'un utilisateur) : une carte peut avoir plusieurs exemplaires
+(`cards.quantity`). Il fallait que l'annonce eBay reflète ce stock et que le
+stock diminue quand des exemplaires se vendent. Décision actée : **stock
+synchronisé** (l'annonce liste la quantité réelle ; la carte passe en `vendu`
+seulement à 0).
+
+- `backend/add_ebay_processed_sales_migration.sql` — table
+  `ebay_processed_sales` (PK `user_id, order_id, line_item_id`) pour
+  l'idempotence du sync (ne décrémenter chaque ligne de commande qu'une fois,
+  le bouton étant re-cliquable). **À PASSER dans Supabase.**
+- `backend/services/ebay_selling.py` :
+  - `publish_card` — `availability`/`availableQuantity` = `_card_quantity(card)`
+    (>= 1) au lieu de 1 forcé (vaut aussi pour la publication de masse).
+  - `_record_processed_sale` / `_delete_processed_sale` — insert idempotent
+    (`Prefer: resolution=ignore-duplicates,return=representation`, renvoie True
+    si nouvelle ligne) + rollback best-effort si l'application échoue.
+  - `sync_sold_cards` — pour chaque ligne de commande NON déjà traitée :
+    `remaining = quantité carte - quantité vendue` ; si `> 0` → décrémente
+    `quantity` (reste `a_vendre`), sinon → `quantity = 0`, `status = vendu` +
+    prix réel + date. Idempotent, rollback en cas d'échec d'écriture.
+- **Frontend** : badge `×N` sur les annonces multi-exemplaires du segment En
+  ligne (`ListingsTab`). Les décréments remontent via l'invalidation `['cards']`.
+- Testé unitairement (mocks) : vente d'1 sur 1 → vendu qty 0 ; vente d'1 sur 3
+  → a_vendre qty 2 ; 2e sync idempotent (pas de re-décrément) ; vente de 2 sur
+  2 restants → vendu qty 0.
+- **À vérifier au premier run réel** : que la Fulfillment API renvoie bien
+  `lineItemId` et `quantity` par ligne ; que l'insert idempotent Supabase
+  distingue bien nouvelle ligne vs doublon (retour `[]` sur conflit).
+
 ### Watchers + offres (#4)
 
 - Compteurs vues/watchers par annonce (Analytics/Trading `GetMyeBaySelling`) et
