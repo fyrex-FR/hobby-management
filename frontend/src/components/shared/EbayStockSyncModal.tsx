@@ -5,6 +5,9 @@ import type { EbayStockSyncError } from '../../hooks/useEbayAccount';
 
 interface Props {
   onClose: () => void;
+  /** Restreint le rattrapage à ces cartes (sélection de la Collection). Sans
+   * ça, toutes les annonces en ligne du compte sont traitées. */
+  cardIds?: string[];
 }
 
 const BATCH = 10;
@@ -16,7 +19,7 @@ const BATCH = 10;
  * timeout du proxy et affichait « Connexion au serveur impossible » alors que
  * le backend continuait à travailler. Ici, chaque lot est court, la progression
  * est visible, et les échecs sont rejouables séparément. */
-export function EbayStockSyncModal({ onClose }: Props) {
+export function EbayStockSyncModal({ onClose, cardIds }: Props) {
   const syncStock = useEbaySyncStock();
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [summary, setSummary] = useState<{ updated: number; unchanged: number; errors: EbayStockSyncError[] } | null>(null);
@@ -83,8 +86,8 @@ export function EbayStockSyncModal({ onClose }: Props) {
   useEffect(() => {
     if (startedRef.current) return;
     startedRef.current = true;
-    void run();
-  }, [run]);
+    void run(cardIds);
+  }, [run, cardIds]);
 
   const pct = progress && progress.total > 0 ? Math.round((progress.done / progress.total) * 100) : 0;
   const failedIds = summary?.errors.map((e) => e.card_id) ?? [];
@@ -98,7 +101,9 @@ export function EbayStockSyncModal({ onClose }: Props) {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <PackageCheck size={18} style={{ color: 'var(--accent)' }} />
-            <span className="text-sm font-black uppercase tracking-widest text-white">Pousser les stocks</span>
+            <span className="text-sm font-black uppercase tracking-widest text-white">
+              {cardIds ? 'Mettre à jour les annonces' : 'Pousser les stocks'}
+            </span>
           </div>
           <button
             onClick={onClose}
@@ -110,7 +115,9 @@ export function EbayStockSyncModal({ onClose }: Props) {
         </div>
 
         <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-          Aligne la quantité de tes annonces eBay sur le stock de l’app. Les annonces déjà à jour sont ignorées.
+          Aligne le prix et la quantité de tes annonces eBay sur celles de l’app
+          {cardIds ? ` (${cardIds.length} carte${cardIds.length > 1 ? 's' : ''} sélectionnée${cardIds.length > 1 ? 's' : ''}).` : '.'}
+          {' '}Les annonces déjà à jour sont ignorées, et les cartes non publiées sont simplement sautées.
         </p>
 
         {running && (
@@ -173,7 +180,7 @@ export function EbayStockSyncModal({ onClose }: Props) {
           )}
           {!running && summary && failedIds.length === 0 && (
             <button
-              onClick={() => run()}
+              onClick={() => run(cardIds)}
               className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95"
               style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)' }}
             >

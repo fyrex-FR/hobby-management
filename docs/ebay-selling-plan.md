@@ -552,6 +552,49 @@ figée à 1 (`publish_card` la forçait). D'où un rattrapage global.
 > cartes traitables n'est pas limité. Ne pas les présenter comme des
 > contraintes eBay.
 
+### Modification en masse des annonces déjà publiées ✅
+
+Manque signalé : le « Prix de vente… » groupé de la Collection changeait le prix
+**en base seulement** — les annonces déjà en ligne gardaient l'ancien prix. Il
+n'y avait aucun moyen de modifier en masse ce qui était déjà publié.
+
+- `update_listing_quantity(card, token, quantity, price=None)` pousse désormais
+  **le prix en plus du stock**. Comparaison du prix **en centimes** (eBay
+  renvoie une chaîne `"42.50"` : un `==` sur des flottants raterait l'égalité
+  avec `42.5`). N'écrit toujours que ce qui diffère — aucun appel si tout est
+  aligné.
+- `sync_stock_to_ebay` transmet le prix de la carte ; son mode `card_ids` sert
+  maintenant aussi à la **sélection** de la Collection. Les cartes de la
+  sélection **non publiées sont simplement sautées** (pas d'erreur), et une
+  carte `vendu` est poussée à quantité 0.
+- `PATCH /cards/{id}` déclenche le push quand le payload contient `price`
+  **ou** `quantity` (avant : `quantity` seulement), toujours en best-effort.
+- `EbayStockSyncModal` accepte une prop `cardIds` : même modale (progression,
+  résumé, réessai des échecs) pour le rattrapage global **et** pour une
+  sélection.
+
+### Réorganisation de la barre d'actions groupées ✅
+
+La barre empilait une douzaine de contrôles à plat (4 statuts + prix + 2 selects
+dossier + eBay + Whatnot + supprimer + annuler), illisible et pire encore sur
+mobile. Regroupée par intention en trois menus déroulants (`BulkMenu`,
+s'ouvrant vers le haut, fermeture au clic extérieur) :
+
+- **Statut** → Collection / À vendre / Réservé / Vendu
+- **Modifier** → Prix de vente… + Ajouter/Retirer du dossier
+- **Vendre** → eBay : publier les non listées · mettre à jour les annonces
+  (prix + stock) — Whatnot : exporter en CSV
+
+Supprimer reste à part (action destructrice), avec libellé masqué sous `sm`.
+
+### Correctif : sélection multiple inaccessible en portrait ✅
+
+En portrait mobile, les onglets de statut (`shrink-0`) occupaient toute la
+largeur de la rangée 1 et poussaient les contrôles de droite — dont le bouton
+de **sélection multiple** et l'export — hors de l'écran, rendant tout le mode
+sélection inatteignable sur téléphone. Ajout de `flex-wrap` sur la rangée :
+les contrôles passent à la ligne au lieu de disparaître.
+
 ### Offres (Best Offer) à la publication en masse ✅
 
 Demande utilisateur : les offres n'étaient activables que dans la publication

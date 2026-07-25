@@ -863,18 +863,30 @@ async def update_offer_price(card: dict, access_token: str, new_price: float) ->
     return {"updated": True, "price": new_price}
 
 
-async def update_listing_quantity(card: dict, access_token: str, quantity: int) -> dict:
-    """Pousse le stock de la carte sur son annonce eBay en ligne (sens app ->
-    eBay, l'inverse de `sync_sold_cards`) : met à jour la disponibilité de la
-    fiche produit ET la quantité de l'offre, qui doivent rester cohérentes.
+async def update_listing_quantity(
+    card: dict,
+    access_token: str,
+    quantity: int,
+    price: Optional[float] = None,
+) -> dict:
+    """Pousse l'état de la carte (stock, et prix si fourni) sur son annonce eBay
+    en ligne — sens app -> eBay, l'inverse de `sync_sold_cards`. Met à jour la
+    disponibilité de la fiche produit ET la quantité de l'offre, qui doivent
+    rester cohérentes.
+
+    Ne réécrit que ce qui diffère réellement côté eBay, et ne fait aucun appel
+    d'écriture si tout est déjà aligné : le rattrapage est donc rejouable sans
+    repousser tout le catalogue.
 
     Une quantité à 0 fait terminer l'annonce côté eBay — c'est le comportement
     attendu quand le stock tombe à zéro dans l'app."""
     offer_id = card.get("ebay_offer_id")
     sku = card["id"]
     if not offer_id:
-        raise EbayApiError("Mise à jour du stock", 400, "Cette carte n'a pas d'annonce eBay connue.")
+        raise EbayApiError("Mise à jour de l'annonce", 400, "Cette carte n'a pas d'annonce eBay connue.")
     quantity = max(0, int(quantity))
+    if price is not None and price <= 0:
+        price = None
 
     async with httpx.AsyncClient(timeout=20) as client:
         item_resp, offer_resp = await asyncio.gather(
@@ -895,10 +907,23 @@ async def update_listing_quantity(card: dict, access_token: str, quantity: int) 
 
         item_qty = _as_int((item.get("availability", {}).get("shipToLocationAvailability", {})).get("quantity"))
         offer_qty = _as_int(offer.get("availableQuantity"))
-        # Rien à écrire si eBay est déjà à la bonne quantité des deux côtés :
-        # évite un PUT inutile à chaque enregistrement de carte et permet de
-        # relancer un rattrapage global sans repousser tout le catalogue.
-        if item_qty == quantity and offer_qty == quantity:
+
+        current_price = None
+        if price is not None:
+            try:
+                current_price = float((offer.get("pricingSummary", {}).get("price", {}) or {}).get("value"))
+            except (TypeError, ValueError):
+                current_price = None
+        # Comparaison en centimes : eBay renvoie le prix en chaîne ("42.50"),
+        # un == sur des flottants raterait des égalités évidentes.
+        price_differs = price is not None and (
+            current_price is None or round(current_price * 100) != round(price * 100)
+        )
+
+        # Rien à écrire si eBay est déjà aligné : évite un PUT inutile à chaque
+        # enregistrement de carte et permet de relancer un rattrapage global
+        # sans repousser tout le catalogue.
+        if item_qty == quantity and offer_qty == quantity and not price_differs:
             return {"updated": False, "quantity": quantity, "unchanged": True}
 
         if item_qty != quantity:
@@ -911,17 +936,22 @@ async def update_listing_quantity(card: dict, access_token: str, quantity: int) 
             if put_item.status_code not in (200, 201, 204):
                 raise EbayApiError("Mise à jour du stock (fiche produit)", put_item.status_code, put_item.text)
 
-        if offer_qty != quantity:
+        if offer_qty != quantity or price_differs:
             offer["availableQuantity"] = quantity
+            if price_differs:
+                offer["pricingSummary"] = {
+                    **offer.get("pricingSummary", {}),
+                    "price": {"value": str(price), "currency": "EUR"},
+                }
             for ro_field in ("offerId", "listing", "status"):
                 offer.pop(ro_field, None)
             put_offer = await client.put(
                 f"{INVENTORY_API}/offer/{offer_id}", headers=_sell_headers(access_token), json=offer
             )
             if put_offer.status_code not in (200, 204):
-                raise EbayApiError("Mise à jour du stock (offre)", put_offer.status_code, put_offer.text)
+                raise EbayApiError("Mise à jour de l'annonce (offre)", put_offer.status_code, put_offer.text)
 
-    return {"updated": True, "quantity": quantity, "unchanged": False}
+    return {"updated": True, "quantity": quantity, "price": price, "unchanged": False}
 
 
 SUPABASE_PAGE_SIZE = 1000
@@ -1010,7 +1040,10 @@ async def sync_stock_to_ebay(
         async with semaphore:
             quantity = _card_quantity(card) if card.get("status") != "vendu" else 0
             try:
-                result = await update_listing_quantity(card, access_token, quantity)
+                price = card.get("price")
+                result = await update_listing_quantity(
+                    card, access_token, quantity, float(price) if price else None
+                )
             except EbayApiError as e:
                 errors.append({
                     "card_id": card.get("id"),
