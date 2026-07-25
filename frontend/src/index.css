@@ -145,3 +145,12 @@ body {
     display: none !important;
   }
 }
+/* Défilement horizontal sans barre visible (répertoire A-Z de la collection,
+   qui doit tenir sur une seule ligne en portrait). */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
