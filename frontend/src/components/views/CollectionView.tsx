@@ -38,6 +38,7 @@ import { GradingBadge } from '../shared/GradingBadge';
 import { StatusBadge } from '../shared/StatusBadge';
 import { CardDetail } from '../shared/CardDetail';
 import { EbayBulkPublishModal } from '../shared/EbayBulkPublishModal';
+import { WhatnotExportModal } from '../shared/WhatnotExportModal';
 import { EbayLogo } from '../shared/EbayLogo';
 import { cdnImg } from '../../lib/cdn';
 import { RookieBadge } from '../shared/RookieBadge';
@@ -788,6 +789,7 @@ export function CollectionView() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [ebayBulkOpen, setEbayBulkOpen] = useState(false);
+  const [whatnotOpen, setWhatnotOpen] = useState(false);
   const updateCard = useUpdateCard();
   const deleteCard = useDeleteCard();
   const deleteFolder = useDeleteFolder();
@@ -1478,6 +1480,15 @@ export function CollectionView() {
               Publier
             </button>
 
+            <button
+              onClick={() => setWhatnotOpen(true)}
+              disabled={bulkBusy || selectedIds.size === 0}
+              className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-bold text-white/85 transition-all hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Download size={14} />
+              Whatnot
+            </button>
+
             {folders.length > 0 && (
               <>
                 <div className="h-6 w-px bg-white/10" />
@@ -1538,6 +1549,13 @@ export function CollectionView() {
         <EbayBulkPublishModal
           cards={cards.filter((c) => selectedIds.has(c.id))}
           onClose={() => setEbayBulkOpen(false)}
+        />
+      )}
+
+      {whatnotOpen && (
+        <WhatnotExportModal
+          cards={cards.filter((c) => selectedIds.has(c.id))}
+          onClose={() => setWhatnotOpen(false)}
         />
       )}
 
