@@ -158,7 +158,7 @@ async def create_card(body: CardCreate, user: dict = Depends(current_user)):
 @router.patch("/cards/{card_id}")
 async def update_card(card_id: str, body: CardUpdate, user: dict = Depends(current_user)):
     user_id = user["sub"]
-    payload = body.model_dump(exclude_none=True)
+    payload = body.model_dump(exclude_unset=True)
 
     async with httpx.AsyncClient() as client:
         resp = await client.patch(
