@@ -70,6 +70,9 @@ class CardCreate(BaseModel):
     condition_notes: Optional[str] = None
     status: Optional[str] = "collection"
     price: Optional[float] = None
+    vinted_price: Optional[float] = None
+    ebay_price: Optional[float] = None
+    price_inflation: Optional[float] = 0
     purchase_price: Optional[float] = None
     sale_mode: Optional[str] = "unit"
     is_shelved: Optional[bool] = False
@@ -106,6 +109,9 @@ class CardUpdate(BaseModel):
     condition_notes: Optional[str] = None
     status: Optional[str] = None
     price: Optional[float] = None
+    vinted_price: Optional[float] = None
+    ebay_price: Optional[float] = None
+    price_inflation: Optional[float] = None
     purchase_price: Optional[float] = None
     sale_mode: Optional[str] = None
     is_shelved: Optional[bool] = None
@@ -141,6 +147,10 @@ async def list_cards(user: dict = Depends(current_user), x_impersonate: Optional
 async def create_card(body: CardCreate, user: dict = Depends(current_user)):
     user_id = user["sub"]
     payload = body.model_dump(exclude_none=True)
+    if "vinted_price" in payload:
+        payload["price"] = payload["vinted_price"]
+    elif "price" in payload:
+        payload["vinted_price"] = payload["price"]
     payload["user_id"] = user_id
 
     async with httpx.AsyncClient() as client:
@@ -159,6 +169,10 @@ async def create_card(body: CardCreate, user: dict = Depends(current_user)):
 async def update_card(card_id: str, body: CardUpdate, user: dict = Depends(current_user)):
     user_id = user["sub"]
     payload = body.model_dump(exclude_unset=True)
+    if "vinted_price" in payload:
+        payload["price"] = payload["vinted_price"]
+    elif "price" in payload:
+        payload["vinted_price"] = payload["price"]
 
     async with httpx.AsyncClient() as client:
         resp = await client.patch(
@@ -177,7 +191,7 @@ async def update_card(card_id: str, body: CardUpdate, user: dict = Depends(curre
     else:
         card = data
 
-    if "quantity" in payload or "price" in payload:
+    if "quantity" in payload or "price" in payload or "ebay_price" in payload:
         card = {**card, "ebay_quantity_sync": await _push_listing_state_to_ebay(card, user_id)}
     return card
 
@@ -198,7 +212,7 @@ async def _push_listing_state_to_ebay(card: dict, user_id: str) -> Optional[dict
         access_token = await get_valid_access_token(user_id)
         if not access_token:
             return {"ok": False, "error": "Compte eBay non connecté."}
-        price = card.get("price")
+        price = card.get("ebay_price") or card.get("price")
         result = await ebay_selling.update_listing_quantity(
             card,
             access_token,

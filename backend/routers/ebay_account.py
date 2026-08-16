@@ -32,6 +32,15 @@ class LocationRequest(BaseModel):
 
 class SellerSettingsRequest(BaseModel):
     extra_image_url: Optional[str] = None
+    commission_rate: Optional[float] = None
+    transaction_rate: Optional[float] = None
+
+    @field_validator("commission_rate", "transaction_rate")
+    @classmethod
+    def _validate_rate(cls, value: Optional[float]) -> Optional[float]:
+        if value is not None and (value < 0 or value > 100):
+            raise ValueError("Le taux doit être compris entre 0 et 100 %.")
+        return value
 
     @field_validator("extra_image_url")
     @classmethod
@@ -148,13 +157,23 @@ async def account_settings(user: dict = Depends(current_user)):
     pour l'instant l'image « vendeur » ajoutée automatiquement en 3e photo de
     chaque annonce publiée."""
     settings = await ebay_settings_store.get_settings(user["sub"])
-    return {"extra_image_url": (settings or {}).get("extra_image_url")}
+    return {
+        "extra_image_url": (settings or {}).get("extra_image_url"),
+        "commission_rate": float((settings or {}).get("commission_rate") or 0),
+        "transaction_rate": float((settings or {}).get("transaction_rate") or 0),
+    }
 
 
 @router.put("/ebay/account/settings")
 async def account_settings_update(body: SellerSettingsRequest, user: dict = Depends(current_user)):
-    await ebay_settings_store.upsert_settings(user["sub"], {"extra_image_url": body.extra_image_url})
-    return {"extra_image_url": body.extra_image_url}
+    fields = body.model_dump(exclude_unset=True)
+    await ebay_settings_store.upsert_settings(user["sub"], fields)
+    settings = await ebay_settings_store.get_settings(user["sub"])
+    return {
+        "extra_image_url": (settings or {}).get("extra_image_url"),
+        "commission_rate": float((settings or {}).get("commission_rate") or 0),
+        "transaction_rate": float((settings or {}).get("transaction_rate") or 0),
+    }
 
 
 class ShippingRule(BaseModel):
