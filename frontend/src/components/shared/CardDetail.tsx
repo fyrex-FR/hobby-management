@@ -39,6 +39,8 @@ import { RookieBadge } from './RookieBadge';
 import { normalizeParallelName } from '../../lib/cardQuality';
 import { apiFetch } from '../../api/client';
 import { downloadImage } from '../../lib/downloadImage';
+import { useEbaySellerImage } from '../../hooks/useEbayAccount';
+import { calculateEbayPrice } from '../../lib/marketplacePricing';
 
 
 const inputCls = 'w-full rounded-xl px-3 py-2 text-sm outline-none transition-all bg-white/5 border border-white/10 focus:border-[var(--accent)]/50 focus:bg-white/10';
@@ -132,6 +134,7 @@ export function CardDetail({ card, onClose }: Props) {
     }
   }
   const { data: folders = [] } = useFolders();
+  const { data: ebaySettings } = useEbaySellerImage();
   const [folderIds, setFolderIds] = useState<string[]>(card.folder_ids ?? []);
   const frontInputRef = useRef<HTMLInputElement>(null);
   const backInputRef = useRef<HTMLInputElement>(null);
@@ -151,6 +154,9 @@ export function CardDetail({ card, onClose }: Props) {
     status: card.status,
     purchase_price: card.purchase_price?.toString() ?? '',
     price: card.price?.toString() ?? '',
+    vinted_price: (card.vinted_price ?? card.price)?.toString() ?? '',
+    ebay_price: (card.ebay_price ?? card.price)?.toString() ?? '',
+    price_inflation: card.price_inflation?.toString() ?? '0',
     vinted_url: card.vinted_url ?? '',
     ebay_url: card.ebay_url ?? '',
     quantity: card.quantity?.toString() ?? '',
@@ -166,6 +172,18 @@ export function CardDetail({ card, onClose }: Props) {
     setFields((prev) => ({ ...prev, [key]: value }));
   }
 
+  function recalculateEbayPrice() {
+    const vintedPrice = parseFloat(fields.vinted_price);
+    if (!Number.isFinite(vintedPrice)) return;
+    const result = calculateEbayPrice({
+      vintedPrice,
+      commissionRate: ebaySettings?.commission_rate ?? 0,
+      transactionRate: ebaySettings?.transaction_rate ?? 0,
+      inflation: parseFloat(fields.price_inflation) || 0,
+    });
+    set('ebay_price', result.ebayPrice.toString());
+  }
+
   async function handleSave() {
     setSaving(true);
     setEbaySyncNotice(null);
@@ -174,7 +192,10 @@ export function CardDetail({ card, onClose }: Props) {
       ...fields,
       card_type: (fields.card_type || null) as CardType | null,
       purchase_price: fields.purchase_price ? parseFloat(fields.purchase_price) : null,
-      price: fields.price ? parseFloat(fields.price) : null,
+      price: fields.vinted_price ? parseFloat(fields.vinted_price) : null,
+      vinted_price: fields.vinted_price ? parseFloat(fields.vinted_price) : null,
+      ebay_price: fields.ebay_price ? parseFloat(fields.ebay_price) : null,
+      price_inflation: fields.price_inflation ? parseFloat(fields.price_inflation) : 0,
       vinted_url: fields.vinted_url || null,
       ebay_url: fields.ebay_url || null,
       quantity: fields.quantity ? parseInt(fields.quantity, 10) : null,
@@ -499,10 +520,16 @@ export function CardDetail({ card, onClose }: Props) {
 
               <div className="flex flex-wrap gap-2">
                 <StatusBadge status={card.status} />
-                {card.price != null && (
+                {(card.vinted_price ?? card.price) != null && (
                   <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--accent)] text-[#09090B] text-[11px] font-black">
                     <Euro size={11} strokeWidth={2.5} />
-                    {card.price} €
+                    Vinted {card.vinted_price ?? card.price} €
+                  </span>
+                )}
+                {card.ebay_price != null && (
+                  <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 text-white text-[11px] font-black">
+                    <Euro size={11} strokeWidth={2.5} />
+                    eBay {card.ebay_price} €
                   </span>
                 )}
                 {card.is_rookie && <RookieBadge compact />}
@@ -552,6 +579,9 @@ export function CardDetail({ card, onClose }: Props) {
                     { label: 'Rookie', value: card.is_rookie ? 'Oui' : null, icon: Trophy, highlight: false },
                     { label: 'État', value: card.condition_notes || 'Mint / Near Mint', icon: Search, highlight: false },
                     { label: 'Prix d’achat', value: card.purchase_price != null ? `${card.purchase_price} €` : null, icon: Euro, highlight: false },
+                    { label: 'Prix Vinted', value: (card.vinted_price ?? card.price) != null ? `${card.vinted_price ?? card.price} €` : null, icon: Euro, highlight: true },
+                    { label: 'Prix eBay', value: card.ebay_price != null ? `${card.ebay_price} €` : null, icon: Euro, highlight: true },
+                    { label: 'Gonflage eBay', value: card.price_inflation ? `${card.price_inflation} €` : null, icon: Euro, highlight: false },
                   ]
                     .filter((item) => item.value)
                     .map((item, idx) => (
@@ -796,11 +826,13 @@ export function CardDetail({ card, onClose }: Props) {
                     ['card_number', 'N° carte'],
                     ['numbered', 'Tirage'],
                     ['purchase_price', 'Prix achat (€)'],
-                    ['price', 'Prix vente (€)'],
+                    ['vinted_price', 'Prix Vinted (€)'],
+                    ['ebay_price', 'Prix eBay (€)'],
+                    ['price_inflation', 'Gonflage eBay (€)'],
                     ['vinted_url', 'Lien Vinted'],
                     ['ebay_url', 'Lien eBay'],
                   ] as [
-                    'player' | 'team' | 'year' | 'brand' | 'set_name' | 'insert_name' | 'parallel_name' | 'card_number' | 'numbered' | 'purchase_price' | 'price' | 'vinted_url' | 'ebay_url',
+                    'player' | 'team' | 'year' | 'brand' | 'set_name' | 'insert_name' | 'parallel_name' | 'card_number' | 'numbered' | 'purchase_price' | 'vinted_price' | 'ebay_price' | 'price_inflation' | 'vinted_url' | 'ebay_url',
                     string
                   ][]).map(([key, label]) => (
                     <div key={key}>
@@ -808,6 +840,14 @@ export function CardDetail({ card, onClose }: Props) {
                       <input className={inputCls} value={fields[key]} onChange={(e) => set(key, e.target.value)} />
                     </div>
                   ))}
+                  <div className="col-span-2 flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 bg-white/5 border border-white/10">
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Taux eBay : {ebaySettings?.commission_rate ?? 0}% commission + {ebaySettings?.transaction_rate ?? 0}% transaction
+                    </p>
+                    <button type="button" onClick={recalculateEbayPrice} className="px-3 py-2 rounded-lg text-xs font-black bg-[var(--accent)] text-[#09090B]">
+                      Recalculer eBay
+                    </button>
+                  </div>
                   <div>
                     <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Quantité</label>
                     <input type="number" min={1} className={inputCls} value={fields.quantity} onChange={(e) => set('quantity', e.target.value)} placeholder="1" />

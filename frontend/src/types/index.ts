@@ -21,6 +21,9 @@ export interface Card {
   condition_notes: string | null;
   status: CardStatus;
   price: number | null;
+  vinted_price: number | null;
+  ebay_price: number | null;
+  price_inflation: number | null;
   purchase_price: number | null;
   sale_mode: string;
   is_shelved: boolean;

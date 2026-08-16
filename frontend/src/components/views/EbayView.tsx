@@ -36,6 +36,7 @@ import {
   useEbayLocationCreate,
   useEbaySellerImage,
   useEbaySellerImageSave,
+  useEbayPricingSettingsSave,
   useEbaySellerSetup,
   useEbayShippingRules,
   useEbayShippingRulesSave,
@@ -87,6 +88,57 @@ function SetupStep({
 }
 
 const APPLY_IMAGE_BATCH = 20;
+
+function PricingRatesCard() {
+  const { data: settings, isLoading } = useEbaySellerImage();
+  if (isLoading || !settings) {
+    return <div className="glass rounded-2xl p-5 text-xs" style={{ color: 'var(--text-muted)' }}>Chargement des taux eBay…</div>;
+  }
+  return <PricingRatesForm key={`${settings.commission_rate}-${settings.transaction_rate}`} settings={settings} />;
+}
+
+function PricingRatesForm({ settings }: { settings: { commission_rate: number; transaction_rate: number } }) {
+  const save = useEbayPricingSettingsSave();
+  const [commissionRate, setCommissionRate] = useState(String(settings.commission_rate ?? 0));
+  const [transactionRate, setTransactionRate] = useState(String(settings.transaction_rate ?? 0));
+
+  const commission = Number(commissionRate);
+  const transaction = Number(transactionRate);
+  const valid = Number.isFinite(commission) && Number.isFinite(transaction)
+    && commission >= 0 && commission <= 100 && transaction >= 0 && transaction <= 100;
+
+  return (
+    <div className="glass rounded-2xl p-5 flex flex-col gap-4">
+      <div>
+        <p className="text-sm font-black text-white">Calcul du prix eBay</p>
+        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+          Ces taux servent à préremplir le prix eBay depuis le prix Vinted. Ils restent modifiables par vendeur.
+        </p>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-3 items-end">
+        <label className="text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>
+          Commission (%)
+          <input type="number" min="0" max="100" step="0.01" value={commissionRate} onChange={(e) => setCommissionRate(e.target.value)} className="mt-1 w-full rounded-xl px-3 py-2.5 text-sm outline-none" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
+        </label>
+        <label className="text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>
+          Transaction (%)
+          <input type="number" min="0" max="100" step="0.01" value={transactionRate} onChange={(e) => setTransactionRate(e.target.value)} className="mt-1 w-full rounded-xl px-3 py-2.5 text-sm outline-none" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }} />
+        </label>
+        <button
+          onClick={() => save.mutate({ commission_rate: commission, transaction_rate: transaction })}
+          disabled={save.isPending || !valid}
+          className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold disabled:opacity-50"
+          style={{ background: 'var(--accent)', color: '#09090B' }}
+        >
+          {save.isPending ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+          Enregistrer
+        </button>
+      </div>
+      {save.isSuccess && <p className="text-xs font-bold" style={{ color: 'var(--green)' }}>Taux enregistrés.</p>}
+      {save.error && <p className="text-xs font-bold" style={{ color: 'var(--red)' }}>{(save.error as Error).message}</p>}
+    </div>
+  );
+}
 
 function SellerImageCard() {
   const { data: settings, isLoading } = useEbaySellerImage();
@@ -696,7 +748,7 @@ function ListingsTab({
                       {(card.quantity ?? 1) > 1 && (
                         <span className="text-[10px] font-black px-1.5 py-0.5 rounded" style={{ background: '#6366F1', color: 'white' }} title={`${card.quantity} exemplaires en ligne`}>×{card.quantity}</span>
                       )}
-                      {card.price != null && <span className="text-sm font-black" style={{ color: 'var(--accent)' }}>{card.price} €</span>}
+                      {(card.ebay_price ?? card.price) != null && <span className="text-sm font-black" style={{ color: 'var(--accent)' }}>{card.ebay_price ?? card.price} €</span>}
                       <button onClick={() => setEditCard(card)} className="flex items-center gap-1 text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>
                         <Pencil size={12} /> Modifier
                       </button>
@@ -709,7 +761,7 @@ function ListingsTab({
               );
             }
             if (segment === 'sold') {
-              const soldPrice = card.ebay_sold_price ?? card.price;
+              const soldPrice = card.ebay_sold_price ?? card.ebay_price ?? card.price;
               return (
                 <ListingRow
                   key={card.id}
@@ -733,7 +785,7 @@ function ListingsTab({
                 card={card}
                 right={
                   <div className="flex items-center gap-3 shrink-0">
-                    {card.price != null && <span className="text-sm font-black" style={{ color: 'var(--accent)' }}>{card.price} €</span>}
+                    {(card.ebay_price ?? card.price) != null && <span className="text-sm font-black" style={{ color: 'var(--accent)' }}>{card.ebay_price ?? card.price} €</span>}
                     <button
                       onClick={() => setPublishCard(card)}
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95"
@@ -806,7 +858,7 @@ export function EbayView() {
     [cards],
   );
   const readyNotListed = useMemo(
-    () => cards.filter((c) => c.status === 'a_vendre' && !c.ebay_url && c.image_front_url && (c.price ?? 0) > 0),
+    () => cards.filter((c) => c.status === 'a_vendre' && !c.ebay_url && c.image_front_url && (c.ebay_price ?? c.price ?? 0) > 0),
     [cards],
   );
   const location = setup?.locations?.[0];
@@ -933,6 +985,8 @@ export function EbayView() {
       </div>
 
       <SellerImageCard />
+
+      <PricingRatesCard />
 
       {status?.connected && (
         <ShippingRulesCard fulfillmentOptions={policies?.options?.fulfillment ?? []} />
