@@ -28,7 +28,8 @@ interface Eligibility {
 function evaluate(card: Card): Eligibility {
   if (card.ebay_url) return { eligible: false, reason: 'Déjà en ligne' };
   if (!card.image_front_url) return { eligible: false, reason: 'Photo recto manquante' };
-  if (card.price == null || card.price <= 0) return { eligible: false, reason: 'Sans prix' };
+  const ebayPrice = card.ebay_price ?? card.price;
+  if (ebayPrice == null || ebayPrice <= 0) return { eligible: false, reason: 'Sans prix eBay' };
   return { eligible: true };
 }
 
@@ -185,7 +186,7 @@ export function EbayBulkPublishModal({ cards, onClose, onDone }: Props) {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-white truncate">{card.player ?? '—'}</p>
                       <p className="text-[11px] truncate" style={{ color: 'var(--text-muted)' }}>
-                        {eligible ? [card.year, shippingName(card.price)].filter(Boolean).join(' · ') : reason}
+                        {eligible ? [card.year, shippingName(card.ebay_price ?? card.price)].filter(Boolean).join(' · ') : reason}
                       </p>
                     </div>
                     {res ? (
@@ -196,7 +197,7 @@ export function EbayBulkPublishModal({ cards, onClose, onDone }: Props) {
                         {res.status === 'published' ? '✓ Publiée' : res.status === 'skipped' ? 'Ignorée' : 'Échec'}
                       </span>
                     ) : eligible ? (
-                      <span className="text-sm font-black shrink-0" style={{ color: 'var(--accent)' }}>{card.price} €</span>
+                      <span className="text-sm font-black shrink-0" style={{ color: 'var(--accent)' }}>{card.ebay_price ?? card.price} €</span>
                     ) : (
                       <span className="text-[11px] font-bold shrink-0" style={{ color: 'var(--text-muted)' }}>—</span>
                     )}

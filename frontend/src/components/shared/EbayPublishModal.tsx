@@ -67,7 +67,7 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
         setPreview(data);
         if (data.title) setTitle(data.title);
         if (data.description) setDescription(data.description);
-        setPrice((data.price ?? card.price ?? '').toString());
+        setPrice((data.price ?? card.ebay_price ?? card.price ?? '').toString());
         setPaymentPolicyId(data.policies?.payment || '');
         setReturnPolicyId(data.policies?.return || '');
         setFulfillmentPolicyId(data.policies?.fulfillment || '');
@@ -75,7 +75,7 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
       .catch((e) => !cancelled && setError((e as Error).message))
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
-  }, [card.id, card.price]);
+  }, [card.id, card.ebay_price, card.price]);
 
   // Pré-sélection auto de la politique d'expédition selon le prix saisi, via
   // les règles prix -> livraison — tant que le vendeur ne l'a pas changée à la

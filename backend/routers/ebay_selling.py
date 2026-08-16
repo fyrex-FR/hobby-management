@@ -104,7 +104,7 @@ async def publish_listing(card_id: str, body: PublishRequest, user: dict = Depen
         if not access_token:
             return {"connected": False}
 
-        price = body.price if body.price is not None else card.get("price")
+        price = body.price if body.price is not None else (card.get("ebay_price") or card.get("price"))
         if not price or price <= 0:
             raise HTTPException(status_code=422, detail="Indique un prix de vente avant de publier.")
         allow_offers = bool(body.allow_offers)
@@ -215,7 +215,7 @@ async def publish_listings_batch(body: PublishBatchRequest, user: dict = Depends
                         results.append(entry)
                         return
 
-                    price = card.get("price")
+                    price = card.get("ebay_price") or card.get("price")
                     entry["price"] = price
                     if card.get("ebay_url"):
                         entry.update(status="skipped", message="Déjà en ligne sur eBay.")

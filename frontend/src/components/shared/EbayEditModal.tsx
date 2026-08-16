@@ -38,12 +38,12 @@ export function EbayEditModal({ card, onClose, onSaved }: Props) {
         if (cancelled) return;
         if (data.title) setTitle(data.title);
         if (data.description) setDescription(data.description);
-        setPrice((card.price ?? data.price ?? '').toString());
+        setPrice((card.ebay_price ?? data.price ?? card.price ?? '').toString());
       })
       .catch((e) => !cancelled && setError((e as Error).message))
       .finally(() => !cancelled && setLoading(false));
     return () => { cancelled = true; };
-  }, [card.id, card.price]);
+  }, [card.id, card.ebay_price, card.price]);
 
   const parsedPrice = parseFloat(price);
 

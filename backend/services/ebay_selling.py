@@ -284,7 +284,7 @@ async def build_preview(card: dict, access_token: str) -> dict:
         "description": build_listing_description_text(card, title),
         "category": category,
         "policies": policies,
-        "price": card.get("price"),
+        "price": card.get("ebay_price") or card.get("price"),
         "marketplace_id": SELL_MARKETPLACE_ID,
     }
 
@@ -801,7 +801,7 @@ async def publish_card(
         "ebay_url": ebay_url,
         "ebay_offer_id": offer_id,
         "ebay_listing_id": listing_id,
-        "price": price,
+        "ebay_price": price,
         "status": "a_vendre" if card.get("status") not in ("vendu",) else card["status"],
     }
     try:
@@ -815,7 +815,7 @@ async def publish_card(
         )
         await update_card_fields(sku, card["user_id"], {
             "ebay_url": ebay_url,
-            "price": price,
+            "ebay_price": price,
             "status": card_update["status"],
         })
     return {"published": True, "ebay_url": ebay_url, "listing_id": listing_id, "offer_id": offer_id}
@@ -859,7 +859,7 @@ async def update_offer_price(card: dict, access_token: str, new_price: float) ->
         if resp.status_code not in (200, 204):
             raise EbayApiError("Mise à jour du prix", resp.status_code, resp.text)
 
-    await update_card_fields(card["id"], card["user_id"], {"price": new_price})
+    await update_card_fields(card["id"], card["user_id"], {"ebay_price": new_price})
     return {"updated": True, "price": new_price}
 
 
@@ -1040,7 +1040,7 @@ async def sync_stock_to_ebay(
         async with semaphore:
             quantity = _card_quantity(card) if card.get("status") != "vendu" else 0
             try:
-                price = card.get("price")
+                price = card.get("ebay_price") or card.get("price")
                 result = await update_listing_quantity(
                     card, access_token, quantity, float(price) if price else None
                 )
@@ -1129,7 +1129,7 @@ async def update_listing(
             raise EbayApiError("Publication de l'annonce", pub.status_code, pub.text)
         listing_id = pub.json().get("listingId") or card.get("ebay_listing_id")
 
-    await update_card_fields(sku, card["user_id"], {"price": price})
+    await update_card_fields(sku, card["user_id"], {"ebay_price": price})
     return {"updated": True, "price": price, "listing_id": listing_id}
 
 
