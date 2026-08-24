@@ -1,4 +1,4 @@
-# Extension Chrome — Vinted Prefill
+# CardVaults Scout — extension Chrome
 
 ## Installation
 
@@ -7,7 +7,16 @@
 3. Cliquer `Charger l'extension non empaquetée`
 4. Sélectionner le dossier `extension/`
 
-## Usage
+## Scout Vinted / eBay
+
+1. Cliquer l'icône CardVaults Scout pour ouvrir le panneau latéral.
+2. Générer un code puis l'approuver dans CardVaults.
+3. Ouvrir une annonce Vinted ou eBay et lancer l'analyse.
+4. Corriger la recherche, écarter les faux comparables et ajouter la carte à la Collection.
+
+Le jeton d'extension est révocable dans CardVaults. Le MVP utilise une extension non empaquetée.
+
+## Préremplissage Vinted existant
 
 1. Dans l'app, ouvrir une fiche carte puis cliquer `Publier sur Vinted`
 2. Un onglet `https://www.vinted.fr/items/new` s'ouvre

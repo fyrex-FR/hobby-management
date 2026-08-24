@@ -75,3 +75,38 @@ async def identify_gemini(front_base64: str, back_base64: str) -> dict:
     except Exception as e:
         latency_ms = int((time.monotonic() - t0) * 1000)
         return {"result": None, "latency_ms": latency_ms, "cost_usd": 0.0, "error": str(e)}
+
+
+async def identify_listing_gemini(image_base64: str, listing_title: str, mime_type: str = "image/jpeg") -> dict:
+    """Identify a card from one marketplace photo plus its listing title."""
+    api_key = os.environ.get("GOOGLE_API_KEY", "")
+    if not api_key:
+        return {"result": None, "latency_ms": 0, "cost_usd": 0.0, "error": "GOOGLE_API_KEY not configured"}
+    url = f"{_API_BASE}/{_GEMINI_MODEL}:generateContent?key={api_key}"
+    payload = {
+        "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "contents": [{"role": "user", "parts": [
+            {"inline_data": {"mime_type": mime_type, "data": image_base64}},
+            {"text": f"This is one marketplace photo of a sports card. Listing title: {listing_title}. Identify only visible or strongly supported fields. Return the same JSON schema."},
+        ]}],
+        "generationConfig": {"responseMimeType": "application/json", "maxOutputTokens": 2048},
+    }
+    t0 = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.post(url, json=payload)
+        latency_ms = int((time.monotonic() - t0) * 1000)
+        if resp.status_code != 200:
+            return {"result": None, "latency_ms": latency_ms, "cost_usd": 0.0, "error": f"Gemini API {resp.status_code}"}
+        data = resp.json()
+        raw = data["candidates"][0]["content"]["parts"][0]["text"].strip()
+        if raw.startswith("```"):
+            raw = raw.split("```", 2)[1].removeprefix("json").strip()
+        usage = data.get("usageMetadata", {})
+        return {
+            "result": json.loads(raw), "latency_ms": latency_ms,
+            "cost_usd": _estimate_cost(usage.get("promptTokenCount", 0), usage.get("candidatesTokenCount", 0)),
+            "error": None,
+        }
+    except Exception as e:
+        return {"result": None, "latency_ms": int((time.monotonic() - t0) * 1000), "cost_usd": 0.0, "error": str(e)}

@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
 import { useAppStore } from './stores/appStore';
+import type { ActiveView } from './stores/appStore';
 import { useCards } from './hooks/useCards';
 import { useRequests } from './hooks/useRequests';
 import { useImpersonateStore } from './stores/impersonateStore';
@@ -43,6 +44,7 @@ import { ShareView } from './components/views/ShareView';
 import { ShareModal } from './components/shared/ShareModal';
 import { ResetPasswordView } from './components/views/ResetPasswordView';
 import MigrationView from './components/views/MigrationView';
+import { ExtensionPairView } from './components/views/ExtensionPairView';
 import { supabase } from './lib/supabase';
 
 const queryClient = new QueryClient();
@@ -139,6 +141,14 @@ function UserMenu() {
                 <Key size={15} className="text-[var(--text-secondary)]" />
                 Changer le mot de passe
               </button>
+              <button
+                onClick={() => { window.location.href = '/extension/pair'; }}
+                className="w-full px-4 py-2.5 text-left text-sm transition-colors hover:bg-white/5 rounded-xl flex items-center gap-3"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                <ScanLine size={15} className="text-[var(--text-secondary)]" />
+                Extensions Chrome
+              </button>
               <div className="h-px bg-[var(--border)] my-1 mx-2" />
               <button
                 onClick={() => supabase.auth.signOut()}
@@ -157,7 +167,7 @@ function UserMenu() {
   );
 }
 
-function AddDropdown({ activeView, onSelect }: { activeView: string; onSelect: (v: any) => void }) {
+function AddDropdown({ activeView, onSelect }: { activeView: string; onSelect: (view: ActiveView) => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const isActive = activeView === 'add_card' || activeView === 'studio' || activeView === 'batch';
@@ -558,6 +568,8 @@ function AppShell() {
   if (isResetFlow) return <ResetPasswordView onDone={() => { window.location.hash = ''; window.location.reload(); }} />;
 
   if (!session) return <LoginView />;
+
+  if (window.location.pathname === '/extension/pair') return <ExtensionPairView />;
 
   const isAdmin = session.user.email === 'xavier.andrieux@gmail.com';
 

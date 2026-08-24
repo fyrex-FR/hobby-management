@@ -1,16 +1,34 @@
 {
   "manifest_version": 3,
-  "name": "NBA Vinted Prefill",
-  "version": "1.0.0",
-  "description": "Pré-remplit les annonces Vinted depuis NBA Vinted Card Studio.",
-  "permissions": ["storage", "activeTab", "scripting"],
-  "host_permissions": ["https://www.vinted.fr/*"],
+  "name": "CardVaults Scout",
+  "version": "2.0.0",
+  "description": "Analyse les cartes de sport sur Vinted et eBay, puis les ajoute à CardVaults.",
+  "permissions": ["storage", "activeTab", "scripting", "sidePanel", "tabs"],
+  "host_permissions": [
+    "https://www.vinted.fr/*",
+    "https://www.ebay.fr/*",
+    "https://www.ebay.com/*",
+    "https://collection-api.cardvaults.app/*"
+  ],
+  "background": { "service_worker": "service-worker.js" },
+  "action": { "default_title": "Ouvrir CardVaults Scout" },
+  "side_panel": { "default_path": "sidepanel.html" },
   "content_scripts": [
     {
       "matches": ["https://www.vinted.fr/*"],
       "js": ["content.js"],
       "run_at": "document_idle",
       "all_frames": false
+    },
+    {
+      "matches": ["https://www.vinted.fr/items/*"],
+      "js": ["scout-vinted.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://www.ebay.fr/itm/*", "https://www.ebay.com/itm/*"],
+      "js": ["scout-ebay.js"],
+      "run_at": "document_idle"
     }
   ]
 }

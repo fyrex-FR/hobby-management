@@ -6,18 +6,23 @@ load_dotenv()
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import auth, cards, identify, upload, compare, vinted, ebay, ebay_account, ebay_selling, share, admin, folders, migration
+from routers import auth, cards, identify, upload, compare, vinted, ebay, ebay_account, ebay_selling, share, admin, folders, migration, extension
 
 _debug = os.getenv("DEBUG", "false").lower() == "true"
 app = FastAPI(title="CardVaults API", docs_url="/docs" if _debug else None, redoc_url=None)
 
+extension_origin = os.getenv("EXTENSION_ORIGIN", "").strip()
+allowed_origins = [
+    "http://localhost:5173",
+    "https://hobby-management.pages.dev",
+    "https://collection.cardvaults.app",
+]
+if extension_origin:
+    allowed_origins.append(extension_origin)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "https://hobby-management.pages.dev",
-        "https://collection.cardvaults.app",
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -35,6 +40,7 @@ app.include_router(share.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
 app.include_router(folders.router, prefix="/api")
 app.include_router(migration.router, prefix="/api")
+app.include_router(extension.router, prefix="/api")
 
 
 @app.get("/api/health")

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CardVaults Scout</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <header><strong>CardVaults Scout</strong><button id="logout" class="ghost hidden">Déconnecter</button></header>
+  <main>
+    <section id="pairing" class="card hidden">
+      <h1>Connecter CardVaults</h1>
+      <p>Associe cette extension à ton compte. Aucun mot de passe n’est stocké ici.</p>
+      <button id="pair">Générer un code</button>
+      <div id="pair-code" class="pair-code hidden"></div>
+      <a id="approve" class="button secondary hidden" target="_blank">Ouvrir CardVaults</a>
+      <button id="exchange" class="secondary hidden">J’ai validé le code</button>
+    </section>
+    <section id="scout" class="hidden">
+      <div id="status" class="status">Ouvre une annonce Vinted ou eBay.</div>
+      <div id="listing" class="card hidden"></div>
+      <label>Recherche eBay<input id="query" type="text"></label>
+      <button id="analyze">Analyser l’annonce</button>
+      <div id="summary" class="card hidden"></div>
+      <div id="results"></div>
+      <button id="add" class="hidden">Ajouter à ma Collection</button>
+    </section>
+  </main>
+  <script src="sidepanel.js"></script>
+</body>
+</html>
