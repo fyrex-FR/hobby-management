@@ -271,6 +271,7 @@ export function BatchView() {
 
       onStep?.('Extraction');
       const newCard = await createCard.mutateAsync({
+        sport: ai.sport || 'Basket',
         player: ai.player || null,
         team: ai.team || null,
         year: ai.year || null,

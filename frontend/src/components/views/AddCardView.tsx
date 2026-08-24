@@ -16,7 +16,7 @@ import { useCreateCard, useDeleteCard, useUpdateCard } from '../../hooks/useCard
 import { compressImage } from '../../lib/storage';
 import { useAppStore } from '../../stores/appStore';
 import { supabase } from '../../lib/supabase';
-import type { CardType, CardStatus } from '../../types';
+import { SPORTS, type CardType, type CardStatus, type Sport } from '../../types';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
@@ -103,6 +103,7 @@ export function AddCardView() {
   const [frontFile, setFrontFile] = useState<File | null>(null);
   const [backFile, setBackFile] = useState<File | null>(null);
   const [fields, setFields] = useState({
+    sport: 'Basket' as Sport,
     player: '',
     team: '',
     year: '',
@@ -136,6 +137,7 @@ export function AddCardView() {
   function applyAIResult(r: Parameters<typeof identify.mutateAsync>[0] extends infer _P ? Awaited<ReturnType<typeof identify.mutateAsync>> : never) {
     setFields((prev) => ({
       ...prev,
+      sport: r.sport || prev.sport,
       player: r.player || prev.player,
       team: r.team || prev.team,
       year: r.year || prev.year,
@@ -317,6 +319,11 @@ export function AddCardView() {
           <div className="space-y-6">
             <div className="panel p-6 rounded-3xl space-y-6">
               <div className="grid grid-cols-2 gap-4">
+                <Field label="Sport">
+                  <select className={inputCls} value={fields.sport} onChange={(e) => set('sport', e.target.value)}>
+                    {SPORTS.map((sport) => <option key={sport} value={sport}>{sport}</option>)}
+                  </select>
+                </Field>
                 <Field label="Joueur">
                   <input className={inputCls} value={fields.player} onChange={(e) => set('player', e.target.value)} placeholder="ex: LeBron James" />
                 </Field>

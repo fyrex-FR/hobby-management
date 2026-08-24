@@ -2,7 +2,7 @@ import logging
 import os
 from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
-from typing import Optional
+from typing import Literal, Optional
 import httpx
 
 from .auth import current_user
@@ -55,6 +55,7 @@ async def fetch_all_rows(client: httpx.AsyncClient, url: str, params: dict, page
 
 
 class CardCreate(BaseModel):
+    sport: Literal["Basket", "Foot", "Baseball", "Football US", "Hockey", "Autre"] = "Basket"
     player: Optional[str] = None
     team: Optional[str] = None
     year: Optional[str] = None
@@ -94,6 +95,7 @@ class CardCreate(BaseModel):
 
 
 class CardUpdate(BaseModel):
+    sport: Optional[Literal["Basket", "Foot", "Baseball", "Football US", "Hockey", "Autre"]] = None
     player: Optional[str] = None
     team: Optional[str] = None
     year: Optional[str] = None

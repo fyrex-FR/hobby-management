@@ -6,6 +6,7 @@ from .auth import current_user
 from services.gemini import identify_gemini
 
 router = APIRouter()
+SPORTS = {"Basket", "Foot", "Baseball", "Football US", "Hockey", "Autre"}
 
 
 class IdentifyRequest(BaseModel):
@@ -26,7 +27,10 @@ async def identify_card(body: IdentifyRequest, user: dict = Depends(current_user
     if not out["result"]:
         raise HTTPException(status_code=422, detail="Gemini returned no result")
 
-    return out["result"]
+    result = out["result"]
+    if result.get("sport") not in SPORTS:
+        result["sport"] = "Basket"
+    return result
 
 
 @router.get("/identify/quota")

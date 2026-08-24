@@ -49,7 +49,7 @@ import { normalizeParallelName } from '../../lib/cardQuality';
 import { playerLastName, playerInitial, playerNameKey, buildPlayerCanonical, stripDiacritics } from '../../lib/playerName';
 
 type FilterTab = 'all' | 'a_vendre' | 'vendu';
-type GroupBy = 'none' | 'player' | 'team' | 'brand' | 'set_name' | 'year';
+type GroupBy = 'none' | 'sport' | 'player' | 'team' | 'brand' | 'set_name' | 'year';
 type SortBy = 'recent' | 'player' | 'year_desc' | 'year_asc' | 'price_desc' | 'price_asc' | 'numbered';
 type ListingFilter = 'all' | 'online' | 'vinted' | 'ebay' | 'offline' | 'not_vinted' | 'not_ebay';
 
@@ -65,6 +65,7 @@ const SORT_LABELS: Record<SortBy, string> = {
 
 const GROUP_BY_LABELS: Record<GroupBy, string> = {
   none: 'Aucun',
+  sport: 'Sport',
   player: 'Joueur',
   team: 'Équipe',
   brand: 'Marque',
@@ -859,6 +860,7 @@ export function CollectionView() {
   const { viewMode, setViewMode, drillFilter, clearDrillFilter } = useAppStore();
 
   const [statusFilter, setStatusFilter] = useState<FilterTab>('all');
+  const [sportFilter, setSportFilter] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [playerFilter, setPlayerFilter] = useState<string | null>(drillFilter.player ?? null);
   const [teamFilter, setTeamFilter] = useState<string | null>(drillFilter.team ?? null);
@@ -1001,6 +1003,7 @@ export function CollectionView() {
     return cards.filter((c) => {
       if (c.status === 'draft') return false;
       if (statusFilter !== 'all' && c.status !== (statusFilter as CardStatus)) return false;
+      if (sportFilter && c.sport !== sportFilter) return false;
       if (playerFilter && playerNameKey(c.player) !== playerNameKey(playerFilter)) return false;
       if (teamFilter && c.team !== teamFilter) return false;
       if (brandFilter && c.brand !== brandFilter) return false;
@@ -1037,7 +1040,7 @@ export function CollectionView() {
       }
       return true;
     });
-  }, [cards, statusFilter, playerFilter, teamFilter, brandFilter, setFilter, yearFilter, typeFilter, rookieOnly, listingFilter, folderFilter, search]);
+  }, [cards, statusFilter, sportFilter, playerFilter, teamFilter, brandFilter, setFilter, yearFilter, typeFilter, rookieOnly, listingFilter, folderFilter, search]);
 
   // Tri appliqué après filtrage (grille + tableau).
   const sorted = useMemo(() => sortCards(filtered, sortBy), [filtered, sortBy]);
@@ -1094,6 +1097,7 @@ export function CollectionView() {
       .map(([value, count]) => ({ value, count }));
   }, [cards]);
   const teams = useMemo(() => facets('team'), [facets]);
+  const sports = useMemo(() => facets('sport'), [facets]);
   const brands = useMemo(() => facets('brand'), [facets]);
   const sets = useMemo(() => facets('set_name'), [facets]);
   const years = useMemo(() => facets('year'), [facets]);
@@ -1357,6 +1361,7 @@ export function CollectionView() {
         {/* Row 2b: dropdowns de filtres (repliables) */}
         {showFilters && (
           <div className="flex items-center gap-2 flex-wrap">
+            <FilterDropdown label="Sport" items={sports} selected={sportFilter} onSelect={setSportFilter} />
             <FilterDropdown label="Joueur" items={players} selected={playerFilter} onSelect={setPlayerFilter} />
             <FilterDropdown label="Équipe" items={teams} selected={teamFilter} onSelect={setTeamFilter} />
             <FilterDropdown label="Marque" items={brands} selected={brandFilter} onSelect={setBrandFilter} />

@@ -799,6 +799,7 @@ export function StudioView() {
     const result = identifyResult!;
     await updateCard.mutateAsync({
       id: pair.id,
+      sport: result.sport || 'Basket',
       player: result.player || null,
       team: result.team || null,
       year: result.year || null,

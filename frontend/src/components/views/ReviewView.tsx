@@ -24,7 +24,7 @@ import { useAppStore } from '../../stores/appStore';
 import { getStudioSession } from '../../lib/studioSessions';
 import { normalizeParallelName } from '../../lib/cardQuality';
 import { buildSimilarityPrefill, findDuplicateMatches } from '../../lib/cardSimilarity';
-import type { Card, CardStatus, CardType } from '../../types';
+import { SPORTS, type Card, type CardStatus, type CardType, type Sport } from '../../types';
 import { RookieBadge } from '../shared/RookieBadge';
 import { AlertChips, ConfidenceBadge } from '../shared/CardSignals';
 
@@ -107,6 +107,7 @@ function DraftEditor({
 }) {
   // Use the card directly in the state initialization, and use a key on DraftEditor to reset it
   const [fields, setFields] = useState({
+    sport: card.sport ?? 'Basket' as Sport,
     player: card.player ?? '',
     team: card.team ?? '',
     year: card.year ?? '',
@@ -151,6 +152,7 @@ function DraftEditor({
       const r = await identify.mutateAsync({ frontFile, backFile });
       setFields((prev) => ({
         ...prev,
+        sport: r.sport || prev.sport,
         player: r.player || prev.player,
         team: r.team || prev.team,
         year: r.year || prev.year,
@@ -325,6 +327,11 @@ function DraftEditor({
       <div className="space-y-6">
         <div className="panel p-8 rounded-[32px] bg-white/[0.02] border border-white/10 space-y-8">
           <div className="grid sm:grid-cols-2 gap-6">
+            <Field label="Sport" icon={Tag}>
+              <select className={inputCls} value={fields.sport} onChange={(e) => set('sport', e.target.value)}>
+                {SPORTS.map((sport) => <option key={sport} value={sport}>{sport}</option>)}
+              </select>
+            </Field>
             <Field label="Joueur" icon={Tag}>
               <input className={inputCls} value={fields.player} onChange={(e) => set('player', e.target.value)} placeholder="ex: LeBron James" />
             </Field>

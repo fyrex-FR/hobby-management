@@ -23,7 +23,7 @@ import {
   Layers,
   Trophy
 } from 'lucide-react';
-import type { Card, CardType, GradingCompany, GradingStatus } from '../../types';
+import { SPORTS, type Card, type CardType, type GradingCompany, type GradingStatus, type Sport } from '../../types';
 import { GradingBadge } from './GradingBadge';
 import { StatusBadge } from './StatusBadge';
 import { useDeleteCard, useUpdateCard } from '../../hooks/useCards';
@@ -39,7 +39,6 @@ import { RookieBadge } from './RookieBadge';
 import { normalizeParallelName } from '../../lib/cardQuality';
 import { apiFetch } from '../../api/client';
 import { downloadImage } from '../../lib/downloadImage';
-import { useEbaySellerImage } from '../../hooks/useEbayAccount';
 import { calculateEbayPrice } from '../../lib/marketplacePricing';
 
 
@@ -134,11 +133,11 @@ export function CardDetail({ card, onClose }: Props) {
     }
   }
   const { data: folders = [] } = useFolders();
-  const { data: ebaySettings } = useEbaySellerImage();
   const [folderIds, setFolderIds] = useState<string[]>(card.folder_ids ?? []);
   const frontInputRef = useRef<HTMLInputElement>(null);
   const backInputRef = useRef<HTMLInputElement>(null);
   const [fields, setFields] = useState({
+    sport: card.sport ?? 'Basket' as Sport,
     player: card.player ?? '',
     team: card.team ?? '',
     year: card.year ?? '',
@@ -156,7 +155,6 @@ export function CardDetail({ card, onClose }: Props) {
     price: card.price?.toString() ?? '',
     vinted_price: (card.vinted_price ?? card.price)?.toString() ?? '',
     ebay_price: (card.ebay_price ?? card.price)?.toString() ?? '',
-    price_inflation: card.price_inflation?.toString() ?? '0',
     vinted_url: card.vinted_url ?? '',
     ebay_url: card.ebay_url ?? '',
     quantity: card.quantity?.toString() ?? '',
@@ -177,9 +175,6 @@ export function CardDetail({ card, onClose }: Props) {
     if (!Number.isFinite(vintedPrice)) return;
     const result = calculateEbayPrice({
       vintedPrice,
-      commissionRate: ebaySettings?.commission_rate ?? 0,
-      transactionRate: ebaySettings?.transaction_rate ?? 0,
-      inflation: parseFloat(fields.price_inflation) || 0,
     });
     set('ebay_price', result.ebayPrice.toString());
   }
@@ -190,12 +185,12 @@ export function CardDetail({ card, onClose }: Props) {
     const updated = await updateCard.mutateAsync({
       id: card.id,
       ...fields,
+      sport: fields.sport,
       card_type: (fields.card_type || null) as CardType | null,
       purchase_price: fields.purchase_price ? parseFloat(fields.purchase_price) : null,
       price: fields.vinted_price ? parseFloat(fields.vinted_price) : null,
       vinted_price: fields.vinted_price ? parseFloat(fields.vinted_price) : null,
       ebay_price: fields.ebay_price ? parseFloat(fields.ebay_price) : null,
-      price_inflation: fields.price_inflation ? parseFloat(fields.price_inflation) : 0,
       vinted_url: fields.vinted_url || null,
       ebay_url: fields.ebay_url || null,
       quantity: fields.quantity ? parseInt(fields.quantity, 10) : null,
@@ -286,6 +281,7 @@ export function CardDetail({ card, onClose }: Props) {
       const r = await identify.mutateAsync({ frontFile, backFile });
       setFields((prev) => ({
         ...prev,
+        sport: r.sport || prev.sport,
         player: r.player || prev.player,
         team: r.team || prev.team,
         year: r.year || prev.year,
@@ -581,7 +577,6 @@ export function CardDetail({ card, onClose }: Props) {
                     { label: 'Prix d’achat', value: card.purchase_price != null ? `${card.purchase_price} €` : null, icon: Euro, highlight: false },
                     { label: 'Prix Vinted', value: (card.vinted_price ?? card.price) != null ? `${card.vinted_price ?? card.price} €` : null, icon: Euro, highlight: true },
                     { label: 'Prix eBay', value: card.ebay_price != null ? `${card.ebay_price} €` : null, icon: Euro, highlight: true },
-                    { label: 'Gonflage eBay', value: card.price_inflation ? `${card.price_inflation} €` : null, icon: Euro, highlight: false },
                   ]
                     .filter((item) => item.value)
                     .map((item, idx) => (
@@ -815,6 +810,12 @@ export function CardDetail({ card, onClose }: Props) {
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Sport</label>
+                    <select className={inputCls} value={fields.sport} onChange={(e) => set('sport', e.target.value as Sport)}>
+                      {SPORTS.map((sport) => <option key={sport} value={sport}>{sport}</option>)}
+                    </select>
+                  </div>
                   {([
                     ['player', 'Joueur'],
                     ['team', 'Équipe'],
@@ -828,11 +829,10 @@ export function CardDetail({ card, onClose }: Props) {
                     ['purchase_price', 'Prix achat (€)'],
                     ['vinted_price', 'Prix Vinted (€)'],
                     ['ebay_price', 'Prix eBay (€)'],
-                    ['price_inflation', 'Gonflage eBay (€)'],
                     ['vinted_url', 'Lien Vinted'],
                     ['ebay_url', 'Lien eBay'],
                   ] as [
-                    'player' | 'team' | 'year' | 'brand' | 'set_name' | 'insert_name' | 'parallel_name' | 'card_number' | 'numbered' | 'purchase_price' | 'vinted_price' | 'ebay_price' | 'price_inflation' | 'vinted_url' | 'ebay_url',
+                    'player' | 'team' | 'year' | 'brand' | 'set_name' | 'insert_name' | 'parallel_name' | 'card_number' | 'numbered' | 'purchase_price' | 'vinted_price' | 'ebay_price' | 'vinted_url' | 'ebay_url',
                     string
                   ][]).map(([key, label]) => (
                     <div key={key}>
@@ -842,7 +842,7 @@ export function CardDetail({ card, onClose }: Props) {
                   ))}
                   <div className="col-span-2 flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 bg-white/5 border border-white/10">
                     <p className="text-xs text-[var(--text-muted)]">
-                      Taux eBay : {ebaySettings?.commission_rate ?? 0}% commission + {ebaySettings?.transaction_rate ?? 0}% transaction
+                      Prix cible après 9 % de frais eBay + 0,35 €
                     </p>
                     <button type="button" onClick={recalculateEbayPrice} className="px-3 py-2 rounded-lg text-xs font-black bg-[var(--accent)] text-[#09090B]">
                       Recalculer eBay

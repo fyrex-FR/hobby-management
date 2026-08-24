@@ -1,11 +1,14 @@
 export type CardType = 'base' | 'insert' | 'parallel' | 'numbered' | 'auto' | 'patch' | 'auto_patch';
 export type CardStatus = 'draft' | 'collection' | 'a_vendre' | 'reserve' | 'vendu';
+export type Sport = 'Basket' | 'Foot' | 'Baseball' | 'Football US' | 'Hockey' | 'Autre';
+export const SPORTS: Sport[] = ['Basket', 'Foot', 'Baseball', 'Football US', 'Hockey', 'Autre'];
 export type GradingCompany = 'PSA' | 'BGS' | 'SGC' | 'CGC' | 'HGA';
 export type GradingStatus = 'submitted' | 'received' | 'graded' | 'returned';
 
 export interface Card {
   id: string;
   user_id: string;
+  sport: Sport;
   player: string | null;
   team: string | null;
   year: string | null;
@@ -74,6 +77,7 @@ export interface ShareRequest {
 }
 
 export interface AIIdentificationResult {
+  sport: Sport;
   player: string;
   team: string;
   year: string;

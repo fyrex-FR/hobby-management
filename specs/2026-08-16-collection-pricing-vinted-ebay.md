@@ -1,46 +1,38 @@
-# Collection pricing Vinted / eBay
+# Prix Vinted/eBay et collections multi-sport
 
 ## Besoin
-- Distinguer et persister un prix Vinted et un prix eBay pour chaque carte.
-- Préremplir le prix eBay depuis le prix Vinted avec les taux eBay configurés, un gonflage propre à la carte et la règle d'arrondi.
-- Les deux prix restent modifiables manuellement après le calcul automatique.
-- Conserver les prix existants : le champ historique `price` devient le prix Vinted initial.
-- Hors périmètre : automatiser une règle spéciale à partir de `200 €`.
+- Persister un prix Vinted et un prix eBay modifiables pour chaque carte.
+- Préremplir le prix eBay pour conserver le prix Vinted net après 9 % de commission et 0,35 € de frais fixes.
+- Gérer Basket, Foot, Baseball, Football US, Hockey et Autre.
+- Détecter le sport par IA, permettre sa correction, puis filtrer et regrouper la Collection par sport.
+- Classer les cartes existantes en Basket.
+- Hors périmètre : catégories eBay propres à chaque sport et vues partagées.
 
 ## Décisions validées
-- `vinted_price`, `ebay_price` et `price_inflation` sont persistés par carte.
-- `price_inflation` est manuel, à `0 €` par défaut, sans déclenchement automatique.
-- Les taux commission/transaction sont persistés par compte dans la configuration eBay.
-- Aucun taux n'existait dans le code : leurs valeurs sont saisies dans l'app.
-- Le calcul est une fonction pure isolée et testée, avec taux et gonflage injectés.
-- Le seuil de `5 €` porte sur le montant après taux et gonflage, avant arrondi : `6,20 €` devient `7 €`.
-
-## Ordre de calcul
-1. Partir de `vinted_price`.
-2. Ajouter commission et transaction configurées.
-3. Ajouter `price_inflation`.
-4. Sous `5 €`, arrondir au-dessus au `0,50 €`; sinon au `1 €`.
-5. Proposer le résultat dans `ebay_price`, modifiable avant sauvegarde.
+- Formule : `ebay_price = (vinted_price + 0,35) / 0,91`.
+- Le résultat est arrondi au-dessus au pas de 0,50 € sous 5 €, sinon à l'euro supérieur.
+- Le sport est une valeur contrôlée, détectée par l'IA et modifiable manuellement.
+- Les cartes existantes reçoivent `Basket` lors de la migration.
 
 ## Plan technique
-- Migration additive des trois champs carte et des deux taux vendeur eBay.
-- Reprise `vinted_price = price`, sans supprimer `price` pour préserver le rollback.
-- Extension des contrats cartes/réglages et validation des taux entre 0 et 100.
-- Édition des taux dans les réglages eBay et des trois prix dans la fiche carte.
-- Utilitaire pur testé, sans formule dans les composants.
-- Publication eBay sur `ebay_price`, avec repli sur `price` pendant la transition.
-- Tests frontend, build TypeScript et compilation backend.
-- Rollback : ancien code compatible grâce au maintien de `price`.
+- Migration additive `sport`, contrainte sur les six valeurs et reprise Basket.
+- Validation du sport dans les contrats cartes et normalisation de la réponse IA avec repli Basket.
+- Ajout du sport aux flux création, lot, studio, revue et fiche carte.
+- Ajout du filtre et du regroupement Sport dans la Collection.
+- Remplacement des taux eBay configurables par la formule fixe validée ; conservation des anciennes colonnes pour compatibilité.
+- Tests du calcul, build TypeScript, compilation backend et rollback compatible grâce aux champs historiques conservés.
+- Alternative écartée : déduire le sport à l'affichage depuis l'équipe, car ce serait fragile et non corrigeable.
 
 ## Tâches
-1. Migration et reprise des données.
-2. Contrats backend et réglages eBay.
-3. Fonction pure et tests.
-4. UI de configuration des taux.
-5. UI carte et recalcul explicite.
-6. Publication eBay, vérifications et convergence.
+1. Ajouter la migration et la validation backend du sport.
+2. Étendre l'identification IA et tous les flux de création/édition.
+3. Ajouter filtre et regroupement Sport à la Collection.
+4. Aligner le calcul eBay et son interface sur la formule fixe.
+5. Exécuter tests, build et convergence.
 
 ## Convergence
-- Fait : migration, persistance, reprise de `price`, configuration des taux, calcul testé, édition/recalcul carte et publication eBay.
-- Divergence : aucune sur le besoin validé.
-- Reste avant production : appliquer la migration puis déployer backend/frontend avec les contrôles prod prévus.
+- Fait : migration additive, validation/repli IA, édition manuelle, flux création/revue/lot/studio, filtre et regroupement.
+- Fait : formule eBay fixe testée et ancienne configuration masquée ; la publication utilise déjà `ebay_price` avec repli historique.
+- Divergence : les anciennes colonnes de taux et de gonflage restent en base/API pour garantir la compatibilité, mais ne pilotent plus le calcul.
+- Vérifications : tests Vitest et build frontend passent ; compilation Python et `git diff --check` passent.
+- Reste avant production : revue, commit/push, application de la migration, puis déploiement backend/frontend après validation explicite.

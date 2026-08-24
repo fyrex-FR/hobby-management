@@ -1,8 +1,5 @@
 export interface EbayPricingInput {
   vintedPrice: number;
-  commissionRate: number;
-  transactionRate: number;
-  inflation: number;
 }
 
 export interface EbayPricingResult {
@@ -12,13 +9,11 @@ export interface EbayPricingResult {
 }
 
 export function calculateEbayPrice(input: EbayPricingInput): EbayPricingResult {
-  const values = [input.vintedPrice, input.commissionRate, input.transactionRate, input.inflation];
-  if (values.some((value) => !Number.isFinite(value) || value < 0)) {
-    throw new Error('Les prix et taux doivent être des nombres positifs ou nuls.');
+  if (!Number.isFinite(input.vintedPrice) || input.vintedPrice < 0) {
+    throw new Error('Le prix doit être un nombre positif ou nul.');
   }
 
-  const rateMultiplier = 1 + (input.commissionRate + input.transactionRate) / 100;
-  const beforeRounding = input.vintedPrice * rateMultiplier + input.inflation;
+  const beforeRounding = (input.vintedPrice + 0.35) / 0.91;
   const roundingStep: 0.5 | 1 = beforeRounding < 5 ? 0.5 : 1;
   const ebayPrice = Math.ceil((beforeRounding - Number.EPSILON) / roundingStep) * roundingStep;
 
