@@ -31,7 +31,7 @@ import {
   useReactTable,
   type SortingState,
 } from '@tanstack/react-table';
-import { useCards, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
+import { useCards, useDeleteCard, useRecalculateEbayPrices, useUpdateCard } from '../../hooks/useCards';
 import { useFolders, useCreateFolder, useUpdateFolder, useDeleteFolder } from '../../hooks/useFolders';
 import { useAppStore } from '../../stores/appStore';
 import type { Card, CardStatus, CardType, Folder } from '../../types';
@@ -884,6 +884,7 @@ export function CollectionView() {
   const [whatnotOpen, setWhatnotOpen] = useState(false);
   const [ebayUpdateOpen, setEbayUpdateOpen] = useState(false);
   const updateCard = useUpdateCard();
+  const recalculateEbayPrices = useRecalculateEbayPrices();
   const deleteCard = useDeleteCard();
   const deleteFolder = useDeleteFolder();
 
@@ -921,6 +922,23 @@ export function CollectionView() {
       await Promise.all(
         [...selectedIds].map((id) => updateCard.mutateAsync({ id, price })),
       );
+      exitSelectMode();
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function applyEbayPriceCalculation(onlyMissing: boolean) {
+    if (selectedIds.size === 0) return;
+    const action = onlyMissing ? 'calculer les prix eBay manquants' : 'recalculer et remplacer tous les prix eBay';
+    if (!confirm(`Confirmer : ${action} pour ${selectedIds.size} carte(s) ?\nLes annonces eBay en ligne ne seront pas modifiées.`)) return;
+    setBulkBusy(true);
+    try {
+      const result = await recalculateEbayPrices.mutateAsync({
+        card_ids: [...selectedIds],
+        only_missing: onlyMissing,
+      });
+      alert(`${result.updated} prix eBay mis à jour · ${result.skipped} carte(s) ignorée(s).`);
       exitSelectMode();
     } finally {
       setBulkBusy(false);
@@ -1580,6 +1598,12 @@ export function CollectionView() {
                 <>
                   <BulkMenuItem onClick={() => { close(); applyBulkPrice(); }}>
                     Prix de vente…
+                  </BulkMenuItem>
+                  <BulkMenuItem onClick={() => { close(); applyEbayPriceCalculation(true); }}>
+                    Calculer les prix eBay manquants
+                  </BulkMenuItem>
+                  <BulkMenuItem onClick={() => { close(); applyEbayPriceCalculation(false); }}>
+                    Recalculer tous les prix eBay…
                   </BulkMenuItem>
                   {folders.length > 0 && (
                     <>

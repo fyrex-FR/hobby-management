@@ -6,6 +6,7 @@ from typing import Literal, Optional
 import httpx
 
 from .auth import current_user
+from services.marketplace_pricing import calculate_ebay_price
 
 logger = logging.getLogger("cards")
 
@@ -134,6 +135,11 @@ class CardUpdate(BaseModel):
     folder_ids: Optional[list[str]] = None
 
 
+class EbayPriceRecalculation(BaseModel):
+    card_ids: list[str]
+    only_missing: bool = True
+
+
 @router.get("/cards")
 async def list_cards(user: dict = Depends(current_user), x_impersonate: Optional[str] = Header(default=None)):
     user_id = resolve_user_id(user, x_impersonate)
@@ -196,6 +202,50 @@ async def update_card(card_id: str, body: CardUpdate, user: dict = Depends(curre
     if "quantity" in payload or "price" in payload or "ebay_price" in payload:
         card = {**card, "ebay_quantity_sync": await _push_listing_state_to_ebay(card, user_id)}
     return card
+
+
+@router.post("/cards/recalculate-ebay-prices")
+async def recalculate_ebay_prices(
+    body: EbayPriceRecalculation,
+    user: dict = Depends(current_user),
+    x_impersonate: Optional[str] = Header(default=None),
+):
+    user_id = resolve_user_id(user, x_impersonate)
+    selected_ids = set(body.card_ids)
+    if not selected_ids:
+        return {"updated": 0, "skipped": 0}
+
+    async with httpx.AsyncClient(timeout=60) as client:
+        rows = await fetch_all_rows(
+            client,
+            f"{SUPABASE_URL}/rest/v1/cards",
+            {"user_id": f"eq.{user_id}", "select": "id,user_id,vinted_price,ebay_price"},
+        )
+        selected = [row for row in rows if row["id"] in selected_ids]
+        updates = [
+            {
+                "id": row["id"],
+                "user_id": row["user_id"],
+                "ebay_price": calculate_ebay_price(float(row["vinted_price"])),
+            }
+            for row in selected
+            if row.get("vinted_price") is not None
+            and (not body.only_missing or row.get("ebay_price") is None)
+        ]
+        for start in range(0, len(updates), 500):
+            resp = await client.post(
+                f"{SUPABASE_URL}/rest/v1/cards",
+                headers={
+                    **supabase_headers(),
+                    "Prefer": "resolution=merge-duplicates,return=minimal",
+                },
+                params={"on_conflict": "id"},
+                json=updates[start:start + 500],
+            )
+            if resp.status_code not in (200, 201, 204):
+                raise HTTPException(status_code=resp.status_code, detail=resp.text)
+
+    return {"updated": len(updates), "skipped": len(selected) - len(updates)}
 
 
 async def _push_listing_state_to_ebay(card: dict, user_id: str) -> Optional[dict]:

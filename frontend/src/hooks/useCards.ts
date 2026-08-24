@@ -48,3 +48,15 @@ export function useDeleteCard() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['cards'] }),
   });
 }
+
+export function useRecalculateEbayPrices() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { card_ids: string[]; only_missing: boolean }) =>
+      apiFetch<{ updated: number; skipped: number }>('/cards/recalculate-ebay-prices', {
+        method: 'POST',
+        body: JSON.stringify(data),
+      }, 120000),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['cards'] }),
+  });
+}

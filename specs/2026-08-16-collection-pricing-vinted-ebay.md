@@ -36,3 +36,10 @@
 - Divergence : les anciennes colonnes de taux et de gonflage restent en base/API pour garantir la compatibilité, mais ne pilotent plus le calcul.
 - Vérifications : tests Vitest et build frontend passent ; compilation Python et `git diff --check` passent.
 - Reste avant production : revue, commit/push, application de la migration, puis déploiement backend/frontend après validation explicite.
+
+## Complément validé — rattrapage des prix historiques
+- Constat prod du 2026-08-24 : 3 430 cartes avec prix Vinted mais sans `ebay_price`.
+- Ajouter une migration de données idempotente qui ne remplit que les prix eBay manquants.
+- Ajouter une action Collection sur la sélection : calcul des valeurs manquantes ou remplacement explicite de toutes les valeurs.
+- Le calcul en masse écrit uniquement dans CardVaults et ne synchronise jamais les annonces eBay en ligne.
+- Vérification : même fonction/formule côté backend et frontend, tests unitaires, build et contrôle des compteurs avant/après migration.
