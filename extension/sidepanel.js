@@ -41,13 +41,12 @@ async function readListing({ autoAnalyze = true } = {}) {
   if (autoAnalyze) await analyzeListing();
 }
 
-function parseSoldHtml(html) {
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  return [...doc.querySelectorAll("li.s-item")].map((row) => {
-    const title = row.querySelector(".s-item__title")?.textContent?.trim() || "";
-    const priceText = row.querySelector(".s-item__price")?.textContent || "";
-    const url = row.querySelector("a.s-item__link")?.href || "";
-    const image = row.querySelector(".s-item__image-img")?.src || "";
+function normalizeEbayResults(rows) {
+  return rows.map((row) => {
+    const title = row.title || "";
+    const priceText = row.price_text || "";
+    const url = row.url || "";
+    const image = row.image || "";
     const value = Number.parseFloat((priceText.match(/[0-9][0-9\s.,]*/)?.[0] || "").replace(/\s/g, "").replace(",", "."));
     const itemId = url.match(/\/itm\/(?:[^/?]+\/)?(\d{9,15})/)?.[1] || "";
     const code = /\bUSD\b|\$/.test(priceText) ? "USD" : /\bGBP\b|£/.test(priceText) ? "GBP" : "EUR";
@@ -57,11 +56,9 @@ function parseSoldHtml(html) {
 
 async function fetchBrowserSold(query) {
   const url = `https://www.ebay.fr/sch/i.html?_nkw=${encodeURIComponent(query)}&LH_Sold=1&LH_Complete=1&rt=nc`;
-  try {
-    const response = await fetch(url, { credentials: "include" });
-    if (!response.ok) return [];
-    return parseSoldHtml(await response.text());
-  } catch { return []; }
+  const response = await chrome.runtime.sendMessage({ type: "SCOUT_EBAY_SEARCH", url });
+  if (response?.error) throw new Error(response.error);
+  return normalizeEbayResults(response?.results || []);
 }
 
 function activeSold() { return (state.analysis?.sold?.results || []).filter((_, index) => !state.excluded.has(index)); }
