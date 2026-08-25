@@ -17,6 +17,7 @@ async function api(path, options = {}, authenticated = true) {
 function resetView({ keepListing = false } = {}) {
   state.run += 1; state.analysis = null; state.excluded.clear();
   if (!keepListing) state.listing = null;
+  $("query").value = "";
   ["summary", "results", "add", "reset", "search-tools", "loader"].forEach((id) => show(id, false));
   $("results").innerHTML = ""; $("summary").innerHTML = ""; $("status").textContent = ""; $("status").className = "status";
 }
