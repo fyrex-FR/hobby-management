@@ -136,7 +136,7 @@ def _parse_summary_item(item: dict) -> Optional[dict]:
         return None
 
 
-async def search_ebay_listings(query: str, max_results: int = 20) -> dict:
+async def search_ebay_listings(query: str, max_results: int = 20, marketplace_id: str = MARKETPLACE_ID) -> dict:
     """Annonces ACTIVES (« En vente ») via la Browse API — recherche texte."""
     if not query or not query.strip():
         return {"error": "Requête vide", "results": []}
@@ -148,7 +148,7 @@ async def search_ebay_listings(query: str, max_results: int = 20) -> dict:
     params = {"q": query.strip(), "sort": "newlyListed", "limit": max_results}
     headers = {
         "Authorization": f"Bearer {token}",
-        "X-EBAY-C-MARKETPLACE-ID": MARKETPLACE_ID,
+        "X-EBAY-C-MARKETPLACE-ID": marketplace_id,
         "Content-Type": "application/json",
     }
 

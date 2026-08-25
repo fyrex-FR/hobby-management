@@ -1,7 +1,8 @@
 import unittest
 
 from services.extension_helpers import (
-    allowed_image_url, allowed_source_url, build_search_queries, merge_ranked_results,
+    allowed_image_url, allowed_source_url, build_search_queries, ebay_item_id,
+    exclude_source_listing, merge_ranked_results,
 )
 
 
@@ -33,6 +34,15 @@ class ExtensionHelpersTest(unittest.TestCase):
         self.assertTrue(allowed_source_url("ebay", "https://www.ebay.fr/itm/456"))
         self.assertFalse(allowed_source_url("vinted", "https://www.vinted.fr/member/123"))
         self.assertFalse(allowed_source_url("ebay", "https://www.ebay.fr.attacker.example/itm/456"))
+
+    def test_source_listing_is_excluded_by_id_or_url(self):
+        source = "https://www.ebay.fr/itm/hot-rookies/123456789012?hash=abc"
+        results = [
+            {"item_id": "123456789012", "url": "https://www.ebay.com/itm/123456789012", "title": "source"},
+            {"item_id": "987654321098", "url": "https://www.ebay.fr/itm/987654321098", "title": "other"},
+        ]
+        self.assertEqual(ebay_item_id(source), "123456789012")
+        self.assertEqual([item["title"] for item in exclude_source_listing(results, source)], ["other"])
 
 
 if __name__ == "__main__":

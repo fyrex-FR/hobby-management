@@ -1,32 +1,9 @@
-<!doctype html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CardVaults Scout</title>
-  <link rel="stylesheet" href="sidepanel.css">
-</head>
-<body>
-  <header><strong>CardVaults Scout</strong><button id="logout" class="ghost hidden">Déconnecter</button></header>
-  <main>
-    <section id="pairing" class="card hidden">
-      <h1>Connecter CardVaults</h1>
-      <p>Associe cette extension à ton compte. Aucun mot de passe n’est stocké ici.</p>
-      <button id="pair">Générer un code</button>
-      <div id="pair-code" class="pair-code hidden"></div>
-      <a id="approve" class="button secondary hidden" target="_blank">Ouvrir CardVaults</a>
-      <button id="exchange" class="secondary hidden">J’ai validé le code</button>
-    </section>
-    <section id="scout" class="hidden">
-      <div id="status" class="status">Ouvre une annonce Vinted ou eBay.</div>
-      <div id="listing" class="card hidden"></div>
-      <label>Recherche eBay<input id="query" type="text"></label>
-      <button id="analyze">Analyser l’annonce</button>
-      <div id="summary" class="card hidden"></div>
-      <div id="results"></div>
-      <button id="add" class="hidden">Ajouter à ma Collection</button>
-    </section>
-  </main>
-  <script src="sidepanel.js"></script>
-</body>
-</html>
+<!doctype html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CardVaults Scout</title><link rel="stylesheet" href="sidepanel.css"></head>
+<body><header><div><span class="brand-mark">CV</span><strong>Scout</strong></div><button id="logout" class="icon hidden" title="Déconnecter">↪</button></header><main>
+<section id="pairing" class="panel hidden"><div class="eyebrow">CAR️DVAULTS</div><h1>Connecter Scout</h1><p>Associe cette extension à ton compte. Aucun mot de passe n’est stocké.</p><button id="pair">Générer un code</button><div id="pair-code" class="pair-code hidden"></div><a id="approve" class="button secondary hidden" target="_blank">Ouvrir CardVaults</a><button id="exchange" class="secondary hidden">J’ai validé le code</button></section>
+<section id="scout" class="hidden"><div id="empty" class="empty"><div class="radar">⌁</div><h1>Ouvre une annonce</h1><p>Scout détecte automatiquement les cartes sur Vinted et eBay.</p></div><div id="workspace" class="hidden">
+<div id="listing" class="listing-card"></div><div id="status" class="status"></div><div id="loader" class="loader hidden"><i></i><span>Recherche des ventes et annonces comparables…</span></div>
+<div id="summary" class="summary hidden"></div><div id="results" class="hidden"></div>
+<details id="search-tools" class="hidden"><summary>Modifier la recherche</summary><label>Recherche eBay<input id="query" type="text"></label><button id="analyze" class="secondary">Relancer l’analyse</button></details>
+<div class="actions"><button id="add" class="hidden">Ajouter à ma Collection</button><button id="reset" class="secondary hidden">Nouvelle analyse</button></div></div></section>
+</main><script src="sidepanel.js"></script></body></html>

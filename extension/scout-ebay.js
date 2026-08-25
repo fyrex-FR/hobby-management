@@ -18,7 +18,9 @@
     const priceText = text([".x-price-primary", "[itemprop='price']", ".x-bin-price"]);
     const imageUrl = document.querySelector(".ux-image-carousel-item.active img, .ux-image-carousel img, #icImg")?.src || document.querySelector("meta[property='og:image']")?.content || "";
     if (!title || !imageUrl) return { error: "Annonce eBay non reconnue." };
-    return { source: "ebay", source_url: location.href.split("?")[0], title, displayed_price: parsePrice(priceText), image_url: imageUrl };
+    const currencyMatch = priceText.match(/\b(EUR|USD|GBP|CHF|CAD|AUD)\b|([€$£])/i);
+    const currency = currencyMatch?.[1]?.toUpperCase() || ({ "€": "EUR", "$": "USD", "£": "GBP" }[currencyMatch?.[2]] || "EUR");
+    return { source: "ebay", source_url: location.href.split("?")[0], title, displayed_price: parsePrice(priceText), currency, image_url: imageUrl };
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

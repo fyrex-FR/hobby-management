@@ -22,7 +22,7 @@
     const priceText = text(["[data-testid='item-price']", "[class*='price']"]);
     const imageUrl = meta("og:image") || document.querySelector("main img")?.src || "";
     if (!title || !imageUrl) return { error: "Annonce Vinted non reconnue." };
-    return { source: "vinted", source_url: location.href.split("?")[0], title, displayed_price: parsePrice(priceText), image_url: imageUrl };
+    return { source: "vinted", source_url: location.href.split("?")[0], title, displayed_price: parsePrice(priceText), currency: "EUR", image_url: imageUrl };
   }
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

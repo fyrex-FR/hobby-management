@@ -78,3 +78,41 @@
 - Fait : le contrat ne renvoie plus d'identification IA ; l'ajout conserve le titre source dans le champ joueur, corrigeable ensuite dans CardVaults.
 - Vérifié : 7 tests backend, 2 fixtures d'extraction, compilation Python/JavaScript et build frontend.
 - Reste : vérification réelle après déploiement avec l'annonce Kroupi, car les résultats eBay dépendent de l'état courant de l'index et du fallback sold.
+
+## V2 après second test réel — fiabilité et nouvelle analyse
+
+### Besoin
+
+- Utiliser le marché eBay France et afficher la devise réellement renvoyée, sans suffixe euro codé en dur.
+- Exclure l'annonce source des comparables, même lorsqu'eBay renvoie sa propre annonce dans les résultats.
+- Remplacer la collecte actuelle des ventes terminées, trop incomplète, par une collecte fiable exécutée depuis le navigateur.
+- Ajouter un bouton `Nouvelle analyse` qui efface l'annonce, la requête, les résultats, exclusions, erreurs et résumé précédents, puis relit la carte de l'onglet actif.
+- L'appairage et la session CardVaults doivent être conservés pendant cette remise à zéro.
+
+### Critères d'acceptation
+
+- Après changement d'onglet vers une autre carte, `Nouvelle analyse` affiche cette nouvelle annonce et permet de la rechercher sans fermer le panneau.
+- Aucun résultat comparable ne possède l'URL ou l'identifiant de l'annonce source.
+- Chaque prix porte sa devise réelle ; aucune valeur USD n'est présentée comme EUR.
+- Le cas Kroupi retourne plusieurs résultats pertinents lorsque ceux-ci sont visibles sur eBay France.
+
+### Refonte du parcours et de l'interface
+
+- Prendre l'extension modèle fournie par Xavier comme référence de densité, hiérarchie et fluidité, sans la copier aveuglément.
+- À chaque navigation de l'onglet actif vers une nouvelle annonce Vinted/eBay, détecter le changement d'URL, vider l'ancien résultat, afficher immédiatement la nouvelle annonce puis lancer son analyse automatiquement.
+- Annuler ou ignorer toute réponse devenue obsolète si l'utilisateur change encore de page pendant l'analyse.
+- Garder un bouton `Relancer` discret pour les erreurs et un bouton `Nouvelle analyse` en secours ; aucun clic requis dans le parcours normal.
+- Structurer le panneau en états nets : page non compatible, annonce détectée, analyse en cours, résultats, erreur récupérable.
+- Refaire la hiérarchie visuelle : annonce compacte en tête, estimation et niveau de confiance visibles, ventes terminées avant annonces actives, prix/devise et actions sans ambiguïté.
+- Masquer la requête technique par défaut derrière une action de modification afin de ne pas surcharger l'écran.
+
+### Plan technique V2 — à valider
+
+- `service-worker.js` : écouter les changements d'onglet/navigation compatibles et notifier le Side Panel.
+- `sidepanel.js` : machine d'état simple, analyse automatique, annulation logique des requêtes obsolètes et remise à zéro complète hors session.
+- `sidepanel.html/css` : refonte visuelle et états de chargement/erreur/résultats accessibles.
+- `scout-ebay.js` et backend : marché France, devise propagée, identifiant eBay extrait et annonce source exclue.
+- Collecter les ventes terminées dans le contexte navigateur eBay, puis les normaliser côté API avec les annonces actives.
+- Tests : changement successif de deux annonces, réponse obsolète, reset, devise USD/EUR, exclusion source et cas Kroupi.
+- Rollback : revenir à `1297ff2` et remettre le ZIP précédent ; aucune migration de base.
+- Alternative écartée : rafraîchissement par bouton uniquement, car il recrée précisément la friction signalée pendant la navigation.

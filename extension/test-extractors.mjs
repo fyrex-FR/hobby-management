@@ -30,6 +30,7 @@ const vinted = runExtractor('./scout-vinted.js', {
 }, 'https://www.vinted.fr/items/123-card?referrer=catalog');
 assert.equal(vinted.source, 'vinted');
 assert.equal(vinted.displayed_price, 12.5);
+assert.equal(vinted.currency, 'EUR');
 assert.equal(vinted.source_url, 'https://www.vinted.fr/items/123-card');
 
 const ebay = runExtractor('./scout-ebay.js', {
@@ -39,6 +40,7 @@ const ebay = runExtractor('./scout-ebay.js', {
 }, 'https://www.ebay.fr/itm/456?hash=abc');
 assert.equal(ebay.source, 'ebay');
 assert.equal(ebay.displayed_price, 21.99);
+assert.equal(ebay.currency, 'EUR');
 assert.equal(ebay.source_url, 'https://www.ebay.fr/itm/456');
 
 console.log('extractors: 2 fixtures OK');

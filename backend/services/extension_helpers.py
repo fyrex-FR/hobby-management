@@ -71,6 +71,27 @@ def merge_ranked_results(groups: list[list[dict]], source_title: str) -> list[di
     return sorted(unique.values(), key=lambda item: (-item["relevance"], str(item.get("title", ""))))
 
 
+def ebay_item_id(value: str) -> str:
+    """Return the numeric listing id from a canonical or tracked eBay URL."""
+    match = re.search(r"/itm/(?:[^/?]+/)?(\d{9,15})(?:[/?]|$)", value or "")
+    return match.group(1) if match else ""
+
+
+def exclude_source_listing(results: list[dict], source_url: str) -> list[dict]:
+    source_id = ebay_item_id(source_url)
+    source_clean = (source_url or "").split("?", 1)[0].rstrip("/")
+    filtered = []
+    for item in results:
+        item_id = str(item.get("item_id") or "")
+        item_url = str(item.get("url") or "").split("?", 1)[0].rstrip("/")
+        if source_id and (source_id == item_id or source_id == ebay_item_id(item_url)):
+            continue
+        if source_clean and source_clean == item_url:
+            continue
+        filtered.append(item)
+    return filtered
+
+
 def summarize_results(results: list[dict]) -> dict:
     prices = sorted(float(item["price"]) for item in results if isinstance(item.get("price"), (int, float)))
     if not prices:
