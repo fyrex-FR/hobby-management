@@ -18,6 +18,8 @@ récupérer et renvoyer la page.
 - Réponse `200` : `{ "status": <int, code HTTP amont>, "html": "<html rendu>", "final_url": "<url>" }`
 - Échec de chargement : `502` `{ "error": "<message>" }`
 - `GET /health` → `{ "ok": true }`
+- `GET /session` avec le même header d'auth indique si un profil persistant
+  est actif et combien de cookies eBay il contient, sans exposer leur valeur.
 
 ## Installation
 
@@ -34,6 +36,8 @@ Une seule variable obligatoire :
 - `FETCH_TOKEN` : un secret aléatoire (ex. `openssl rand -hex 24`). Devra être
   recopié à l'identique dans la variable `OPENCLAW_TOKEN` du backend CardVaults.
 - `PORT` (optionnel, défaut `8899`).
+- `USER_DATA_DIR` : dossier privé du profil Chromium persistant. Il conserve
+  la session eBay entre les redémarrages.
 - `FETCH_PROXY_URL` (optionnel mais souvent nécessaire pour eBay) : fait sortir
   le navigateur via un proxy externe résidentiel/mobile. Format complet avec
   identifiants : `http://utilisateur:motdepasse@hote:port`. À utiliser quand

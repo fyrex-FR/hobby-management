@@ -21,6 +21,7 @@ app.use(express.json({ limit: '2mb' }));
 
 const TOKEN = process.env.FETCH_TOKEN || '';
 const PORT = process.env.PORT || 8899;
+const USER_DATA_DIR = process.env.USER_DATA_DIR || '';
 const NAV_TIMEOUT = 30000;
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ' +
@@ -39,48 +40,43 @@ function proxyFromEnv() {
   return proxy;
 }
 
-let browserPromise = null;
-async function getBrowser() {
-  if (!browserPromise) {
-    const proxy = proxyFromEnv();
-    if (proxy) console.log(`sortie via proxy ${proxy.server}`);
-    browserPromise = chromium.launch({
-      headless: true,
-      proxy,
-      args: [
-        '--disable-blink-features=AutomationControlled',
-        '--no-sandbox',
-        '--disable-dev-shm-usage',
-      ],
-    });
-  }
-  return browserPromise;
-}
-
-// Contexte partagé (persistant en mémoire) : les cookies récupérés au "warmup"
-// eBay restent d'une requête à l'autre, ce qui rend la session crédible.
 let ctxPromise = null;
 async function getContext() {
   if (!ctxPromise) {
+    const proxy = proxyFromEnv();
+    if (proxy) console.log(`sortie via proxy ${proxy.server}`);
     ctxPromise = (async () => {
-      const browser = await getBrowser();
-      const context = await browser.newContext({
-        userAgent: UA,
-        locale: 'en-US',
+      const launchOptions = {
+        headless: true,
+        proxy,
+        args: [
+          '--disable-blink-features=AutomationControlled',
+          '--no-sandbox',
+          '--disable-dev-shm-usage',
+        ],
+        locale: 'fr-FR',
         timezoneId: 'Europe/Paris',
         viewport: { width: 1280, height: 900 },
-      });
+      };
+      const context = USER_DATA_DIR
+        ? await chromium.launchPersistentContext(USER_DATA_DIR, launchOptions)
+        : await chromium.launch(launchOptions).then((browser) => browser.newContext({
+            userAgent: UA,
+            locale: 'fr-FR',
+            timezoneId: 'Europe/Paris',
+            viewport: { width: 1280, height: 900 },
+          }));
       // Masque les signaux d'automatisation les plus évidents.
       await context.addInitScript(() => {
         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+        Object.defineProperty(navigator, 'languages', { get: () => ['fr-FR', 'fr', 'en'] });
         Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
       });
       // Chauffe la session : visite la home eBay pour obtenir des cookies avant
       // de taper les pages de recherche (best-effort).
       try {
         const p = await context.newPage();
-        await p.goto('https://www.ebay.com/', { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT });
+        await p.goto('https://www.ebay.fr/', { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT });
         await p.waitForTimeout(2500);
         await p.close();
       } catch (e) {
@@ -93,6 +89,19 @@ async function getContext() {
 }
 
 app.get('/health', (_req, res) => res.json({ ok: true }));
+
+app.get('/session', async (req, res) => {
+  if (!TOKEN || req.get('X-Auth-Token') !== TOKEN) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+  try {
+    const context = await getContext();
+    const cookies = await context.cookies('https://www.ebay.fr/');
+    res.json({ persistent: Boolean(USER_DATA_DIR), ebay_cookie_count: cookies.length });
+  } catch (e) {
+    res.status(502).json({ error: String(e && e.message ? e.message : e) });
+  }
+});
 
 app.post('/fetch', async (req, res) => {
   if (!TOKEN || req.get('X-Auth-Token') !== TOKEN) {
