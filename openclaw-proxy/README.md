@@ -38,6 +38,8 @@ Une seule variable obligatoire :
 - `PORT` (optionnel, défaut `8899`).
 - `USER_DATA_DIR` : dossier privé du profil Chromium persistant. Il conserve
   la session eBay entre les redémarrages.
+- `CHROMIUM_EXECUTABLE` : binaire Chromium utilisé pour créer puis relire le
+  profil, afin d'éviter les incompatibilités avec le shell headless Playwright.
 - `FETCH_PROXY_URL` (optionnel mais souvent nécessaire pour eBay) : fait sortir
   le navigateur via un proxy externe résidentiel/mobile. Format complet avec
   identifiants : `http://utilisateur:motdepasse@hote:port`. À utiliser quand

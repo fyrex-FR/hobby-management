@@ -22,6 +22,7 @@ app.use(express.json({ limit: '2mb' }));
 const TOKEN = process.env.FETCH_TOKEN || '';
 const PORT = process.env.PORT || 8899;
 const USER_DATA_DIR = process.env.USER_DATA_DIR || '';
+const CHROMIUM_EXECUTABLE = process.env.CHROMIUM_EXECUTABLE || '';
 const NAV_TIMEOUT = 30000;
 const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) ' +
@@ -49,6 +50,7 @@ async function getContext() {
       const launchOptions = {
         headless: true,
         proxy,
+        ...(CHROMIUM_EXECUTABLE ? { executablePath: CHROMIUM_EXECUTABLE } : {}),
         args: [
           '--disable-blink-features=AutomationControlled',
           '--no-sandbox',
@@ -116,7 +118,11 @@ app.post('/fetch', async (req, res) => {
   try {
     const context = await getContext();
     page = await context.newPage();
-    const resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: NAV_TIMEOUT });
+    // `domcontentloaded` peut ne jamais arriver sur les pages eBay connectées
+    // (scripts/long-polling). On valide la navigation dès le premier octet,
+    // puis on attend les résultats avec des bornes indépendantes.
+    const resp = await page.goto(url, { waitUntil: 'commit', timeout: NAV_TIMEOUT });
+    await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {});
     // Laisse eBay rendre la liste des résultats (best-effort).
     await page.waitForSelector('li.s-item', { timeout: 8000 }).catch(() => {});
     const html = await page.content();
