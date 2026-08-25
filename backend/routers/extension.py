@@ -12,11 +12,11 @@ from pydantic import BaseModel, Field, field_validator
 from .auth import current_user
 from .cards import supabase_headers
 from .upload import _get_s3, R2_BUCKET_NAME, R2_PUBLIC_URL
-from services.card_taxonomy import classify
+from services.card_taxonomy import apply_refine, classify, refine_keywords
 from services.ebay_service import search_ebay_listings, search_ebay_sold
 from services.extension_helpers import (
-    allowed_image_url, allowed_source_url, annotate_comparables, build_search_queries,
-    exclude_source_listing, merge_ranked_results, summarize_results,
+    allowed_image_url, allowed_source_url, annotate_comparables, build_browse_queries,
+    build_search_queries, exclude_source_listing, merge_ranked_results, summarize_results,
 )
 
 router = APIRouter(prefix="/extension", tags=["extension"])
@@ -186,6 +186,14 @@ ACTIVE_LIMIT = 50
 ENOUGH_COMPARABLES = 8
 
 
+class ReferenceRefine(BaseModel):
+    """Correction manuelle de la case de référence, depuis le panneau."""
+    variant_text: Optional[str] = Field(default=None, max_length=60)
+    grader: Optional[str] = Field(default=None, max_length=12)
+    grade: Optional[float] = Field(default=None, ge=1, le=10)
+    grade_label: Optional[str] = Field(default=None, max_length=20)
+
+
 class AnalyzeRequest(BaseModel):
     source: Literal["vinted", "ebay"]
     source_url: str
@@ -195,6 +203,7 @@ class AnalyzeRequest(BaseModel):
     query: Optional[str] = Field(default=None, max_length=300)
     condition: Optional[str] = Field(default=None, max_length=200)
     specifics: Optional[dict[str, str]] = None
+    refine: Optional[ReferenceRefine] = None
 
     @field_validator("specifics")
     @classmethod
@@ -205,30 +214,62 @@ class AnalyzeRequest(BaseModel):
         return {str(k)[:80]: str(v)[:160] for k, v in list(value.items())[:40]}
 
 
+async def _collect_sold(queries: list[str], title: str) -> tuple[list[dict], list[dict], list[str]]:
+    """Ventes terminées : élargir la requête tant qu'on n'a pas de quoi comparer."""
+    groups, searches, errors = [], [], []
+    for query in queries:
+        sold = await search_ebay_sold(query, max_results=SOLD_LIMIT)
+        groups.append(sold.get("results", []))
+        searches.append({"query": query, "count": len(sold.get("results", []))})
+        if sold.get("error"):
+            errors.append(sold["error"])
+        if len(merge_ranked_results(groups, title)) >= ENOUGH_COMPARABLES:
+            break
+    return merge_ranked_results(groups, title), searches, errors
+
+
+async def _collect_active(queries: list[str]) -> tuple[list[dict], list[dict], list[str]]:
+    """Annonces actives : la Browse API combine les mots en ET, donc on raccourcit
+    la requête jusqu'à ce qu'elle ramène quelque chose plutôt que de conclure
+    à un marché vide."""
+    searches, errors = [], []
+    for query in queries:
+        active = await search_ebay_listings(query, max_results=ACTIVE_LIMIT, marketplace_id="EBAY_FR")
+        results = active.get("results", [])
+        searches.append({"query": query, "count": len(results)})
+        if active.get("error"):
+            errors.append(active["error"])
+            break
+        if results:
+            return results, searches, errors
+    return [], searches, errors
+
+
 @router.post("/analyze")
 async def analyze(body: AnalyzeRequest, user: dict = Depends(current_extension_user)):
     if not allowed_source_url(body.source, body.source_url):
         raise HTTPException(status_code=422, detail="URL d'annonce non autorisée")
-    queries = [body.query.strip()] if body.query and body.query.strip() else build_search_queries(body.title)
+
     reference = classify(body.title, condition=body.condition or "", specifics=body.specifics)
-    sold_groups = []
-    active_groups, used_queries = [], []
-    errors = []
-    for query in queries:
-        sold = await search_ebay_sold(query, max_results=SOLD_LIMIT)
-        active = await search_ebay_listings(query, max_results=ACTIVE_LIMIT, marketplace_id="EBAY_FR")
-        sold_groups.append(sold.get("results", []))
-        active_groups.append(active.get("results", []))
-        used_queries.append(query)
-        errors.extend(error for error in (sold.get("error"), active.get("error")) if error)
-        if (len(merge_ranked_results(sold_groups, body.title)) >= ENOUGH_COMPARABLES
-                and len(merge_ranked_results(active_groups, body.title)) >= ENOUGH_COMPARABLES):
-            break
-    sold_results = exclude_source_listing(merge_ranked_results(sold_groups, body.title), body.source_url)
-    active_results = exclude_source_listing(merge_ranked_results(active_groups, body.title), body.source_url)
+    refine = body.refine.model_dump() if body.refine else None
+    extra = refine_keywords(refine) if refine else []
+    if refine:
+        reference = apply_refine(reference, refine)
+
+    manual = body.query.strip() if body.query and body.query.strip() else ""
+    sold_queries = [manual] if manual else build_search_queries(body.title, extra)
+    active_queries = [manual] if manual else build_browse_queries(body.title, extra)
+
+    sold_results, sold_searches, errors = await _collect_sold(sold_queries, body.title)
+    active_results, active_searches, active_errors = await _collect_active(active_queries)
+    errors.extend(active_errors)
+
+    sold_results = exclude_source_listing(sold_results, body.source_url)
+    active_results = exclude_source_listing(merge_ranked_results([active_results], body.title), body.source_url)
     return {
-        "query": used_queries[0], "queries": used_queries,
+        "query": sold_queries[0], "queries": sold_queries,
         "reference": reference,
+        "searches": {"sold": sold_searches, "active": active_searches},
         "sold": summarize_results(annotate_comparables(sold_results, reference)),
         "active": summarize_results(annotate_comparables(active_results, reference)),
         "warnings": list(dict.fromkeys(errors)),

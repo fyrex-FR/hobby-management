@@ -566,3 +566,48 @@ select {
 .delta.same {
   color: var(--muted);
 }
+
+/* ---------- Relance ciblée et diagnostic de recherche ---------- */
+.refine-hint {
+  margin: 7px 0 0;
+  font-size: 10px;
+}
+.searches {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+}
+.search-line {
+  display: grid;
+  gap: 3px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.search-line b {
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #6f757e;
+}
+.search-line span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 7px;
+  border-radius: 7px;
+  background: #101215;
+}
+.search-line code {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, monospace;
+}
+.search-line em {
+  flex: none;
+  font-style: normal;
+  font-weight: 800;
+  color: #c9cdd2;
+}

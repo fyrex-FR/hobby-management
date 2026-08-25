@@ -303,6 +303,45 @@ def classify(title: str, *, condition: str = "", specifics: dict | None = None) 
     }
 
 
+def apply_refine(reference: dict, refine: dict) -> dict:
+    """Réécrit la case de référence avec la correction manuelle.
+
+    L'utilisateur a vu la carte ; sa correction prime sur le titre comme sur
+    les caractéristiques eBay, qui peuvent taire un slab ou un parallèle.
+    """
+    variant_text = (refine.get("variant_text") or reference.get("variant_text") or "Base").strip()
+    grade = {
+        "graded": bool(refine.get("grader") or refine.get("grade") or refine.get("grade_label")),
+        "grader": refine.get("grader"),
+        "grade": refine.get("grade"),
+        "grade_label": refine.get("grade_label"),
+    }
+    variant_key, grade_key = _slug(variant_text), _grade_key(grade)
+    return {
+        **reference, **grade,
+        "variant_text": variant_text, "variant_key": variant_key,
+        "grade_key": grade_key, "grade_text": _grade_text(grade),
+        "bucket_key": f"{variant_key}|{grade_key}",
+        "bucket_text": f"{variant_text} · {_grade_text(grade)}",
+        "refined": True,
+    }
+
+
+def refine_keywords(refine: dict) -> list[str]:
+    """Mots à ajouter aux recherches eBay pour retrouver la case corrigée."""
+    terms = []
+    variant = (refine.get("variant_text") or "").split("/")[0].strip()
+    if variant and variant.lower() != "base":
+        terms.extend(variant.split())
+    if refine.get("grader"):
+        terms.append(str(refine["grader"]))
+    if refine.get("grade") is not None:
+        terms.append(f"{float(refine['grade']):g}")
+    if refine.get("grade_label"):
+        terms.append(str(refine["grade_label"]))
+    return terms
+
+
 def same_card_number(reference: str, candidate: str) -> bool:
     """Deux numéros désignent-ils la même carte ? Inconnu = on ne tranche pas."""
     if not reference or not candidate:

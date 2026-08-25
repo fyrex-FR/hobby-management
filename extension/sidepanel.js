@@ -2,6 +2,7 @@ const API = "https://collection-api.cardvaults.app/api/extension";
 const state = {
   listing: null, analysis: null, excluded: new Set(), pairing: null,
   run: 0, timer: null, resultTab: "sold", override: null, open: new Set(),
+  refined: false, autoQuery: "",
 };
 
 const $ = (id) => document.getElementById(id);
@@ -64,8 +65,8 @@ function knownVariants() {
 }
 
 function renderReference() {
-  const detected = state.analysis?.reference;
-  if (!detected) { show("reference", false); return; }
+  if (!state.analysis?.reference) { show("reference", false); return; }
+  const current = reference();
   const options = (values, selected, empty = null) =>
     [...(empty ? [`<option value=""${selected ? "" : " selected"}>${empty}</option>`] : []), ...values.map((value) => {
       const [key, text] = Array.isArray(value) ? value : [value, value];
@@ -75,15 +76,19 @@ function renderReference() {
   $("reference").innerHTML = `
     <div class="section-label">CARTE ANALYSÉE</div>
     <div class="chips" id="ref-chips"></div>
-    <details class="tune"><summary>Corriger la variante ou la note</summary>
+    <details class="tune"${state.refined ? " open" : ""}><summary>Corriger la variante ou la note</summary>
       <div class="tune-grid">
-        <select id="ref-variant" title="Variante">${options(knownVariants(), detected.variant_key)}</select>
-        <select id="ref-grader" title="Société de notation">${options(GRADERS, detected.grader || "", "Non gradée")}</select>
-        <select id="ref-grade" title="Note">${options(GRADES, detected.grade != null ? String(detected.grade) : "", "— note —")}</select>
-        <select id="ref-label" title="Label du slab">${options(LABELS, detected.grade_label || "", "— label —")}</select>
+        <select id="ref-variant" title="Variante">${options(knownVariants(), current.variant_key)}</select>
+        <select id="ref-grader" title="Société de notation">${options(GRADERS, current.grader || "", "Non gradée")}</select>
+        <select id="ref-grade" title="Note">${options(GRADES, current.grade != null ? String(current.grade) : "", "— note —")}</select>
+        <select id="ref-label" title="Label du slab">${options(LABELS, current.grade_label || "", "— label —")}</select>
       </div>
+      <button id="refine" class="secondary hidden">Relancer la recherche pour cette case</button>
+      <p class="muted refine-hint hidden" id="refine-hint">Les résultats actuels viennent de la recherche d’origine : relance pour aller chercher les ventes de cette case.</p>
     </details>`;
   $("reference").querySelectorAll("select").forEach((select) => select.addEventListener("change", applyOverride));
+  $("refine").addEventListener("click", () => analyzeListing({ refine: reference() }));
+  show("refine", false); show("refine-hint", false);
   syncChips();
   show("reference");
 }
@@ -102,6 +107,10 @@ function applyOverride() {
     bucket_key: `${variantKey}|${gradeKey(grader, grade, label)}`,
   };
   state.excluded.clear();
+  // La correction ne fait que redistribuer les résultats déjà en main ; pour
+  // trouver les ventes de cette case il faut relancer la recherche eBay.
+  const moved = state.override.bucket_key !== state.analysis?.reference?.bucket_key;
+  show("refine", moved); show("refine-hint", moved);
   syncChips();
   renderResults();
 }
@@ -113,8 +122,18 @@ function syncChips() {
     `<span class="chip grade${ref.graded ? " graded" : ""}">${escapeHtml(ref.grade_text || "Brut")}</span>`,
   ];
   if (ref.card_number) chips.push(`<span class="chip num">#${escapeHtml(ref.card_number)}</span>`);
-  if (state.override) chips.push(`<span class="chip fixed">corrigé</span>`);
+  if (state.override || state.refined) chips.push(`<span class="chip fixed">corrigé</span>`);
   $("ref-chips").innerHTML = chips.join("");
+}
+
+function renderSearches() {
+  const searches = state.analysis?.searches;
+  if (!searches) { $("searches").innerHTML = ""; return; }
+  const line = (label, rows) => rows.length
+    ? `<div class="search-line"><b>${label}</b>${rows.map((row) =>
+        `<span><code>${escapeHtml(row.query)}</code><em>${row.count}</em></span>`).join("")}</div>`
+    : "";
+  $("searches").innerHTML = line("Vendus", searches.sold || []) + line("En vente", searches.active || []);
 }
 
 /* ---------- Regroupement des comparables ---------- */
@@ -327,11 +346,11 @@ function renderResults() {
 
 function resetView({ keepListing = false } = {}) {
   state.run += 1; state.analysis = null; state.excluded.clear(); state.resultTab = "sold";
-  state.override = null; state.open.clear();
+  state.override = null; state.refined = false; state.autoQuery = ""; state.open.clear();
   if (!keepListing) state.listing = null;
   $("query").value = "";
   ["summary", "results", "add", "reset", "search-tools", "loader", "reference"].forEach((id) => show(id, false));
-  $("results").innerHTML = ""; $("summary").innerHTML = ""; $("reference").innerHTML = "";
+  $("results").innerHTML = ""; $("summary").innerHTML = ""; $("reference").innerHTML = ""; $("searches").innerHTML = "";
   $("status").textContent = ""; $("status").className = "status";
 }
 
@@ -356,18 +375,31 @@ async function readListing({ autoAnalyze = true } = {}) {
   if (autoAnalyze) await analyzeListing();
 }
 
-async function analyzeListing() {
+async function analyzeListing({ refine = null } = {}) {
   if (!state.listing) return readListing();
   const run = ++state.run;
   show("loader"); ["summary", "results", "add", "reset", "search-tools", "reference"].forEach((id) => show(id, false));
-  $("status").textContent = "Annonce détectée"; $("status").className = "status"; $("analyze").disabled = true;
+  $("status").textContent = refine ? "Recherche de cette case…" : "Annonce détectée";
+  $("status").className = "status"; $("analyze").disabled = true;
   try {
-    const manual = $("query").value.trim();
-    const analysis = await api("/analyze", { method: "POST", body: JSON.stringify({ ...state.listing, query: manual || null }) });
+    // Ne renvoyer une requête manuelle que si elle a réellement été modifiée :
+    // sinon celle du tour précédent écraserait l'élargissement automatique et
+    // les mots-clés de la correction.
+    const typed = $("query").value.trim();
+    const body = { ...state.listing, query: typed && typed !== state.autoQuery ? typed : null };
+    if (refine) {
+      body.refine = {
+        variant_text: refine.variant_text || null, grader: refine.grader || null,
+        grade: refine.grade ?? null, grade_label: refine.grade_label || null,
+      };
+    }
+    const analysis = await api("/analyze", { method: "POST", body: JSON.stringify(body) });
     if (run !== state.run) return;
-    state.analysis = analysis; state.resultTab = "sold"; state.override = null; state.open.clear(); state.excluded.clear();
-    $("query").value = analysis.query;
-    renderReference(); renderResults();
+    state.analysis = analysis; state.resultTab = "sold"; state.open.clear(); state.excluded.clear();
+    // Le backend renvoie déjà la case corrigée : plus besoin de l'écrasement local.
+    state.override = null; state.refined = Boolean(analysis.reference?.refined);
+    state.autoQuery = analysis.query; $("query").value = analysis.query;
+    renderReference(); renderSearches(); renderResults();
     $("status").textContent = analysis.warnings?.length ? analysis.warnings[0] : "Analyse terminée";
   } catch (error) {
     if (run === state.run) { $("status").textContent = error.message; $("status").className = "status error"; show("reset"); show("search-tools"); }
@@ -383,7 +415,7 @@ async function boot() {
 $("pair").addEventListener("click", async () => { try { state.pairing = await api("/pairings", { method: "POST", body: JSON.stringify({ label: "Chrome" }) }, false); $("pair-code").textContent = state.pairing.code; $("approve").href = state.pairing.approve_url; ["pair-code", "approve", "exchange"].forEach((id) => show(id)); } catch (e) { alert(e.message); } });
 $("exchange").addEventListener("click", async () => { try { const result = await api("/pairings/exchange", { method: "POST", body: JSON.stringify(state.pairing) }, false); await chrome.storage.local.set({ scout_token: result.token }); await boot(); } catch (e) { alert(e.message); } });
 $("logout").addEventListener("click", async () => { await chrome.storage.local.remove("scout_token"); resetView(); await boot(); });
-$("analyze").addEventListener("click", analyzeListing);
+$("analyze").addEventListener("click", () => analyzeListing());
 $("reset").addEventListener("click", () => readListing());
 $("add").addEventListener("click", async () => { $("add").disabled = true; try { const result = await api("/cards", { method: "POST", body: JSON.stringify({ ...state.listing, sport: "Autre", player: state.listing.title }) }); $("status").textContent = result.created ? "Carte ajoutée à la Collection ✓" : "Cette annonce est déjà dans la Collection."; } catch (e) { $("status").textContent = e.message; } finally { $("add").disabled = false; } });
 chrome.runtime.onMessage.addListener((message) => { if (message?.type !== "SCOUT_TAB_CHANGED") return; clearTimeout(state.timer); state.timer = setTimeout(() => readListing(), 350); });

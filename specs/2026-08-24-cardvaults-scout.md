@@ -179,3 +179,16 @@
 - Vérifié : 36 tests backend (23 de taxonomie, 13 d'aides extension), 2 fixtures d'extraction couvrant état et caractéristiques, compilation Python et syntaxe JS/manifeste.
 - Divergence : les cases restent réparties par sous-marché sans mesure de repli quand une case n'a qu'une vente ; l'estimation s'élargit alors à la variante, en le disant.
 - Reste : test réel dans Chrome sur la Phoenix #256 et sur une carte gradée, puis réglage du dictionnaire de parallèles sur les séries réellement rencontrées.
+
+### Correctifs V3.1 — après premier test réel
+
+- Constat : zéro annonce active alors que le marché en compte. La Browse API combine les mots-clés en ET, et le titre entier (`panini phoenix basketball 2023-24 victor wembanyama rc spurs #256`, neuf mots) ne correspond à aucune annonce.
+- Constat : 120 ventes pour 60 réelles. Les URL eBay portent un suivi (`_trkparms`, `_skw`) qui change à chaque recherche, donc le dédoublonnage sur l'URL laissait passer chaque vente une fois par requête.
+- Constat : corriger la note ne fait que redistribuer les résultats déjà en main ; la case corrigée reste quasi vide puisque la recherche d'origine ne visait pas ces cartes.
+- Fait : `build_browse_queries` construit une échelle de requêtes courtes — mots les plus porteurs d'abord, vocabulaire de sport écarté, numéro sans `#` — et l'analyse raccourcit jusqu'à obtenir des résultats au lieu de conclure à un marché vide.
+- Fait : `comparable_key` dédoublonne sur l'identifiant eBay extrait de l'URL ; les ventes terminées s'arrêtent dès huit comparables, donc une seule collecte au lieu de deux.
+- Fait : `apply_refine` et `refine_keywords` ; le panneau propose `Relancer la recherche pour cette case` dès que la correction change de case, et les mots-clés corrigés partent dans les requêtes vendus et actives.
+- Fait : la requête manuelle n'est renvoyée que si elle a réellement été modifiée, sinon celle du tour précédent écrasait l'élargissement automatique et les mots-clés de la correction.
+- Fait : `searches` expose la requête et le nombre de résultats de chaque tentative, affichés sous `Modifier la recherche` — un zéro devient lisible au lieu d'être muet.
+- Vérifié : 52 tests backend, 2 fixtures d'extraction, rendu headless du panneau couvrant correction et relance, compilation Python et syntaxe JS.
+- Divergence : l'échelle de requêtes Browse n'a pas pu être validée contre l'API eBay faute d'identifiants en local ; le diagnostic `searches` sert précisément à trancher au premier essai réel.

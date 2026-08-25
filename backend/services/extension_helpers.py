@@ -42,15 +42,57 @@ def title_tokens(value: str, *, remove_noise: bool = True) -> list[str]:
     return list(dict.fromkeys(tokens))
 
 
-def build_search_queries(title: str) -> list[str]:
+def build_search_queries(title: str, extra: list[str] | None = None) -> list[str]:
     """Build deterministic eBay queries, precise first, without inventing card data."""
+    suffix = [term for term in (extra or []) if term]
     precise = title_tokens(title)
     queries = [" ".join(precise)]
     without_condition = [token for token in precise if token not in {"mint", "nm", "neuf", "new"}]
     queries.append(" ".join(without_condition))
     broad = [token for token in without_condition if token not in {"rc", "rookie", "hot"} and not re.fullmatch(r"\d{1,2}", token)]
     queries.append(" ".join(broad))
-    return [query[:300] for query in dict.fromkeys(queries) if query]
+    return [" ".join([query, *suffix])[:300] for query in dict.fromkeys(queries) if query]
+
+
+# Mots de vocabulaire générique : présents dans le titre source mais absents de
+# la plupart des annonces, ils ne font que retirer des résultats en ET.
+_BROWSE_GENERIC = {
+    "basketball", "football", "baseball", "hockey", "soccer", "futbol",
+    "nba", "nfl", "mlb", "nhl", "rc", "rookie", "sport", "sports", "cards",
+}
+
+
+def build_browse_queries(title: str, extra: list[str] | None = None) -> list[str]:
+    """Requêtes pour la Browse API, de la plus riche à la plus courte.
+
+    La Browse API combine les mots-clés en ET : chaque mot superflu retire des
+    annonces, et un titre d'annonce complet n'en laisse aucune. On garde donc
+    d'abord les mots les plus porteurs — nom propre, set, numéro — puis on
+    raccourcit tant que rien ne remonte, au lieu d'interpréter un zéro comme
+    une absence de marché.
+    """
+    tokens = [token for token in title_tokens(title) if token not in _BROWSE_GENERIC]
+    number = next((token for token in tokens if token.startswith("#")), "")
+    # Le « # » n'apporte rien à l'API et exclut les titres qui l'écrivent autrement.
+    tail = ([number.lstrip("#")] if number else []) + [term for term in (extra or []) if term]
+    words = sorted((token for token in tokens if token != number), key=len, reverse=True)
+
+    queries = [" ".join(words[:size] + tail) for size in (4, 3, 2) if len(words) >= size]
+    if not queries and (words or tail):
+        queries.append(" ".join(words + tail))
+    return [query[:300] for query in dict.fromkeys(queries) if query.strip()]
+
+
+def comparable_key(item: dict) -> str:
+    """Identité stable d'une annonce entre deux recherches.
+
+    Les URL eBay portent des paramètres de suivi (`_trkparms`, `_skw`) qui
+    changent à chaque requête : dédoublonner dessus laissait passer la même
+    vente autant de fois qu'on lançait de recherches.
+    """
+    item_id = str(item.get("item_id") or "")
+    url = str(item.get("url") or "")
+    return item_id or ebay_item_id(url) or url.split("?", 1)[0].rstrip("/") or f"{item.get('title')}|{item.get('price')}"
 
 
 def merge_ranked_results(groups: list[list[dict]], source_title: str) -> list[dict]:
@@ -58,7 +100,7 @@ def merge_ranked_results(groups: list[list[dict]], source_title: str) -> list[di
     unique: dict[str, dict] = {}
     for group in groups:
         for item in group:
-            key = str(item.get("item_id") or item.get("url") or f"{item.get('title')}|{item.get('price')}")
+            key = comparable_key(item)
             candidate = dict(item)
             words = set(title_tokens(str(candidate.get("title", "")), remove_noise=True))
             candidate["relevance"] = round(len(source & words) / max(len(source), 1), 3)

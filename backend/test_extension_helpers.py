@@ -1,9 +1,10 @@
 import unittest
 
-from services.card_taxonomy import classify
+from services.card_taxonomy import apply_refine, classify, refine_keywords
 from services.extension_helpers import (
-    allowed_image_url, allowed_source_url, annotate_comparables, build_search_queries,
-    ebay_item_id, exclude_source_listing, match_level, merge_ranked_results,
+    allowed_image_url, allowed_source_url, annotate_comparables, build_browse_queries,
+    build_search_queries, comparable_key, ebay_item_id, exclude_source_listing,
+    match_level, merge_ranked_results,
 )
 
 
@@ -90,6 +91,82 @@ class ComparableMatchingTest(unittest.TestCase):
             self.REFERENCE,
         )
         self.assertEqual(annotated[0]["match"], "variant")
+
+
+WEMBY = "Panini Phoenix Basketball 2023-24 Victor Wembanyama RC Spurs #256"
+
+
+class BrowseQueryTest(unittest.TestCase):
+    """La Browse API combine les mots en ET : un titre entier ne matche rien."""
+
+    def test_queries_get_shorter_not_longer(self):
+        queries = build_browse_queries(WEMBY)
+        lengths = [len(query.split()) for query in queries]
+        self.assertEqual(lengths, sorted(lengths, reverse=True))
+        self.assertLessEqual(lengths[0], 5)
+
+    def test_the_player_name_survives_every_shortening(self):
+        for query in build_browse_queries(WEMBY):
+            self.assertIn("wembanyama", query)
+
+    def test_generic_sport_words_are_dropped(self):
+        joined = " ".join(build_browse_queries(WEMBY))
+        self.assertNotIn("basketball", joined)
+        self.assertNotIn(" rc", joined)
+
+    def test_card_number_travels_without_its_hash(self):
+        first = build_browse_queries(WEMBY)[0]
+        self.assertIn("256", first)
+        self.assertNotIn("#", first)
+
+    def test_refine_keywords_are_appended_to_every_query(self):
+        refine = {"variant_text": "Silver", "grader": "PSA", "grade": 10.0, "grade_label": None}
+        for query in build_browse_queries(WEMBY, refine_keywords(refine)):
+            self.assertTrue(query.endswith("Silver PSA 10"), query)
+
+    def test_a_short_title_still_produces_a_query(self):
+        self.assertTrue(build_browse_queries("Pikachu"))
+
+
+class RefineTest(unittest.TestCase):
+    def test_manual_grade_overrides_an_ungraded_detection(self):
+        detected = classify(WEMBY, condition="Non gradée - Quasi neuf ou mieux")
+        self.assertEqual(detected["bucket_text"], "Base · Brut")
+        refined = apply_refine(detected, {"variant_text": "Base", "grader": "PSA", "grade": 10.0, "grade_label": None})
+        self.assertEqual(refined["bucket_text"], "Base · PSA 10")
+        self.assertEqual(refined["bucket_key"], "base|psa-10")
+        self.assertTrue(refined["refined"])
+
+    def test_refine_keeps_the_card_number(self):
+        refined = apply_refine(classify(WEMBY), {"grader": "PSA", "grade": 9.0})
+        self.assertEqual(refined["card_number"], "256")
+
+    def test_clearing_the_grade_returns_to_raw(self):
+        refined = apply_refine(classify(WEMBY), {"variant_text": "Teal Lazer"})
+        self.assertEqual(refined["bucket_text"], "Teal Lazer · Brut")
+
+    def test_a_serial_is_not_used_as_a_search_keyword(self):
+        self.assertEqual(refine_keywords({"variant_text": "Gold /25"}), ["Gold"])
+
+    def test_base_alone_adds_no_keyword(self):
+        self.assertEqual(refine_keywords({"variant_text": "Base"}), [])
+
+
+class DeduplicationTest(unittest.TestCase):
+    """Les URL eBay portent un suivi différent à chaque recherche."""
+
+    def test_tracking_parameters_do_not_create_a_duplicate(self):
+        first = {"url": "https://www.ebay.fr/itm/226889222941?_skw=wemby&_trkparms=a", "title": "Wemby #256", "price": 8.23}
+        second = {"url": "https://www.ebay.fr/itm/226889222941?_skw=phoenix&_trkparms=b", "title": "Wemby #256", "price": 8.23}
+        self.assertEqual(comparable_key(first), comparable_key(second))
+        self.assertEqual(len(merge_ranked_results([[first], [second]], "Wemby #256")), 1)
+
+    def test_distinct_listings_are_kept_apart(self):
+        results = merge_ranked_results([[
+            {"url": "https://www.ebay.fr/itm/111111111111", "title": "Wemby #256", "price": 8.0},
+            {"url": "https://www.ebay.fr/itm/222222222222", "title": "Wemby #256", "price": 9.0},
+        ]], "Wemby #256")
+        self.assertEqual(len(results), 2)
 
 
 if __name__ == "__main__":
