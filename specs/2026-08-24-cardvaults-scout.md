@@ -204,3 +204,14 @@
 - Exemple : `Carte Pokémon Dracaufeu V Gradée 10 Collect Aura - Star Birth (Japonais)` donnait `pokemon dracaufeu v gradee 10 collect aura vinted` ; elle donne maintenant `pokemon dracaufeu v star birth japonais`, case `Base · Collect Aura 10`, numéro `14/100`.
 - Vérifié : 60 tests backend, 3 fixtures d'extraction, rendu headless du panneau, DOM Vinted contrôlé sur annonce réelle.
 - Reste : l'axe langue n'est pas traité — « japonais » reste un mot-clé de recherche alors que les annonces eBay écrivent « japanese » ou « JP ».
+
+### V3.3 — préremplissage de la fiche Collection
+
+- Constat : `Ajouter à ma Collection` envoyait le titre brut entier dans le champ joueur, `sport=Autre` et tous les autres champs vides. La variante, la note, le numéro et le tirage déjà calculés étaient perdus.
+- Constat bloquant : le sélecteur des caractéristiques eBay était faux. `.ux-labels-values` désigne le bloc livraison/retours ; les caractéristiques sont des paires `dt`/`dd` sous `.ux-layout-section--features`. Scout envoyait donc des délais de livraison en guise de caractéristiques, et `condition` ressortait vide — la détection par caractéristiques n'avait jamais servi.
+- Fait : sélecteurs corrigés et vérifiés sur l'annonce réelle. eBay sert 17 caractéristiques dont `Joueur ou athlète`, `Set`, `Fabricant`, `Saison`, `Numéro de carte`, `Équipe`, `Sport`, `Ligue`, `Caractéristiques`.
+- Fait : `card_fields` déduit la fiche des caractéristiques, complétée par la classification. Les mots attendus sont priorisés, sinon `Année de fabrication` l'emportait sur `Saison`, qui décrit mieux une carte.
+- Fait : `detect_sport` mappe les libellés français et les ligues vers les sports CardVaults ; un sport inconnu reste `Autre` plutôt que d'être deviné.
+- Fait : bloc `Fiche à créer` éditable dans le panneau, gradation liée à la case retenue, champs vides envoyés à `null` et non en chaîne vide.
+- Fait : si le backend ne reprend pas une correction de case, le panneau la conserve localement au lieu de la perdre en silence.
+- Vérifié : 67 tests backend, 3 fixtures d'extraction alignées sur le DOM réel, rendu headless couvrant le formulaire et le contenu envoyé à `/cards`, DOM eBay et Vinted contrôlés en direct.

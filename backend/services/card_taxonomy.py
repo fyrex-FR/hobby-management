@@ -383,3 +383,77 @@ def same_card_number(reference: str, candidate: str) -> bool:
     if reference == candidate:
         return True
     return reference.split("/")[0] == candidate.split("/")[0]
+
+
+# Correspondances des caractéristiques eBay vers les champs d'une fiche. Les
+# libellés sont ceux réellement servis par ebay.fr sur une carte de sport.
+_FIELD_KEYS: dict[str, tuple[str, ...]] = {
+    "player": ("joueur", "athlete", "player"),
+    "team": ("equipe", "team", "club"),
+    "year": ("saison", "season", "annee", "year"),
+    "brand": ("fabricant", "marque", "brand", "manufacturer"),
+    "set_name": ("set", "ensemble", "serie", "collection"),
+    "card_number": ("numero de carte", "numero de la carte", "card number"),
+    "features": ("caracteristiques", "features", "attributes"),
+    "sport": ("sport",),
+    "league": ("ligue", "league"),
+}
+
+_SPORTS = (
+    ("football americain", "Football US"), ("american football", "Football US"),
+    ("nfl", "Football US"), ("basket", "Basket"), ("nba", "Basket"),
+    ("baseball", "Baseball"), ("mlb", "Baseball"),
+    ("hockey", "Hockey"), ("nhl", "Hockey"),
+    ("soccer", "Foot"), ("football", "Foot"), ("ligue 1", "Foot"),
+)
+
+_ROOKIE = re.compile(r"\brookie\b|\brc\b|\bjeune\b")
+
+
+def _pick(specifics: dict | None, field: str) -> str:
+    """Caractéristique correspondant au champ, mots attendus par ordre de priorité.
+
+    L'ordre des mots prime sur celui de la page : `Saison` décrit mieux
+    l'année d'une carte que `Année de fabrication`, qu'eBay place pourtant
+    plus haut.
+    """
+    entries = [(ascii_lower(key), str(value or "").strip()) for key, value in (specifics or {}).items()]
+    for word in _FIELD_KEYS[field]:
+        for key, value in entries:
+            if word in key and value:
+                return value
+    return ""
+
+
+def detect_sport(*values: str) -> str:
+    """Sport CardVaults déduit des libellés eBay (« Basket-ball », « NBA »)."""
+    haystack = ascii_lower(" ".join(value for value in values if value))
+    for needle, sport in _SPORTS:
+        if needle in haystack:
+            return sport
+    return "Autre"
+
+
+def card_fields(classification: dict, specifics: dict | None = None, *, title: str = "") -> dict:
+    """Champs de fiche déduits de l'annonce, pour préremplir la Collection.
+
+    Les caractéristiques eBay sont la source sûre ; la classification comble
+    ce qu'elles ne disent pas. Aucun champ n'est deviné : ce qui reste inconnu
+    reste vide, à compléter dans CardVaults.
+    """
+    features = _pick(specifics, "features")
+    variant = classification.get("variant_text") or ""
+    return {
+        "sport": detect_sport(_pick(specifics, "sport"), _pick(specifics, "league"), title),
+        "player": _pick(specifics, "player"),
+        "team": _pick(specifics, "team"),
+        "year": _pick(specifics, "year"),
+        "brand": _pick(specifics, "brand"),
+        "set_name": _pick(specifics, "set_name"),
+        "card_number": _pick(specifics, "card_number") or classification.get("card_number") or "",
+        "parallel_name": "" if variant in ("", "Base") else variant.split("/")[0].strip(),
+        "numbered": classification.get("serial") or "",
+        "is_rookie": bool(_ROOKIE.search(ascii_lower(f"{features} {title}"))),
+        "grading_company": classification.get("grader") or "",
+        "grading_grade": f"{classification['grade']:g}" if classification.get("grade") is not None else "",
+    }

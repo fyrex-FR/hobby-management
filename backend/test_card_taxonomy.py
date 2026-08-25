@@ -1,6 +1,8 @@
 import unittest
 
-from services.card_taxonomy import classify, detect_card_number, same_card_number, strip_grading
+from services.card_taxonomy import (
+    card_fields, classify, detect_card_number, detect_sport, same_card_number, strip_grading,
+)
 
 
 def bucket(title, **kwargs):
@@ -178,6 +180,78 @@ class StripGradingTest(unittest.TestCase):
 
     def test_a_title_made_only_of_grading_does_not_vanish_silently(self):
         self.assertEqual(strip_grading("PSA 10"), "")
+
+
+# Caractéristiques réellement servies par ebay.fr sur la Phoenix #256.
+EBAY_SPECIFICS = {
+    "État": "Non gradée - Quasi neuf ou mieux",
+    "Joueur ou athlète": "Victor Wembanyama",
+    "Set": "Phoenix Basketball",
+    "Langue": "Anglais",
+    "Année de fabrication": "2024",
+    "Fabricant": "Panini",
+    "Caractéristiques": "Rookie Card (RC)",
+    "Sport": "Basket-ball",
+    "Numéro de carte": "256",
+    "Ligue": "National Basketball Association (NBA)",
+    "Équipe": "San Antonio Spurs",
+    "Saison": "2023-24",
+}
+
+
+class CardFieldsTest(unittest.TestCase):
+    """Préremplissage de la fiche Collection depuis l'annonce."""
+
+    TITLE = "Panini Phoenix Basketball 2023-24 Victor Wembanyama RC Spurs #256"
+
+    def fields(self, specifics=EBAY_SPECIFICS, title=None, **kwargs):
+        title = self.TITLE if title is None else title
+        return card_fields(classify(title, specifics=specifics, **kwargs), specifics, title=title)
+
+    def test_ebay_specifics_fill_the_whole_card(self):
+        fields = self.fields()
+        self.assertEqual(fields["player"], "Victor Wembanyama")
+        self.assertEqual(fields["team"], "San Antonio Spurs")
+        self.assertEqual(fields["brand"], "Panini")
+        self.assertEqual(fields["set_name"], "Phoenix Basketball")
+        self.assertEqual(fields["card_number"], "256")
+        self.assertEqual(fields["sport"], "Basket")
+        self.assertTrue(fields["is_rookie"])
+
+    def test_season_beats_manufacture_year(self):
+        # eBay place « Année de fabrication » avant « Saison », qui décrit
+        # pourtant mieux une carte.
+        self.assertEqual(self.fields()["year"], "2023-24")
+
+    def test_nothing_is_invented_without_specifics(self):
+        fields = self.fields(specifics=None)
+        self.assertEqual(fields["player"], "")
+        self.assertEqual(fields["team"], "")
+        self.assertEqual(fields["card_number"], "256")
+
+    def test_grading_and_parallel_come_from_the_classification(self):
+        fields = self.fields(specifics={"Parallèle/Variété": "Silver"},
+                             title="Wembanyama Phoenix #256 Silver PSA 10")
+        self.assertEqual(fields["grading_company"], "PSA")
+        self.assertEqual(fields["grading_grade"], "10")
+        self.assertEqual(fields["parallel_name"], "Silver")
+
+    def test_a_serial_lands_in_numbered_not_in_the_parallel(self):
+        fields = self.fields(specifics=None, title="Wembanyama Gold Prizm 07/10 #256")
+        self.assertEqual(fields["parallel_name"], "Gold")
+        self.assertEqual(fields["numbered"], "/10")
+
+
+class SportTest(unittest.TestCase):
+    def test_french_and_league_labels(self):
+        self.assertEqual(detect_sport("Basket-ball"), "Basket")
+        self.assertEqual(detect_sport("", "National Basketball Association (NBA)"), "Basket")
+        self.assertEqual(detect_sport("Football américain"), "Football US")
+        self.assertEqual(detect_sport("Football"), "Foot")
+        self.assertEqual(detect_sport("Hockey sur glace"), "Hockey")
+
+    def test_unknown_sport_is_not_guessed(self):
+        self.assertEqual(detect_sport("Cartes à collectionner"), "Autre")
 
 
 if __name__ == "__main__":

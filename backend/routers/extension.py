@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, field_validator
 from .auth import current_user
 from .cards import supabase_headers
 from .upload import _get_s3, R2_BUCKET_NAME, R2_PUBLIC_URL
-from services.card_taxonomy import apply_refine, classify, refine_keywords, strip_grading
+from services.card_taxonomy import apply_refine, card_fields, classify, refine_keywords, strip_grading
 from services.ebay_service import search_ebay_listings, search_ebay_sold
 from services.extension_helpers import (
     allowed_image_url, allowed_source_url, annotate_comparables, build_browse_queries,
@@ -274,6 +274,7 @@ async def analyze(body: AnalyzeRequest, user: dict = Depends(current_extension_u
     return {
         "query": sold_queries[0], "queries": sold_queries,
         "reference": reference,
+        "prefill": card_fields(reference, body.specifics, title=body.title),
         "searches": {"sold": sold_searches, "active": active_searches},
         "sold": summarize_results(annotate_comparables(sold_results, reference)),
         "active": summarize_results(annotate_comparables(active_results, reference)),
@@ -287,13 +288,17 @@ class ExtensionCardCreate(BaseModel):
     image_url: str
     displayed_price: Optional[float] = Field(default=None, ge=0)
     sport: Literal["Basket", "Foot", "Baseball", "Football US", "Hockey", "Autre"] = "Autre"
-    player: Optional[str] = None
-    team: Optional[str] = None
-    year: Optional[str] = None
-    brand: Optional[str] = None
-    set_name: Optional[str] = None
-    card_number: Optional[str] = None
-    parallel_name: Optional[str] = None
+    player: Optional[str] = Field(default=None, max_length=120)
+    team: Optional[str] = Field(default=None, max_length=120)
+    year: Optional[str] = Field(default=None, max_length=20)
+    brand: Optional[str] = Field(default=None, max_length=80)
+    set_name: Optional[str] = Field(default=None, max_length=120)
+    card_number: Optional[str] = Field(default=None, max_length=20)
+    parallel_name: Optional[str] = Field(default=None, max_length=80)
+    numbered: Optional[str] = Field(default=None, max_length=20)
+    is_rookie: Optional[bool] = None
+    grading_company: Optional[str] = Field(default=None, max_length=20)
+    grading_grade: Optional[str] = Field(default=None, max_length=10)
 
 
 @router.post("/cards", status_code=201)
@@ -308,6 +313,9 @@ async def create_extension_card(body: ExtensionCardCreate, user: dict = Depends(
         return {"card": existing[0], "created": False}
     image, content_type = await _download_image(body.image_url)
     payload = body.model_dump(exclude={"source", "source_url", "image_url", "displayed_price"}, exclude_none=True)
+    # Un champ laissé vide dans le panneau reste vide dans CardVaults : mieux
+    # vaut un trou visible qu'une chaîne vide à nettoyer plus tard.
+    payload = {key: value for key, value in payload.items() if value != ""}
     payload.update({
         "user_id": user["sub"], "status": "collection", "quantity": 1,
         "purchase_price": body.displayed_price, url_field: body.source_url,

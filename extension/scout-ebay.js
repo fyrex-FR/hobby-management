@@ -19,27 +19,32 @@
     return String(value || "").replace(/\s+/g, " ").trim();
   }
 
-  /** État eBay : « Non gradée - Quasi neuf ou mieux », « Gradée - PSA 10 ». */
+  /**
+   * État eBay : « Non gradée - Quasi neuf ou mieux », « Gradée - PSA 10 ».
+   * eBay répète la valeur pour les lecteurs d'écran et y accroche un lien
+   * « En savoir plus » : on ne garde que le premier libellé.
+   */
   function extractCondition() {
     const value = text([
+      ".x-item-condition-text .ux-textspans",
       ".x-item-condition-value .ux-textspans",
-      ".x-item-condition-value",
       "[data-testid='x-item-condition'] .ux-textspans",
       ".u-flL.condText",
     ]);
-    // eBay double parfois le libellé avec une version lecteur d'écran.
-    return clean(value).slice(0, 200);
+    return clean(value).replace(/\s*En savoir plus.*$/i, "").slice(0, 200);
   }
 
   /**
-   * Caractéristiques de l'objet : « Société de notation », « Note »,
-   * « Parallèle/Variété »… Bien plus sûres que le titre pour classer la carte.
+   * Caractéristiques de l'objet : « Joueur ou athlète », « Set », « Numéro de
+   * carte », « Société de notation »… Ce sont des paires dt/dd de la section
+   * `--features`, à ne pas confondre avec le bloc livraison/retours qui
+   * utilise, lui, les classes `ux-labels-values`.
    */
   function extractSpecifics() {
     const specifics = {};
-    for (const row of document.querySelectorAll(".ux-labels-values")) {
-      const label = clean(row.querySelector(".ux-labels-values__labels")?.textContent).replace(/\s*:\s*$/, "");
-      const value = clean(row.querySelector(".ux-labels-values__values")?.textContent);
+    for (const col of document.querySelectorAll(".ux-layout-section--features .ux-layout-section-evo__col")) {
+      const label = clean(col.querySelector("dt .ux-textspans, dt")?.textContent).replace(/\s*:\s*$/, "");
+      const value = clean(col.querySelector("dd .ux-textspans, dd")?.textContent);
       if (!label || !value || specifics[label]) continue;
       specifics[label] = value.slice(0, 160);
       if (Object.keys(specifics).length >= MAX_SPECIFICS) break;

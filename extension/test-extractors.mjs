@@ -37,11 +37,11 @@ function runExtractor(file, fixtures, locationHref, lists = {}) {
   return result;
 }
 
-/** Ligne « libellé / valeur » du bloc Caractéristiques de l'objet eBay. */
+/** Colonne dt/dd du bloc Caractéristiques de l'objet eBay. */
 function ebayRow(label, value) {
   return node('', {
-    '.ux-labels-values__labels': node(label),
-    '.ux-labels-values__values': node(value),
+    'dt .ux-textspans, dt': node(label),
+    'dd .ux-textspans, dd': node(value),
   });
 }
 
@@ -84,12 +84,13 @@ const ebay = runExtractor('./scout-ebay.js', {
   'h1.x-item-title__mainTitle': { textContent: '2023 Topps Wembanyama #1' },
   '.x-price-primary': { textContent: 'EUR 21,99' },
   '.ux-image-carousel-item.active img, .ux-image-carousel img, #icImg': { src: 'https://i.ebayimg.com/card.jpg' },
-  '.x-item-condition-value .ux-textspans': { textContent: '  Non gradée -\n Quasi neuf ou mieux ' },
+  '.x-item-condition-text .ux-textspans': { textContent: '  Non gradée -\n Quasi neuf ou mieux En savoir plus - à propos de l’état ' },
 }, 'https://www.ebay.fr/itm/456?hash=abc', {
-  '.ux-labels-values': [
-    ebayRow('Joueur', 'Victor Wembanyama'),
+  '.ux-layout-section--features .ux-layout-section-evo__col': [
+    ebayRow('Joueur ou athlète', 'Victor Wembanyama'),
     ebayRow('Professionnel noté :', 'Non'),
     ebayRow('Saison', '2023-24'),
+    ebayRow('Numéro de carte', '256'),
     ebayRow('Vide', ''),
   ],
 });
@@ -99,7 +100,8 @@ assert.equal(ebay.currency, 'EUR');
 assert.equal(ebay.source_url, 'https://www.ebay.fr/itm/456');
 assert.equal(ebay.condition, 'Non gradée - Quasi neuf ou mieux');
 assert.equal(ebay.specifics['Professionnel noté'], 'Non');
-assert.equal(ebay.specifics.Joueur, 'Victor Wembanyama');
+assert.equal(ebay.specifics['Joueur ou athlète'], 'Victor Wembanyama');
+assert.equal(ebay.specifics['Numéro de carte'], '256');
 assert.ok(!('Vide' in ebay.specifics), 'une caractéristique sans valeur est ignorée');
 
 console.log('extractors: 3 fixtures OK');

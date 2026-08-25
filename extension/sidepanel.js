@@ -112,6 +112,7 @@ function applyOverride() {
   const moved = state.override.bucket_key !== state.analysis?.reference?.bucket_key;
   show("refine", moved); show("refine-hint", moved);
   syncChips();
+  syncPrefillGrade();
   renderResults();
 }
 
@@ -124,6 +125,56 @@ function syncChips() {
   if (ref.card_number) chips.push(`<span class="chip num">#${escapeHtml(ref.card_number)}</span>`);
   if (state.override || state.refined) chips.push(`<span class="chip fixed">corrigé</span>`);
   $("ref-chips").innerHTML = chips.join("");
+}
+
+/* ---------- Fiche à créer dans la Collection ---------- */
+
+const PREFILL_FIELDS = [
+  ["player", "Joueur"], ["team", "Équipe"], ["year", "Année"], ["brand", "Marque"],
+  ["set_name", "Set"], ["card_number", "Numéro"], ["parallel_name", "Parallèle"], ["numbered", "Tirage"],
+];
+const SPORTS = ["Basket", "Foot", "Baseball", "Football US", "Hockey", "Autre"];
+
+function renderPrefill() {
+  const data = state.analysis?.prefill;
+  if (!data) { show("prefill", false); return; }
+  $("prefill").innerHTML = `<summary>Fiche à créer</summary>
+    <div class="prefill-grid">
+      ${PREFILL_FIELDS.map(([key, label]) =>
+        `<label>${label}<input id="f-${key}" type="text" value="${escapeAttr(data[key] || "")}"></label>`).join("")}
+      <label>Sport<select id="f-sport">${SPORTS.map((sport) =>
+        `<option${sport === data.sport ? " selected" : ""}>${sport}</option>`).join("")}</select></label>
+      <label class="check"><input id="f-rookie" type="checkbox"${data.is_rookie ? " checked" : ""}> Carte rookie</label>
+    </div>
+    <p class="muted" id="prefill-grade"></p>`;
+  syncPrefillGrade();
+  show("prefill");
+}
+
+/** La gradation suit la case retenue : la corriger corrige aussi la fiche. */
+function syncPrefillGrade() {
+  const note = $("prefill-grade");
+  if (!note) return;
+  const ref = reference();
+  note.textContent = ref.graded
+    ? `Gradation enregistrée : ${ref.grade_text}. Photo, prix d’achat et lien d’origine sont repris de l’annonce.`
+    : "Carte enregistrée comme brute. Photo, prix d’achat et lien d’origine sont repris de l’annonce.";
+}
+
+/** Payload d'ajout : le formulaire s'il existe, sinon l'annonce telle quelle. */
+function collectCard() {
+  const ref = reference();
+  if (!state.analysis?.prefill || !$("f-player")) {
+    return { ...state.listing, sport: "Autre", player: state.listing.title };
+  }
+  const fields = Object.fromEntries(PREFILL_FIELDS.map(([key]) => [key, $(`f-${key}`).value.trim() || null]));
+  return {
+    ...state.listing, ...fields,
+    sport: $("f-sport").value,
+    is_rookie: $("f-rookie").checked,
+    grading_company: ref.grader || null,
+    grading_grade: ref.grade != null ? String(ref.grade) : null,
+  };
 }
 
 function renderSearches() {
@@ -340,6 +391,7 @@ function renderResults() {
       renderResults();
     }));
   ["summary", "results", "add", "reset", "search-tools"].forEach((id) => show(id));
+  show("prefill", Boolean(state.analysis?.prefill));
 }
 
 /* ---------- Cycle de vie ---------- */
@@ -349,8 +401,8 @@ function resetView({ keepListing = false } = {}) {
   state.override = null; state.refined = false; state.autoQuery = ""; state.open.clear();
   if (!keepListing) state.listing = null;
   $("query").value = "";
-  ["summary", "results", "add", "reset", "search-tools", "loader", "reference"].forEach((id) => show(id, false));
-  $("results").innerHTML = ""; $("summary").innerHTML = ""; $("reference").innerHTML = ""; $("searches").innerHTML = "";
+  ["summary", "results", "add", "reset", "search-tools", "loader", "reference", "prefill"].forEach((id) => show(id, false));
+  $("results").innerHTML = ""; $("summary").innerHTML = ""; $("reference").innerHTML = ""; $("searches").innerHTML = ""; $("prefill").innerHTML = "";
   $("status").textContent = ""; $("status").className = "status";
 }
 
@@ -378,7 +430,7 @@ async function readListing({ autoAnalyze = true } = {}) {
 async function analyzeListing({ refine = null } = {}) {
   if (!state.listing) return readListing();
   const run = ++state.run;
-  show("loader"); ["summary", "results", "add", "reset", "search-tools", "reference"].forEach((id) => show(id, false));
+  show("loader"); ["summary", "results", "add", "reset", "search-tools", "reference", "prefill"].forEach((id) => show(id, false));
   $("status").textContent = refine ? "Recherche de cette case…" : "Annonce détectée";
   $("status").className = "status"; $("analyze").disabled = true;
   try {
@@ -396,10 +448,13 @@ async function analyzeListing({ refine = null } = {}) {
     const analysis = await api("/analyze", { method: "POST", body: JSON.stringify(body) });
     if (run !== state.run) return;
     state.analysis = analysis; state.resultTab = "sold"; state.open.clear(); state.excluded.clear();
-    // Le backend renvoie déjà la case corrigée : plus besoin de l'écrasement local.
-    state.override = null; state.refined = Boolean(analysis.reference?.refined);
+    // Le backend renvoie normalement la case corrigée. S'il ne l'a pas reprise
+    // — version antérieure déployée — on garde la correction localement plutôt
+    // que de la perdre en silence.
+    state.override = refine && analysis.reference?.bucket_key !== refine.bucket_key ? refine : null;
+    state.refined = Boolean(analysis.reference?.refined) || Boolean(state.override);
     state.autoQuery = analysis.query; $("query").value = analysis.query;
-    renderReference(); renderSearches(); renderResults();
+    renderReference(); renderSearches(); renderPrefill(); renderResults();
     $("status").textContent = analysis.warnings?.length ? analysis.warnings[0] : "Analyse terminée";
   } catch (error) {
     if (run === state.run) { $("status").textContent = error.message; $("status").className = "status error"; show("reset"); show("search-tools"); }
@@ -417,6 +472,6 @@ $("exchange").addEventListener("click", async () => { try { const result = await
 $("logout").addEventListener("click", async () => { await chrome.storage.local.remove("scout_token"); resetView(); await boot(); });
 $("analyze").addEventListener("click", () => analyzeListing());
 $("reset").addEventListener("click", () => readListing());
-$("add").addEventListener("click", async () => { $("add").disabled = true; try { const result = await api("/cards", { method: "POST", body: JSON.stringify({ ...state.listing, sport: "Autre", player: state.listing.title }) }); $("status").textContent = result.created ? "Carte ajoutée à la Collection ✓" : "Cette annonce est déjà dans la Collection."; } catch (e) { $("status").textContent = e.message; } finally { $("add").disabled = false; } });
+$("add").addEventListener("click", async () => { $("add").disabled = true; try { const result = await api("/cards", { method: "POST", body: JSON.stringify(collectCard()) }); $("status").textContent = result.created ? "Carte ajoutée à la Collection ✓" : "Cette annonce est déjà dans la Collection."; } catch (e) { $("status").textContent = e.message; } finally { $("add").disabled = false; } });
 chrome.runtime.onMessage.addListener((message) => { if (message?.type !== "SCOUT_TAB_CHANGED") return; clearTimeout(state.timer); state.timer = setTimeout(() => readListing(), 350); });
 boot();

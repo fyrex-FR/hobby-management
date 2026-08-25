@@ -46,6 +46,17 @@ vendeur.
 Les comparables restent eBay : ventes terminées et annonces actives de la même
 carte, rangées dans les mêmes cases.
 
+## Ajout à la Collection
+
+`Fiche à créer` reprend les caractéristiques de l'annonce — joueur, équipe,
+saison, marque, set, numéro — plus la variante, le tirage et la gradation
+déduits. Tout est éditable avant l'ajout ; un champ laissé vide reste vide dans
+CardVaults plutôt que d'être deviné.
+
+La gradation suit la case retenue : corriger la note dans `Carte analysée`
+corrige aussi la fiche. Photo, prix d'achat et lien d'origine viennent de
+l'annonce.
+
 ## Préremplissage Vinted existant
 
 1. Dans l'app, ouvrir une fiche carte puis cliquer `Publier sur Vinted`
