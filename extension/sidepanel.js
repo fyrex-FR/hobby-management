@@ -76,12 +76,10 @@ $("analyze").addEventListener("click", async () => {
 });
 
 $("add").addEventListener("click", async () => {
-  const id = state.analysis?.identification || {};
   $("add").disabled = true;
   try {
     const result = await api("/cards", { method: "POST", body: JSON.stringify({
-      ...state.listing, sport: id.sport || "Autre", player: id.player, team: id.team, year: id.year,
-      brand: id.brand, set_name: id.set, card_number: id.card_number, parallel_name: id.parallel,
+      ...state.listing, sport: "Autre", player: state.listing.title,
     }) });
     $("status").textContent = result.created ? "Carte ajoutée à la Collection ✓" : "Cette annonce était déjà dans la Collection.";
   } catch (error) { $("status").textContent = error.message; } finally { $("add").disabled = false; }

@@ -1,5 +1,4 @@
 import asyncio
-import base64
 import hashlib
 import os
 import secrets
@@ -15,8 +14,9 @@ from .auth import current_user
 from .cards import supabase_headers
 from .upload import _get_s3, R2_BUCKET_NAME, R2_PUBLIC_URL
 from services.ebay_service import search_ebay_listings, search_ebay_sold
-from services.gemini import identify_listing_gemini
-from services.extension_helpers import allowed_image_url, allowed_source_url, build_search_query
+from services.extension_helpers import (
+    allowed_image_url, allowed_source_url, build_search_queries, merge_ranked_results, summarize_results,
+)
 
 router = APIRouter(prefix="/extension", tags=["extension"])
 
@@ -193,16 +193,24 @@ class AnalyzeRequest(BaseModel):
 async def analyze(body: AnalyzeRequest, user: dict = Depends(current_extension_user)):
     if not allowed_source_url(body.source, body.source_url):
         raise HTTPException(status_code=422, detail="URL d'annonce non autorisée")
-    image, content_type = await _download_image(body.image_url)
-    identified = await identify_listing_gemini(base64.b64encode(image).decode(), body.title, content_type)
-    if identified["error"] or not identified["result"]:
-        raise HTTPException(status_code=502, detail="Identification impossible")
-    result = identified["result"]
-    if result.get("sport") not in SPORTS:
-        result["sport"] = "Autre"
-    query = body.query or build_search_query(result, body.title)
-    sold, active = await asyncio.gather(search_ebay_sold(query), search_ebay_listings(query))
-    return {"identification": result, "query": query, "sold": sold, "active": active}
+    queries = [body.query.strip()] if body.query and body.query.strip() else build_search_queries(body.title)
+    sold_groups, active_groups, used_queries = [], [], []
+    errors = []
+    for query in queries:
+        sold, active = await asyncio.gather(search_ebay_sold(query), search_ebay_listings(query))
+        sold_groups.append(sold.get("results", []))
+        active_groups.append(active.get("results", []))
+        used_queries.append(query)
+        errors.extend(error for error in (sold.get("error"), active.get("error")) if error)
+        if len(merge_ranked_results(sold_groups, body.title)) >= 5 and len(merge_ranked_results(active_groups, body.title)) >= 5:
+            break
+    sold_results = merge_ranked_results(sold_groups, body.title)
+    active_results = merge_ranked_results(active_groups, body.title)
+    return {
+        "query": used_queries[0], "queries": used_queries,
+        "sold": summarize_results(sold_results), "active": summarize_results(active_results),
+        "warnings": list(dict.fromkeys(errors)),
+    }
 
 
 class ExtensionCardCreate(BaseModel):

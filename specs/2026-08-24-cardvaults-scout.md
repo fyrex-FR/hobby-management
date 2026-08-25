@@ -50,3 +50,31 @@
 - Vérifié : 6 tests backend, 2 fixtures d'extraction, 4 tests frontend, compilation Python/JavaScript, lint ciblé et build frontend.
 - Divergence : l'extension est livrée non empaquetée pour le MVP ; son origine exacte devra être ajoutée à `EXTENSION_ORIGIN` après chargement dans Chrome.
 - Reste avant prod : appliquer la migration, configurer l'origine, tester l'appairage et une annonce réelle dans Chrome, puis déployer backend/frontend après validation humaine.
+
+## Ajustement après test réel — recherche sans IA
+
+### Constat
+
+- Sur l'annonce eBay « 2023 2024 Hot Rookies Eli Junior Kroupi RC Panini Score 23/24 L1 Lorient Mint », Gemini produit « 2023-24 Panini Score Eli Junior Kroupi Base ».
+- Le terme inventé `Base` et la perte de `Hot Rookies` / `#20` rendent la recherche trop restrictive : aucun vendu et une seule annonce active non pertinente, alors qu'eBay en affiche plusieurs.
+- L'identification visuelle avant recherche ajoute donc coût et fragilité sans améliorer ce parcours.
+
+### Plan révisé — validé le 2026-08-25
+
+- Supprimer Gemini et le téléchargement d'image de `POST /api/extension/analyze` ; partir uniquement du titre extrait de l'annonce.
+- Normaliser le titre de façon déterministe : retirer prix, emojis, état et mots commerciaux (`mint`, `hot`, etc.) uniquement lorsqu'ils ne désignent pas l'insert ; conserver joueur, marque, set/insert, numéro, saison et parallèle.
+- Générer plusieurs requêtes du plus précis au plus large et élargir seulement si le premier passage ramène trop peu de résultats.
+- Fusionner/dédoublonner les résultats eBay, puis classer leur pertinence par recouvrement de mots significatifs avec le titre source.
+- Ne plus inventer de métadonnées pour l'ajout Collection : préremplir le joueur/titre brut et laisser les champs techniques vides/corrigeables.
+- Ajouter ce cas Eli Junior Kroupi comme test de régression, avec tests de normalisation, élargissement, dédoublonnage et classement.
+- Modifier le contrat de réponse et l'interface pour afficher la requête utilisée sans bloc « identification IA ».
+- Alternative écartée : garder Gemini en option, car le coût et les faux détails subsisteraient alors dans le chemin principal.
+
+### Convergence de l'ajustement
+
+- Fait : Gemini et le téléchargement d'image ont été retirés du chemin d'analyse ; l'image reste téléchargée uniquement lors de l'ajout à la Collection.
+- Fait : requêtes déterministes du titre, élargissement progressif, fusion, dédoublonnage et classement par proximité lexicale.
+- Fait : le cas Kroupi conserve `Hot Rookies`, `#20`, `23/24` et n'invente jamais `Base`.
+- Fait : le contrat ne renvoie plus d'identification IA ; l'ajout conserve le titre source dans le champ joueur, corrigeable ensuite dans CardVaults.
+- Vérifié : 7 tests backend, 2 fixtures d'extraction, compilation Python/JavaScript et build frontend.
+- Reste : vérification réelle après déploiement avec l'annonce Kroupi, car les résultats eBay dépendent de l'état courant de l'index et du fallback sold.
