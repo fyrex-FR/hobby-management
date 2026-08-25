@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEApTnPfWzyMKFxpEbe/fFOZgjb6Bjmd7I7pXoRfTETY+4EQ3im8p1nboT0UYASoVp+luTa3A2rnHxz9kfARXVeqjOD3RetmQ7djTB72PmzPP6APgiHb2/EltnbngbkzGemcRb1R9u+fUSSs2yqgSm/Re5Q0Eobn0N85x9qin4Sw//0rE8UEBbkVk7jR2UOR9n7wheZ6xpqqjqiUHMxYlDmaVyw8mOGEVjTCVWpVU8IuNasirGoG4+q9yq+UNR0oaCzFh8LcGEFHAivZfH90Guj6MkbtiKl/2Njym8JaAOK3XpWCAI/Zp1icJvj3coOciXrpZYqGWwpRusDdJLPnLX/YwIDAQAB",
   "name": "CardVaults Scout",
-  "version": "2.3.0",
+  "version": "2.3.1",
   "description": "Analyse les cartes de sport sur Vinted et eBay, puis les ajoute à CardVaults.",
   "permissions": ["storage", "activeTab", "sidePanel", "tabs"],
   "host_permissions": [

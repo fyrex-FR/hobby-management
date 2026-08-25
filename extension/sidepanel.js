@@ -1,5 +1,5 @@
 const API = "https://collection-api.cardvaults.app/api/extension";
-const state = { listing: null, analysis: null, excluded: new Set(), pairing: null, run: 0, timer: null };
+const state = { listing: null, analysis: null, excluded: new Set(), pairing: null, run: 0, timer: null, resultTab: "sold" };
 const $ = (id) => document.getElementById(id);
 const show = (id, visible = true) => $(id).classList.toggle("hidden", !visible);
 const escapeHtml = (value) => { const d = document.createElement("div"); d.textContent = value || ""; return d.innerHTML; };
@@ -15,7 +15,7 @@ async function api(path, options = {}, authenticated = true) {
 }
 
 function resetView({ keepListing = false } = {}) {
-  state.run += 1; state.analysis = null; state.excluded.clear();
+  state.run += 1; state.analysis = null; state.excluded.clear(); state.resultTab = "sold";
   if (!keepListing) state.listing = null;
   $("query").value = "";
   ["summary", "results", "add", "reset", "search-tools", "loader"].forEach((id) => show(id, false));
@@ -52,7 +52,10 @@ function renderResults() {
   const sameCurrencyPrices = kept.filter((x) => (x.currency || "EUR") === dominantCurrency).map((x) => Number(x.price)).filter(Number.isFinite);
   const value = median(sameCurrencyPrices);
   $("summary").innerHTML = `<div class="section-label">ESTIMATION</div><div class="summary-value">${currency(value,dominantCurrency)}</div><div class="summary-grid"><div class="metric"><b>${kept.length}</b><span>ventes retenues</span></div><div class="metric"><b>${active.length}</b><span>annonces actives</span></div><div class="metric"><b>${currency(state.listing.displayed_price,state.listing.currency)}</b><span>prix affiché</span></div></div>`;
-  $("results").innerHTML = `<h2>Ventes terminées</h2>${sold.map((x,i)=>resultHtml(x,i,true)).join("") || '<p class="muted">Aucune vente fiable trouvée.</p>'}<h2>Annonces actives</h2>${active.map((x,i)=>resultHtml(x,i,false)).join("") || '<p class="muted">Aucune annonce trouvée.</p>'}`;
+  const showingSold = state.resultTab === "sold";
+  const rows = showingSold ? sold : active;
+  $("results").innerHTML = `<div class="result-tabs"><button class="result-tab ${showingSold ? "selected" : ""}" data-tab="sold">Vendus <b>${sold.length}</b></button><button class="result-tab ${showingSold ? "" : "selected"}" data-tab="active">En vente <b>${active.length}</b></button></div><div class="result-list">${rows.map((x,i)=>resultHtml(x,i,showingSold)).join("") || `<p class="muted">${showingSold ? "Aucune vente fiable trouvée." : "Aucune annonce trouvée."}</p>`}</div>`;
+  $("results").querySelectorAll("button[data-tab]").forEach((button) => button.addEventListener("click", () => { state.resultTab=button.dataset.tab; renderResults(); }));
   $("results").querySelectorAll("button[data-index]").forEach((button) => button.addEventListener("click", () => { const i=Number(button.dataset.index); state.excluded.has(i)?state.excluded.delete(i):state.excluded.add(i); renderResults(); }));
   ["summary","results","add","reset","search-tools"].forEach((id)=>show(id));
 }
@@ -65,7 +68,7 @@ async function analyzeListing() {
     const manual = $("query").value.trim();
     const analysis = await api("/analyze", { method:"POST", body:JSON.stringify({ ...state.listing, query:manual||null }) });
     if (run !== state.run) return;
-    state.analysis=analysis; $("query").value=analysis.query; state.excluded.clear(); renderResults(); $("status").textContent="Analyse terminée";
+    state.analysis=analysis; state.resultTab="sold"; $("query").value=analysis.query; state.excluded.clear(); renderResults(); $("status").textContent="Analyse terminée";
   } catch(error) { if(run===state.run){ $("status").textContent=error.message; $("status").className="status error"; show("reset"); show("search-tools"); } }
   finally { if(run===state.run) show("loader",false); $("analyze").disabled=false; }
 }
