@@ -30,6 +30,9 @@ _NOISE = {
     "a", "avec", "and", "carte", "card", "collection", "de", "des", "du", "en",
     "excellent", "etat", "fr", "france", "l", "la", "le", "les", "lorient",
     "mint", "neuf", "new", "nm", "of", "panini", "pour", "rare", "the", "trading",
+    # Nom des marketplaces : il traîne dans les titres de page (« … | Vinted »)
+    # et, gardé en ET dans une recherche eBay, ne matche jamais rien.
+    "vinted", "ebay", "leboncoin", "wallapop",
 }
 _QUERY_NOISE = _NOISE - {"panini"}
 

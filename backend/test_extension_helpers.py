@@ -96,6 +96,23 @@ class ComparableMatchingTest(unittest.TestCase):
 WEMBY = "Panini Phoenix Basketball 2023-24 Victor Wembanyama RC Spurs #256"
 
 
+class MarketplaceNoiseTest(unittest.TestCase):
+    """Le nom du site ne doit jamais devenir un mot-clé de recherche eBay."""
+
+    LEAKED = "Carte Pokémon Dracaufeu V Gradée 10 Collect Aura | Vinted"
+
+    def test_site_name_never_reaches_a_sold_query(self):
+        for query in build_search_queries(self.LEAKED):
+            self.assertNotIn("vinted", query)
+
+    def test_site_name_never_reaches_a_browse_query(self):
+        for query in build_browse_queries(self.LEAKED):
+            self.assertNotIn("vinted", query)
+
+    def test_the_card_itself_survives(self):
+        self.assertIn("dracaufeu", build_search_queries(self.LEAKED)[0])
+
+
 class BrowseQueryTest(unittest.TestCase):
     """La Browse API combine les mots en ET : un titre entier ne matche rien."""
 

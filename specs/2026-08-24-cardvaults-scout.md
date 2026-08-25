@@ -215,3 +215,10 @@
 - Fait : bloc `Fiche à créer` éditable dans le panneau, gradation liée à la case retenue, champs vides envoyés à `null` et non en chaîne vide.
 - Fait : si le backend ne reprend pas une correction de case, le panneau la conserve localement au lieu de la perdre en silence.
 - Vérifié : 67 tests backend, 3 fixtures d'extraction alignées sur le DOM réel, rendu headless couvrant le formulaire et le contenu envoyé à `/cards`, DOM eBay et Vinted contrôlés en direct.
+
+### V3.4 — verrou sur le nom des marketplaces
+
+- Constat : « vinted » réapparaissait dans la recherche eBay malgré le nettoyage du titre côté extension.
+- Vérifié sur l'annonce réelle : la page ne porte qu'un seul `h1`, propre. L'extracteur 2.6.0 renvoie donc le bon titre ; la fuite vient d'un panneau servi par une version antérieure, ou d'une mise en page Vinted différente.
+- Fait : `vinted`, `ebay`, `leboncoin` et `wallapop` rejoignent le vocabulaire ignoré. Le nom d'un site ne peut plus devenir un mot-clé, quelle que soit la version d'extension qui l'envoie — le correctif tient sans recharger l'extension.
+- Vérifié : 67 tests backend, dont trois qui échouent si un nom de marketplace atteint une requête.
