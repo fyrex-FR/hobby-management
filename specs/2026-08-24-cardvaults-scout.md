@@ -125,3 +125,12 @@
 - Vérifié : 5 tests backend, 2 fixtures d'extraction avec devise, compilation Python/JavaScript et build frontend.
 - Divergence : aucun test DOM automatisé complet du Side Panel, faute de navigateur Chrome dans la suite locale actuelle.
 - Reste : test réel dans Chrome du chargement automatique et de la collecte eBay sur le cas Kroupi avec le ZIP V2.
+
+### Convergence V2.3 — session eBay obligatoire
+
+- Constat : eBay redirige désormais les filtres Vendus/Terminés vers la connexion ; le proxy anonyme et le fetch de l'extension ne sont plus fiables.
+- Fait : l'extension n'accède plus aux pages de recherche eBay et envoie seulement l'annonce/requête au backend.
+- Fait : le backend collecte les ventes eBay France via le proxy Playwright existant, avec profil authentifié persistant privé sur Jarvis ; annonces actives via Browse `EBAY_FR`.
+- Fait : parsing français et devise EUR vérifiés ; aucun cookie ou identifiant eBay n'est exposé à l'extension.
+- Vérifié : recherche Kroupi connectée sans redirection, 18 ventes visibles dans eBay, 20 résultats EUR parsés ; 7 tests backend, syntaxe JS et manifeste valides.
+- Exploitation : la session eBay pourra demander une reconnexion ; reprendre alors le navigateur temporaire limité au tailnet, puis le couper immédiatement.
