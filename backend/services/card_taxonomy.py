@@ -17,7 +17,7 @@ GRADERS = {
     "psa": "PSA", "bgs": "BGS", "beckett": "BGS", "sgc": "SGC", "cgc": "CGC",
     "ccc": "CCC", "ace": "ACE", "pca": "PCA", "gma": "GMA", "hga": "HGA",
     "tag": "TAG", "isa": "ISA", "ags": "AGS", "ksa": "KSA", "csg": "CSG",
-    "mnt": "MNT", "rcg": "RCG",
+    "mnt": "MNT", "rcg": "RCG", "collect aura": "Collect Aura",
 }
 
 _GRADER_ALT = "|".join(sorted(GRADERS, key=len, reverse=True))
@@ -112,6 +112,12 @@ _LOT = re.compile(
     r"\blots?\b|\bbundle\b|\bx\s*\d{2,}\b|\b\d{2,}\s*cartes?\b|au\s*choix"
     r"|your\s*choice|\bpick\s*(?:your|a|one)\b|\bmyst(?:ery|ere)\b"
     r"|\bboo?ster\b|\bdisplay\b|\bcoffret\b|\bblister\b|\bscell?ee?\b|\bsealed\b"
+)
+
+# Vocabulaire de gradation restant une fois la note retirée : « gradée »,
+# « certifiée », « gem mint » n'aident pas à retrouver la carte sur eBay.
+_GRADE_WORDS = re.compile(
+    r"\b(?:grad(?:ee?s?|ed|ing|ation)|gem\s*m(?:in)?t|slab(?:bee?d?)?|certifiee?s?|certified)\b"
 )
 
 _REPRINT = re.compile(r"\breprint\b|\breimpression\b|\bcustom\b|\bproxy\b|\bfan\s*art\b|\bnon\s*officiel")
@@ -261,8 +267,27 @@ def _from_specifics(specifics: dict | None) -> dict:
     return read
 
 
-def classify(title: str, *, condition: str = "", specifics: dict | None = None) -> dict:
-    """Étiquette une annonce : variante, note, numéro et signaux d'exclusion."""
+def strip_grading(title: str) -> str:
+    """Retire la mention de gradation d'un titre.
+
+    La note sert à ranger la carte dans sa case, pas à chercher : la garder
+    dans la requête eBay ne ramène que les slabs identiques et prive toutes
+    les autres cases de comparables.
+    """
+    lowered = ascii_lower(title)
+    cleaned = _cut(lowered, detect_grade(lowered)["spans"])
+    cleaned = _GRADE_WORDS.sub(" ", _RAW.sub(" ", _GRADE_LABEL.sub(" ", cleaned)))
+    return re.sub(r"\s+", " ", cleaned).strip()
+
+
+def classify(title: str, *, condition: str = "", specifics: dict | None = None,
+             description: str = "") -> dict:
+    """Étiquette une annonce : variante, note, numéro et signaux d'exclusion.
+
+    La description n'est consultée qu'en dernier recours : sur Vinted elle
+    porte souvent la note et le numéro, mais c'est de la prose libre où une
+    carte mentionnée en passant ferait un faux positif.
+    """
     text = ascii_lower(f"{title} {condition}")
     read = _from_specifics(specifics)
 
@@ -271,13 +296,22 @@ def classify(title: str, *, condition: str = "", specifics: dict | None = None) 
     if ascii_lower(read.get("graded", "")) in {"non", "no", "false", "0"}:
         grade = {"graded": False, "grader": None, "grade": None, "grade_label": None, "spans": []}
 
+    # Une annonce qui se déclare brute le reste : la description mentionne
+    # souvent d'autres cartes du vendeur, pas celle-ci.
+    if not grade["graded"] and description and not _RAW.search(text):
+        from_description = detect_grade(ascii_lower(description))
+        if from_description["graded"]:
+            grade = from_description
+
     variant = detect_variant(_cut(text, grade["spans"]))
     if read.get("variant"):
         declared = detect_variant(ascii_lower(read["variant"]))
         if declared["color"] or declared["pattern"]:
             variant = {**declared, "serial": declared["serial"] or variant["serial"]}
 
-    number = detect_card_number(ascii_lower(read.get("card_number", ""))) or detect_card_number(text)
+    number = (detect_card_number(ascii_lower(read.get("card_number", "")))
+              or detect_card_number(text)
+              or detect_card_number(ascii_lower(description)))
     variant_text = _variant_text(variant)
     grade_text = _grade_text(grade)
     variant_key = _slug(variant_text)

@@ -192,3 +192,15 @@
 - Fait : `searches` expose la requête et le nombre de résultats de chaque tentative, affichés sous `Modifier la recherche` — un zéro devient lisible au lieu d'être muet.
 - Vérifié : 52 tests backend, 2 fixtures d'extraction, rendu headless du panneau couvrant correction et relance, compilation Python et syntaxe JS.
 - Divergence : l'échelle de requêtes Browse n'a pas pu être validée contre l'API eBay faute d'identifiants en local ; le diagnostic `searches` sert précisément à trancher au premier essai réel.
+
+### V3.2 — parcours Vinted
+
+- Besoin : depuis une annonce Vinted, voir les ventes terminées et les annonces actives eBay de la même carte, rangées dans les mêmes cases.
+- Constat bloquant : `og:title` porte le suffixe `| Vinted`, donc « vinted » partait comme mot-clé obligatoire dans chaque recherche eBay et n'y correspondait à aucune annonce. Le titre vient désormais du `h1`, et le suffixe est retiré du repli `og:title`.
+- Constat : l'extraction des détails Vinted renvoyait `{"Marque": "Marque"}`. Les lignes sont deux cellules `.details-list__item-value` sœurs, libellé puis valeur, avec un bouton d'aide imbriqué à retirer. Vérifié sur une annonce réelle.
+- Constat : Vinted n'a aucun champ pour la note ni le numéro de carte ; ils vivent dans le titre libre ou dans la description. La description devient un signal de repli, consulté seulement si le titre est muet, et ignoré si l'annonce se déclare non gradée.
+- Fait : `strip_grading` retire la mention de gradation des requêtes eBay. La note sert à ranger la carte dans sa case ; la garder dans la requête ne ramenait que les slabs identiques et privait toutes les autres cases de comparables.
+- Fait : `Collect Aura` ajouté aux sociétés de notation, rencontrée sur le marché français.
+- Exemple : `Carte Pokémon Dracaufeu V Gradée 10 Collect Aura - Star Birth (Japonais)` donnait `pokemon dracaufeu v gradee 10 collect aura vinted` ; elle donne maintenant `pokemon dracaufeu v star birth japonais`, case `Base · Collect Aura 10`, numéro `14/100`.
+- Vérifié : 60 tests backend, 3 fixtures d'extraction, rendu headless du panneau, DOM Vinted contrôlé sur annonce réelle.
+- Reste : l'axe langue n'est pas traité — « japonais » reste un mot-clé de recherche alors que les annonces eBay écrivent « japanese » ou « JP ».

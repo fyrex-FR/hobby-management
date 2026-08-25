@@ -34,6 +34,18 @@ Les caractéristiques de l'objet eBay (`Société de notation`, `Note`,
 `Professionnel noté`, `Parallèle/Variété`) priment sur le titre, qui reste le
 recours quand le vendeur ne les renseigne pas.
 
+### Depuis une annonce Vinted
+
+Vinted ne décrit pas les cartes : ses seuls champs structurés sont la marque,
+l'état et la date d'ajout. Scout lit donc le titre du `h1` — jamais celui de
+l'onglet, qui porte un suffixe `| Vinted` — et retombe sur la description quand
+le titre ne dit ni la note ni le numéro de carte. Une annonce qui se déclare
+non gradée le reste : la description mentionne souvent d'autres cartes du
+vendeur.
+
+Les comparables restent eBay : ventes terminées et annonces actives de la même
+carte, rangées dans les mêmes cases.
+
 ## Préremplissage Vinted existant
 
 1. Dans l'app, ouvrir une fiche carte puis cliquer `Publier sur Vinted`

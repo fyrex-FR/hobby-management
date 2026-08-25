@@ -1,6 +1,6 @@
 import unittest
 
-from services.card_taxonomy import classify, detect_card_number, same_card_number
+from services.card_taxonomy import classify, detect_card_number, same_card_number, strip_grading
 
 
 def bucket(title, **kwargs):
@@ -130,6 +130,54 @@ class CardNumberTest(unittest.TestCase):
         self.assertTrue(same_card_number("", "256"))
         self.assertTrue(same_card_number("256", "256"))
         self.assertFalse(same_card_number("256", "12"))
+
+
+class VintedSourceTest(unittest.TestCase):
+    """Sur Vinted, la note vit dans le titre libre ou dans la description."""
+
+    DESCRIPTION = ("Je vends cette carte Pokémon Dracaufeu V certifiée Gem Mint 10 par la "
+                   "société de gradation Collect Aura. Carte japonaise numéro 014/100 de "
+                   "l'extension Star Birth, sortie en 2021.")
+
+    def test_french_grader_in_a_free_form_title(self):
+        result = classify("Carte Pokémon Dracaufeu V Gradée 10 Collect Aura - Star Birth (Japonais)")
+        self.assertEqual(result["bucket_text"], "Base · Collect Aura 10")
+
+    def test_description_fills_in_what_the_title_omits(self):
+        result = classify("Carte Pokémon Dracaufeu V Star Birth", description=self.DESCRIPTION)
+        self.assertTrue(result["graded"])
+        self.assertEqual(result["grade"], 10.0)
+        self.assertEqual(result["card_number"], "14/100")
+
+    def test_the_title_wins_over_the_description(self):
+        result = classify("Dracaufeu V PSA 9", description=self.DESCRIPTION)
+        self.assertEqual(result["bucket_text"], "Base · PSA 9")
+
+    def test_a_card_declared_raw_stays_raw(self):
+        result = classify("Dracaufeu V non gradée", description="J'ai aussi des PSA 10 en vente.")
+        self.assertFalse(result["graded"])
+
+
+class StripGradingTest(unittest.TestCase):
+    """La note range la carte dans sa case ; elle n'a rien à faire dans la requête."""
+
+    def test_grading_leaves_the_card_identity_intact(self):
+        subject = strip_grading("Carte Pokémon Dracaufeu V Gradée 10 Collect Aura - Star Birth (Japonais)")
+        self.assertIn("dracaufeu", subject)
+        self.assertIn("star birth", subject)
+        for removed in ("gradee", "collect aura", "10"):
+            self.assertNotIn(removed, subject)
+
+    def test_slab_label_is_removed_with_its_grade(self):
+        self.assertEqual(strip_grading("Pashmilla 119/086 ccc 10 Gold label"), "pashmilla 119/086")
+
+    def test_an_ungraded_title_is_left_alone(self):
+        subject = strip_grading("Panini Phoenix Basketball 2023-24 Victor Wembanyama RC Spurs #256")
+        self.assertIn("wembanyama", subject)
+        self.assertIn("#256", subject)
+
+    def test_a_title_made_only_of_grading_does_not_vanish_silently(self):
+        self.assertEqual(strip_grading("PSA 10"), "")
 
 
 if __name__ == "__main__":

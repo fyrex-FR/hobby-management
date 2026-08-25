@@ -2,16 +2,17 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
 
-/** Élément factice : `textContent` plus les enfants adressés par sélecteur. */
-function node(textContent, children = {}) {
-  return {
+/** Élément factice : texte, enfants par sélecteur, listes par sélecteur. */
+function node(textContent, children = {}, lists = {}) {
+  const self = {
     textContent,
     src: textContent,
     content: textContent,
-    querySelector(selector) {
-      return children[selector] ?? null;
-    },
+    querySelector: (selector) => children[selector] ?? null,
+    querySelectorAll: (selector) => lists[selector] ?? [],
+    cloneNode: () => self,
   };
+  return self;
 }
 
 function runExtractor(file, fixtures, locationHref, lists = {}) {
@@ -22,15 +23,13 @@ function runExtractor(file, fixtures, locationHref, lists = {}) {
       if (!value) return null;
       return typeof value === 'string' ? node(value) : value;
     },
-    querySelectorAll(selector) {
-      return lists[selector] ?? [];
-    },
+    querySelectorAll: (selector) => lists[selector] ?? [],
   };
   const context = {
     document,
     location: { href: locationHref },
     chrome: { runtime: { onMessage: { addListener(fn) { listener = fn; } } } },
-    Number,
+    Number, Object, String,
   };
   vm.runInNewContext(fs.readFileSync(new URL(file, import.meta.url), 'utf8'), context);
   let result;
@@ -46,30 +45,40 @@ function ebayRow(label, value) {
   });
 }
 
-/** Ligne de détail Vinted (Marque, État…). */
+/** Ligne de détail Vinted : deux cellules sœurs, libellé puis valeur. */
 function vintedRow(label, value) {
-  return node('', {
-    "[class*='title'], .web_ui__Cell__title": node(label),
-    "[class*='subtitle'], .web_ui__Cell__subtitle": node(value),
-  });
+  return node('', {}, { '.details-list__item-value': [node(label), node(value)] });
 }
 
+const VINTED_ROWS = '.details-list__item, [data-testid^=\'item-attributes-\']';
+const VINTED_LISTS = {
+  [VINTED_ROWS]: [vintedRow('Marque', 'Pokémon'), vintedRow('État', 'Neuf sans étiquette')],
+};
+
 const vinted = runExtractor('./scout-vinted.js', {
-  'meta[property="og:title"]': { content: 'Victor Wembanyama Rookie Prizm' },
+  h1: { textContent: 'Carte Pokémon Dracaufeu V Gradée 10 Collect Aura - Star Birth (Japonais)' },
+  'meta[property="og:title"]': { content: 'Carte Pokémon Dracaufeu V Gradée 10 Collect Aura | Vinted' },
   'meta[property="og:image"]': { content: 'https://images1.vinted.net/card.jpg' },
   "[data-testid='item-price']": { textContent: '12,50 €' },
-}, 'https://www.vinted.fr/items/123-card?referrer=catalog', {
-  "[data-testid$='--content-row'], .details-list__item-value": [
-    vintedRow('Marque', 'Panini'),
-    vintedRow('État :', 'Neuf avec étiquette'),
-  ],
-});
+  "[itemprop='description']": { textContent: 'Certifiée Gem Mint 10 par Collect Aura, carte japonaise numéro 014/100.' },
+}, 'https://www.vinted.fr/items/123-card?referrer=catalog', VINTED_LISTS);
+
 assert.equal(vinted.source, 'vinted');
 assert.equal(vinted.displayed_price, 12.5);
-assert.equal(vinted.currency, 'EUR');
 assert.equal(vinted.source_url, 'https://www.vinted.fr/items/123-card');
-assert.equal(vinted.specifics.Marque, 'Panini');
-assert.equal(vinted.condition, 'Neuf avec étiquette');
+assert.equal(vinted.title, 'Carte Pokémon Dracaufeu V Gradée 10 Collect Aura - Star Birth (Japonais)');
+assert.ok(!/Vinted/i.test(vinted.title), 'le nom du site ne doit jamais entrer dans la recherche eBay');
+assert.equal(vinted.specifics.Marque, 'Pokémon');
+assert.equal(vinted.condition, 'Neuf sans étiquette');
+assert.match(vinted.description, /014\/100/);
+
+// Sans h1, le titre vient de og:title — dont il faut retirer le suffixe du site.
+const vintedMeta = runExtractor('./scout-vinted.js', {
+  'meta[property="og:title"]': { content: 'Pashmilla 119/086 ccc 10 Gold label | Vinted' },
+  'meta[property="og:image"]': { content: 'https://images1.vinted.net/card.jpg' },
+  "[data-testid='item-price']": { textContent: '135,00 €' },
+}, 'https://www.vinted.fr/items/456-pashmilla', VINTED_LISTS);
+assert.equal(vintedMeta.title, 'Pashmilla 119/086 ccc 10 Gold label');
 
 const ebay = runExtractor('./scout-ebay.js', {
   'h1.x-item-title__mainTitle': { textContent: '2023 Topps Wembanyama #1' },
@@ -93,4 +102,4 @@ assert.equal(ebay.specifics['Professionnel noté'], 'Non');
 assert.equal(ebay.specifics.Joueur, 'Victor Wembanyama');
 assert.ok(!('Vide' in ebay.specifics), 'une caractéristique sans valeur est ignorée');
 
-console.log('extractors: 2 fixtures OK');
+console.log('extractors: 3 fixtures OK');

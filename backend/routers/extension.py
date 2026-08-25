@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, field_validator
 from .auth import current_user
 from .cards import supabase_headers
 from .upload import _get_s3, R2_BUCKET_NAME, R2_PUBLIC_URL
-from services.card_taxonomy import apply_refine, classify, refine_keywords
+from services.card_taxonomy import apply_refine, classify, refine_keywords, strip_grading
 from services.ebay_service import search_ebay_listings, search_ebay_sold
 from services.extension_helpers import (
     allowed_image_url, allowed_source_url, annotate_comparables, build_browse_queries,
@@ -203,6 +203,7 @@ class AnalyzeRequest(BaseModel):
     query: Optional[str] = Field(default=None, max_length=300)
     condition: Optional[str] = Field(default=None, max_length=200)
     specifics: Optional[dict[str, str]] = None
+    description: Optional[str] = Field(default=None, max_length=600)
     refine: Optional[ReferenceRefine] = None
 
     @field_validator("specifics")
@@ -250,15 +251,19 @@ async def analyze(body: AnalyzeRequest, user: dict = Depends(current_extension_u
     if not allowed_source_url(body.source, body.source_url):
         raise HTTPException(status_code=422, detail="URL d'annonce non autorisée")
 
-    reference = classify(body.title, condition=body.condition or "", specifics=body.specifics)
+    reference = classify(body.title, condition=body.condition or "",
+                         specifics=body.specifics, description=body.description or "")
     refine = body.refine.model_dump() if body.refine else None
     extra = refine_keywords(refine) if refine else []
     if refine:
         reference = apply_refine(reference, refine)
 
+    # On cherche la carte, pas le slab : la note sert à ranger les résultats
+    # dans leur case, la garder dans la requête viderait toutes les autres.
+    subject = strip_grading(body.title) or body.title
     manual = body.query.strip() if body.query and body.query.strip() else ""
-    sold_queries = [manual] if manual else build_search_queries(body.title, extra)
-    active_queries = [manual] if manual else build_browse_queries(body.title, extra)
+    sold_queries = [manual] if manual else build_search_queries(subject, extra)
+    active_queries = [manual] if manual else build_browse_queries(subject, extra)
 
     sold_results, sold_searches, errors = await _collect_sold(sold_queries, body.title)
     active_results, active_searches, active_errors = await _collect_active(active_queries)
