@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from .auth import current_user
 from .cards import supabase_headers
 from .upload import _get_s3, R2_BUCKET_NAME, R2_PUBLIC_URL
-from services.ebay_service import search_ebay_listings
+from services.ebay_service import search_ebay_listings, search_ebay_sold
 from services.extension_helpers import (
     allowed_image_url, allowed_source_url, build_search_queries, exclude_source_listing,
     merge_ranked_results, summarize_results,
@@ -180,15 +180,6 @@ async def _download_image(url: str) -> tuple[bytes, str]:
     return b"".join(chunks), content_type
 
 
-class BrowserComparable(BaseModel):
-    title: str = Field(min_length=1, max_length=500)
-    price: float = Field(gt=0, le=1_000_000)
-    currency: str = Field(default="EUR", pattern=r"^[A-Z]{3}$")
-    url: str = Field(max_length=1000)
-    image: str = Field(default="", max_length=1000)
-    item_id: str = Field(default="", max_length=80)
-
-
 class AnalyzeRequest(BaseModel):
     source: Literal["vinted", "ebay"]
     source_url: str
@@ -196,7 +187,6 @@ class AnalyzeRequest(BaseModel):
     displayed_price: Optional[float] = Field(default=None, ge=0)
     image_url: str
     query: Optional[str] = Field(default=None, max_length=300)
-    browser_sold: list[BrowserComparable] = Field(default_factory=list, max_length=60)
 
 
 @router.post("/analyze")
@@ -204,14 +194,16 @@ async def analyze(body: AnalyzeRequest, user: dict = Depends(current_extension_u
     if not allowed_source_url(body.source, body.source_url):
         raise HTTPException(status_code=422, detail="URL d'annonce non autorisée")
     queries = [body.query.strip()] if body.query and body.query.strip() else build_search_queries(body.title)
-    sold_groups = [[item.model_dump() for item in body.browser_sold]] if body.browser_sold else []
+    sold_groups = []
     active_groups, used_queries = [], []
     errors = []
     for query in queries:
+        sold = await search_ebay_sold(query)
         active = await search_ebay_listings(query, marketplace_id="EBAY_FR")
+        sold_groups.append(sold.get("results", []))
         active_groups.append(active.get("results", []))
         used_queries.append(query)
-        errors.extend(error for error in (active.get("error"),) if error)
+        errors.extend(error for error in (sold.get("error"), active.get("error")) if error)
         if len(merge_ranked_results(sold_groups, body.title)) >= 5 and len(merge_ranked_results(active_groups, body.title)) >= 5:
             break
     sold_results = exclude_source_listing(merge_ranked_results(sold_groups, body.title), body.source_url)

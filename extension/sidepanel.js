@@ -41,26 +41,6 @@ async function readListing({ autoAnalyze = true } = {}) {
   if (autoAnalyze) await analyzeListing();
 }
 
-function normalizeEbayResults(rows) {
-  return rows.map((row) => {
-    const title = row.title || "";
-    const priceText = row.price_text || "";
-    const url = row.url || "";
-    const image = row.image || "";
-    const value = Number.parseFloat((priceText.match(/[0-9][0-9\s.,]*/)?.[0] || "").replace(/\s/g, "").replace(",", "."));
-    const itemId = url.match(/\/itm\/(?:[^/?]+\/)?(\d{9,15})/)?.[1] || "";
-    const code = /\bUSD\b|\$/.test(priceText) ? "USD" : /\bGBP\b|£/.test(priceText) ? "GBP" : "EUR";
-    return title && url && Number.isFinite(value) ? { title, price: value, currency: code, url, image, item_id: itemId } : null;
-  }).filter(Boolean).slice(0, 40);
-}
-
-async function fetchBrowserSold(query) {
-  const url = `https://www.ebay.fr/sch/i.html?_nkw=${encodeURIComponent(query)}&LH_Sold=1&LH_Complete=1&rt=nc`;
-  const response = await chrome.runtime.sendMessage({ type: "SCOUT_EBAY_SEARCH", url });
-  if (response?.error) throw new Error(response.error);
-  return normalizeEbayResults(response?.results || []);
-}
-
 function activeSold() { return (state.analysis?.sold?.results || []).filter((_, index) => !state.excluded.has(index)); }
 function median(values) { if (!values.length) return null; const sorted = [...values].sort((a,b) => a-b); const m = Math.floor(sorted.length/2); return sorted.length % 2 ? sorted[m] : (sorted[m-1]+sorted[m])/2; }
 function resultHtml(item, index, sold) {
@@ -83,9 +63,7 @@ async function analyzeListing() {
   $("status").textContent = "Annonce détectée"; $("status").className = "status"; $("analyze").disabled = true;
   try {
     const manual = $("query").value.trim();
-    const sold = await fetchBrowserSold(manual || state.listing.title);
-    if (run !== state.run) return;
-    const analysis = await api("/analyze", { method:"POST", body:JSON.stringify({ ...state.listing, query:manual||null, browser_sold:sold }) });
+    const analysis = await api("/analyze", { method:"POST", body:JSON.stringify({ ...state.listing, query:manual||null }) });
     if (run !== state.run) return;
     state.analysis=analysis; $("query").value=analysis.query; state.excluded.clear(); renderResults(); $("status").textContent="Analyse terminée";
   } catch(error) { if(run===state.run){ $("status").textContent=error.message; $("status").className="status error"; show("reset"); show("search-tools"); } }

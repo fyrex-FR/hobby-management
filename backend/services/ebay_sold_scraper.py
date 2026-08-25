@@ -7,8 +7,8 @@ from typing import Optional
 import httpx
 from bs4 import BeautifulSoup
 
-# Page publique des annonces terminées/vendues eBay US.
-EBAY_SOLD_URL = "https://www.ebay.com/sch/i.html"
+# Page publique des annonces terminées/vendues eBay France.
+EBAY_SOLD_URL = "https://www.ebay.fr/sch/i.html"
 
 # Proxy résidentiel/mobile en sortie directe (le plus simple) : le backend fait
 # le GET eBay à travers ce proxy. Format : http://user:pass@host:port .
@@ -33,7 +33,7 @@ HEADERS = {
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
     ),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.7",
     "Accept-Encoding": "gzip, deflate, br",
     "Upgrade-Insecure-Requests": "1",
     "Sec-Fetch-Dest": "document",
@@ -44,7 +44,7 @@ HEADERS = {
     "Sec-Ch-Ua-Platform": '"macOS"',
 }
 
-_PRICE_RE = re.compile(r"[\d,]+\.?\d*")
+_PRICE_RE = re.compile(r"\d[\d\s\u00a0.,]*")
 _SOLD_DATE_RE = re.compile(r"(?:Sold|Vendu)\s+(.+)", re.IGNORECASE)
 
 
@@ -56,11 +56,18 @@ def _parse_price(text: str) -> float | None:
     """
     if not text:
         return None
-    match = _PRICE_RE.search(text.replace(",", ""))
+    match = _PRICE_RE.search(text)
     if not match:
         return None
     try:
-        value = float(match.group())
+        raw = match.group().replace(" ", "").replace("\u00a0", "")
+        if "," in raw and "." in raw:
+            decimal = "," if raw.rfind(",") > raw.rfind(".") else "."
+            thousands = "." if decimal == "," else ","
+            raw = raw.replace(thousands, "").replace(decimal, ".")
+        elif "," in raw:
+            raw = raw.replace(",", ".")
+        value = float(raw)
         return value if value > 0 else None
     except ValueError:
         return None
@@ -95,7 +102,8 @@ def _parse_items(html: str, max_results: int) -> tuple[list[dict], int]:
 
         # Prix
         price_el = li.select_one(".s-item__price") or li.select_one(".s-card__price")
-        price = _parse_price(price_el.get_text(strip=True) if price_el else "")
+        price_text = price_el.get_text(" ", strip=True) if price_el else ""
+        price = _parse_price(price_text)
         if price is None:
             continue
 
@@ -122,7 +130,7 @@ def _parse_items(html: str, max_results: int) -> tuple[list[dict], int]:
         results.append({
             "title": title,
             "price": price,
-            "currency": "USD",
+            "currency": "GBP" if "£" in price_text else "USD" if "$" in price_text else "EUR",
             "url": url,
             "image": image,
             "condition": "",
@@ -136,7 +144,7 @@ def _parse_items(html: str, max_results: int) -> tuple[list[dict], int]:
 
 
 async def scrape_ebay_sold(query: str, max_results: int = 20) -> dict:
-    """Récupère les ventes réelles (« Sold ») en parsant la page publique eBay US.
+    """Récupère les ventes réelles en parsant la page publique eBay France.
 
     Fallback tant que la Marketplace Insights API n'est pas approuvée.
     """
@@ -205,7 +213,7 @@ async def _fetch_html(url: str) -> tuple[int, str, Optional[str], str]:
 
     # 2) API de scraping (alternative clé-en-main).
     if SCRAPER_API_KEY:
-        params = {"api_key": SCRAPER_API_KEY, "url": url, "country_code": "us"}
+        params = {"api_key": SCRAPER_API_KEY, "url": url, "country_code": "fr"}
         try:
             async with httpx.AsyncClient(timeout=70) as client:
                 resp = await client.get(SCRAPER_API_URL, params=params)
