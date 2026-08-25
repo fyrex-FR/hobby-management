@@ -58,7 +58,7 @@ function parseSoldHtml(html) {
 async function fetchBrowserSold(query) {
   const url = `https://www.ebay.fr/sch/i.html?_nkw=${encodeURIComponent(query)}&LH_Sold=1&LH_Complete=1&rt=nc`;
   try {
-    const response = await fetch(url, { credentials: "omit" });
+    const response = await fetch(url, { credentials: "include" });
     if (!response.ok) return [];
     return parseSoldHtml(await response.text());
   } catch { return []; }
