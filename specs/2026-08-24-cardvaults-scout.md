@@ -134,3 +134,48 @@
 - Fait : parsing français et devise EUR vérifiés ; aucun cookie ou identifiant eBay n'est exposé à l'extension.
 - Vérifié : recherche Kroupi connectée sans redirection, 18 ventes visibles dans eBay, 20 résultats EUR parsés ; 7 tests backend, syntaxe JS et manifeste valides.
 - Exploitation : la session eBay pourra demander une reconnexion ; reprendre alors le navigateur temporaire limité au tailnet, puis le couper immédiatement.
+
+## V3 — comparer la carte au bon sous-marché
+
+### Constat
+
+- Sur la Phoenix #256 de Wembanyama, les 40 ventes retenues mélangent la base brute (8,23 €), la PSA 9 (43,21 €), la Teal Lazer (33,44 €), la Blue Cracked Ice (39–62 €), la PSA 10 (205,76 €) et la Silver PSA 10 (380,65 €).
+- La médiane composite qui en sort ne décrit aucune carte réelle, et il faut écarter les comparables un par un pour obtenir un prix exploitable.
+- Le besoin n'est pas de mieux filtrer la recherche : les parallèles et les slabs doivent rester visibles, mais séparés, chacun ayant son propre marché.
+
+### Besoin
+
+- Étiqueter chaque comparable par variante (parallèle) et par note de gradation, puis le ranger dans une case `variante · note`.
+- Détecter la case de l'annonce consultée et n'en calculer le prix qu'à partir de cette case.
+- Garder les autres cases visibles mais repliées, avec leur nombre de ventes et leur fourchette, pour situer la carte dans sa série.
+- Sortir du calcul les lots, réimpressions et autres numéros de carte, quel que soit leur prix.
+- Permettre de corriger la variante ou la note détectée sans relancer de recherche eBay.
+- Situer le prix demandé par rapport à la case : bonne affaire, prix correct, un peu cher, surpayé.
+
+### Critères d'acceptation
+
+- Sur le cas Wembanyama #256, la case `Base · Brut` regroupe les quatre ventes brutes et sert seule d'estimation ; `Silver · PSA 10` et le lot n'y entrent pas.
+- Un `Gold Label` de slab n'est jamais lu comme un parallèle or, et un `Red Sox` jamais comme un parallèle rouge.
+- Une numérotation Pokémon `276/217` n'est pas prise pour un tirage limité, contrairement à un `07/10`.
+- Corriger la note dans le panneau redistribue les cases immédiatement, sans appel réseau.
+- Une case exacte vide s'affiche quand même, avec zéro vente, plutôt que de disparaître.
+
+### Plan technique — appliqué
+
+- Ajouter `services/card_taxonomy.py` : détection société/note/label, couleur et motif de parallèle, tirage numéroté, numéro de carte, lots et réimpressions ; aucune donnée inventée, l'absence de signal vaut « base brute ».
+- Ajouter `match_level` et `annotate_comparables` dans `services/extension_helpers.py`, et faire porter à `/analyze` la classification de chaque résultat plus celle de l'annonce source.
+- Accepter `condition` et `specifics` dans `AnalyzeRequest`, bornés côté serveur puisqu'ils viennent du DOM ; les caractéristiques structurées eBay priment sur le titre.
+- Monter la collecte à 60 ventes et 50 annonces actives, et n'arrêter l'élargissement de requête qu'à 8 comparables, pour que les cases aient une base suffisante.
+- Extraire dans `scout-ebay.js` l'état et le bloc `Caractéristiques de l'objet` ; dans `scout-vinted.js`, les lignes de détail et l'état.
+- Regrouper et ordonner côté `sidepanel.js` : le backend ne bouge pas quand l'utilisateur corrige la note, seule la comparaison de clés est refaite localement.
+- Alternative écartée : refiltrer la requête eBay pour ne ramener que la bonne variante, car les parallèles deviennent alors invisibles alors qu'ils servent à situer la carte.
+- Alternative écartée : classer côté extension pour itérer sans déployer, car la normalisation de titre vivrait alors en double et perdrait sa couverture de tests.
+
+### Convergence V3
+
+- Fait : cases `variante · note`, case exacte dépliée et seule source du prix, autres cases repliées avec fourchette, `Hors carte` pour les lots, réimpressions et numéros différents.
+- Fait : correction manuelle variante/société/note/label appliquée localement, verdict prix affiché dès deux ventes dans la case, écarts de chaque comparable calculés vs le prix affiché.
+- Fait : caractéristiques eBay prioritaires sur le titre, `Gold Label` distingué du parallèle or, noms d'équipes colorés et noms de sets exclus des parallèles.
+- Vérifié : 36 tests backend (23 de taxonomie, 13 d'aides extension), 2 fixtures d'extraction couvrant état et caractéristiques, compilation Python et syntaxe JS/manifeste.
+- Divergence : les cases restent réparties par sous-marché sans mesure de repli quand une case n'a qu'une vente ; l'estimation s'élargit alors à la variante, en le disant.
+- Reste : test réel dans Chrome sur la Phoenix #256 et sur une carte gradée, puis réglage du dictionnaire de parallèles sur les séries réellement rencontrées.

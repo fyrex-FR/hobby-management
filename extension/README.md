@@ -11,10 +11,28 @@
 
 1. Cliquer l'icône CardVaults Scout pour ouvrir le panneau latéral.
 2. Générer un code puis l'approuver dans CardVaults.
-3. Ouvrir une annonce Vinted ou eBay et lancer l'analyse.
-4. Corriger la recherche, écarter les faux comparables et ajouter la carte à la Collection.
+3. Ouvrir une annonce Vinted ou eBay : l'analyse démarre seule.
+4. Lire l'estimation, déplier les autres cases si besoin, puis ajouter la carte à la Collection.
 
 Le jeton d'extension est révocable dans CardVaults. Le MVP utilise une extension non empaquetée.
+
+### Cases variante × note
+
+Les comparables eBay mélangent la carte brute, ses parallèles et ses versions
+gradées. Scout étiquette chaque résultat (`services/card_taxonomy.py`) et les
+range par case `variante · note` :
+
+- la case de la carte consultée est dépliée et sert seule au calcul du prix ;
+- les autres cases restent visibles, repliées, avec leur fourchette de prix ;
+- lots, réimpressions et autres numéros de carte tombent dans `Hors carte`.
+
+Si la note détectée est fausse — titre muet, slab non annoncé — `Corriger la
+variante ou la note` rebascule la comparaison instantanément, sans relancer de
+recherche eBay.
+
+Les caractéristiques de l'objet eBay (`Société de notation`, `Note`,
+`Professionnel noté`, `Parallèle/Variété`) priment sur le titre, qui reste le
+recours quand le vendeur ne les renseigne pas.
 
 ## Préremplissage Vinted existant
 

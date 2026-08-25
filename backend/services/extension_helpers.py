@@ -1,6 +1,7 @@
 import re
-import unicodedata
 from urllib.parse import urlparse
+
+from services.card_taxonomy import ascii_lower, classify, same_card_number
 
 ALLOWED_IMAGE_SUFFIXES = (
     ".vinted.net", ".vinted.fr", ".ebayimg.com", ".ebaystatic.com"
@@ -33,12 +34,8 @@ _NOISE = {
 _QUERY_NOISE = _NOISE - {"panini"}
 
 
-def _ascii(value: str) -> str:
-    return unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode().lower()
-
-
 def title_tokens(value: str, *, remove_noise: bool = True) -> list[str]:
-    value = re.sub(r"\b\d+[.,]\d{2}\s*(?:€|eur|euros?)\b", " ", _ascii(value))
+    value = re.sub(r"\b\d+[.,]\d{2}\s*(?:€|eur|euros?)\b", " ", ascii_lower(value))
     tokens = re.findall(r"#?\d{1,4}(?:[-/]\d{1,4})?|[a-z0-9]+", value)
     if remove_noise:
         tokens = [token for token in tokens if token not in _QUERY_NOISE]
@@ -90,6 +87,39 @@ def exclude_source_listing(results: list[dict], source_url: str) -> list[dict]:
             continue
         filtered.append(item)
     return filtered
+
+
+MATCH_RANKS = {"exact": 0, "variant": 1, "grade": 2, "other": 3, "off_card": 4}
+
+
+def match_level(reference: dict, candidate: dict) -> str:
+    """Situe un comparable par rapport à la carte consultée.
+
+    `exact` = même variante et même note, la seule base de prix vraiment
+    comparable. `off_card` = lot, réimpression ou autre numéro de carte, à
+    sortir du calcul quel que soit son prix.
+    """
+    if candidate["is_lot"] or candidate["is_reprint"]:
+        return "off_card"
+    if not same_card_number(reference.get("card_number", ""), candidate["card_number"]):
+        return "off_card"
+    if candidate["bucket_key"] == reference.get("bucket_key"):
+        return "exact"
+    if candidate["variant_key"] == reference.get("variant_key"):
+        return "variant"
+    if candidate["grade_key"] == reference.get("grade_key"):
+        return "grade"
+    return "other"
+
+
+def annotate_comparables(results: list[dict], reference: dict) -> list[dict]:
+    """Étiquette chaque comparable pour que l'extension puisse les regrouper."""
+    annotated = []
+    for item in results:
+        classification = classify(str(item.get("title", "")), condition=str(item.get("condition") or ""))
+        level = match_level(reference, classification)
+        annotated.append({**item, "classification": classification, "match": level, "match_rank": MATCH_RANKS[level]})
+    return annotated
 
 
 def summarize_results(results: list[dict]) -> dict:

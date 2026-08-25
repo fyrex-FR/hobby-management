@@ -7,15 +7,16 @@ from typing import Literal, Optional
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from .auth import current_user
 from .cards import supabase_headers
 from .upload import _get_s3, R2_BUCKET_NAME, R2_PUBLIC_URL
+from services.card_taxonomy import classify
 from services.ebay_service import search_ebay_listings, search_ebay_sold
 from services.extension_helpers import (
-    allowed_image_url, allowed_source_url, build_search_queries, exclude_source_listing,
-    merge_ranked_results, summarize_results,
+    allowed_image_url, allowed_source_url, annotate_comparables, build_search_queries,
+    exclude_source_listing, merge_ranked_results, summarize_results,
 )
 
 router = APIRouter(prefix="/extension", tags=["extension"])
@@ -180,6 +181,11 @@ async def _download_image(url: str) -> tuple[bytes, str]:
     return b"".join(chunks), content_type
 
 
+SOLD_LIMIT = 60
+ACTIVE_LIMIT = 50
+ENOUGH_COMPARABLES = 8
+
+
 class AnalyzeRequest(BaseModel):
     source: Literal["vinted", "ebay"]
     source_url: str
@@ -187,6 +193,16 @@ class AnalyzeRequest(BaseModel):
     displayed_price: Optional[float] = Field(default=None, ge=0)
     image_url: str
     query: Optional[str] = Field(default=None, max_length=300)
+    condition: Optional[str] = Field(default=None, max_length=200)
+    specifics: Optional[dict[str, str]] = None
+
+    @field_validator("specifics")
+    @classmethod
+    def _bound_specifics(cls, value: Optional[dict]) -> Optional[dict]:
+        """Les caractéristiques viennent du DOM : borner ce qui entre en base de règles."""
+        if not value:
+            return None
+        return {str(k)[:80]: str(v)[:160] for k, v in list(value.items())[:40]}
 
 
 @router.post("/analyze")
@@ -194,23 +210,27 @@ async def analyze(body: AnalyzeRequest, user: dict = Depends(current_extension_u
     if not allowed_source_url(body.source, body.source_url):
         raise HTTPException(status_code=422, detail="URL d'annonce non autorisée")
     queries = [body.query.strip()] if body.query and body.query.strip() else build_search_queries(body.title)
+    reference = classify(body.title, condition=body.condition or "", specifics=body.specifics)
     sold_groups = []
     active_groups, used_queries = [], []
     errors = []
     for query in queries:
-        sold = await search_ebay_sold(query)
-        active = await search_ebay_listings(query, marketplace_id="EBAY_FR")
+        sold = await search_ebay_sold(query, max_results=SOLD_LIMIT)
+        active = await search_ebay_listings(query, max_results=ACTIVE_LIMIT, marketplace_id="EBAY_FR")
         sold_groups.append(sold.get("results", []))
         active_groups.append(active.get("results", []))
         used_queries.append(query)
         errors.extend(error for error in (sold.get("error"), active.get("error")) if error)
-        if len(merge_ranked_results(sold_groups, body.title)) >= 5 and len(merge_ranked_results(active_groups, body.title)) >= 5:
+        if (len(merge_ranked_results(sold_groups, body.title)) >= ENOUGH_COMPARABLES
+                and len(merge_ranked_results(active_groups, body.title)) >= ENOUGH_COMPARABLES):
             break
     sold_results = exclude_source_listing(merge_ranked_results(sold_groups, body.title), body.source_url)
     active_results = exclude_source_listing(merge_ranked_results(active_groups, body.title), body.source_url)
     return {
         "query": used_queries[0], "queries": used_queries,
-        "sold": summarize_results(sold_results), "active": summarize_results(active_results),
+        "reference": reference,
+        "sold": summarize_results(annotate_comparables(sold_results, reference)),
+        "active": summarize_results(annotate_comparables(active_results, reference)),
         "warnings": list(dict.fromkeys(errors)),
     }
 

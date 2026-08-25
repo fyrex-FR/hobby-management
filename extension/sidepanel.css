@@ -224,16 +224,19 @@ button:disabled {
 }
 .result {
   display: grid;
-  grid-template-columns: 48px minmax(0, 1fr) auto;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
   gap: 9px;
   align-items: center;
-  padding: 9px 0;
-  border-bottom: 1px solid #23262a;
+  padding: 8px 0;
+  border-bottom: 1px solid #1e2125;
   font-size: 11px;
 }
+.result:last-child {
+  border-bottom: 0;
+}
 .result img {
-  width: 48px;
-  height: 60px;
+  width: 44px;
+  height: 56px;
   object-fit: cover;
   border-radius: 7px;
   background: #202226;
@@ -344,4 +347,222 @@ input {
 }
 .result-list {
   padding-top: 4px;
+}
+
+/* ---------- Carte de référence ---------- */
+.reference {
+  margin-top: 10px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: #121417;
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 7px;
+}
+.chip {
+  padding: 4px 8px;
+  border-radius: 7px;
+  border: 1px solid #2f333a;
+  background: #1b1e22;
+  font-size: 10px;
+  font-weight: 800;
+  color: #d5d8dc;
+}
+.chip.variant {
+  border-color: #3b432c;
+  background: #20251a;
+  color: var(--lime);
+}
+.chip.grade.graded {
+  border-color: #4a3a24;
+  background: #241c12;
+  color: #f0b667;
+}
+.chip.num {
+  color: var(--muted);
+}
+.chip.fixed {
+  border-color: #2c3f4d;
+  background: #14212a;
+  color: #7cc4e8;
+}
+details.tune {
+  margin-top: 10px;
+  padding-top: 9px;
+  border-top: 1px solid #212429;
+}
+.tune-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 9px;
+}
+.tune-grid select:first-child {
+  grid-column: 1 / -1;
+}
+select {
+  width: 100%;
+  padding: 8px 9px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: #111316;
+  color: #eceef0;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+/* ---------- Estimation et verdict ---------- */
+.summary-basis {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+.verdict {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 11px;
+  padding: 9px 11px;
+  border-radius: 10px;
+  border-left: 3px solid currentColor;
+  background: #101215;
+  font-size: 11px;
+}
+.verdict strong {
+  font-size: 12px;
+}
+.verdict span {
+  color: var(--muted);
+  text-align: right;
+}
+.verdict.good {
+  color: #6ee7a0;
+}
+.verdict.ok {
+  color: var(--lime);
+}
+.verdict.warn {
+  color: #f0b667;
+}
+.verdict.bad {
+  color: #ff8c8c;
+}
+.verdict.thin {
+  color: #9aa3b0;
+}
+
+/* ---------- Cases variante × note ---------- */
+.list-caption {
+  margin: 10px 2px 2px;
+  font-size: 10px;
+  color: #6f757e;
+}
+.bucket {
+  margin-top: 7px;
+  border: 1px solid #212429;
+  border-radius: 12px;
+  background: #101216;
+  overflow: hidden;
+}
+.bucket.primary {
+  border-color: #3b432c;
+  background: #14170f;
+}
+.bucket.off_card {
+  opacity: 0.62;
+}
+.bucket-head {
+  display: grid;
+  grid-template-columns: 12px minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+  width: 100%;
+  margin: 0;
+  padding: 10px 11px;
+  border-radius: 0;
+  background: transparent;
+  color: #e6e8ea;
+  text-align: left;
+}
+.bucket-head .caret {
+  color: var(--muted);
+  font-size: 10px;
+  transition: transform 0.12s ease;
+}
+.bucket.open .bucket-head .caret {
+  transform: rotate(90deg);
+}
+.bucket-title {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.bucket-label {
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bucket.primary .bucket-label {
+  color: var(--lime);
+}
+.bucket-range {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bucket-count {
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 7px;
+  background: #24272b;
+  color: #c9cdd2;
+  font-size: 10px;
+  font-weight: 800;
+}
+.bucket.primary .bucket-count {
+  background: var(--lime);
+  color: #10120c;
+}
+.bucket-body {
+  display: none;
+  padding: 0 11px 6px;
+}
+.bucket.open .bucket-body {
+  display: block;
+}
+.result-main {
+  min-width: 0;
+}
+.result-meta {
+  margin-top: 3px;
+  font-size: 10px;
+  color: #6f757e;
+}
+.delta {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 700;
+}
+.delta.up {
+  color: #6ee7a0;
+}
+.delta.down {
+  color: #ff9b9b;
+}
+.delta.same {
+  color: var(--muted);
 }
