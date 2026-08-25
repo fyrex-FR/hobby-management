@@ -116,3 +116,12 @@
 - Tests : changement successif de deux annonces, réponse obsolète, reset, devise USD/EUR, exclusion source et cas Kroupi.
 - Rollback : revenir à `1297ff2` et remettre le ZIP précédent ; aucune migration de base.
 - Alternative écartée : rafraîchissement par bouton uniquement, car il recrée précisément la friction signalée pendant la navigation.
+
+### Convergence V2
+
+- Fait : détection automatique des changements d'annonce, analyse sans clic, réponses obsolètes ignorées et remise à zéro sans perdre la session.
+- Fait : interface restructurée par états, requête technique repliée, prix formatés selon leur devise et annonce source exclue par identifiant/URL.
+- Fait : annonces actives recherchées sur `EBAY_FR` et ventes terminées collectées depuis la page eBay France par l'extension.
+- Vérifié : 5 tests backend, 2 fixtures d'extraction avec devise, compilation Python/JavaScript et build frontend.
+- Divergence : aucun test DOM automatisé complet du Side Panel, faute de navigateur Chrome dans la suite locale actuelle.
+- Reste : test réel dans Chrome du chargement automatique et de la collecte eBay sur le cas Kroupi avec le ZIP V2.
