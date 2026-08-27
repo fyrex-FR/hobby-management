@@ -28,6 +28,7 @@ You are a world-class sports trading card expert and grader. Your job is to anal
 - "parallel_confidence": Integer 0-100. If < 80, list top 2 guesses in "parallel" separated by " / ".
 - "card_number": Card number as printed, with # prefix (ex: "#45"). Read from the back. Empty string if not visible.
 - "numbered": Print run (ex: "/99", "/25", "/1"). Empty string if not numbered. Check both front (foil stamp) and back.
+- "serial_number": Individual stamped serial including numerator and print run (ex: "23/99"). Empty string unless both numbers are clearly visible. Never infer the numerator. Keep "numbered" as the denominator form (ex: "/99").
 - "is_rookie": true if the card is a rookie card. Detection rules in priority order:
   1. **Explicit marker**: "RC" logo/shield, "Rookie Card" text, "Rated Rookie" badge, rookie subset name (ex: "White Hot Rookies", "Rookie Signatures") → is_rookie=true immediately.
   2. **Rookie-year inference**: If no explicit marker but the card year matches the player's known NBA/WNBA rookie season, set is_rookie=true. To determine this: use your knowledge of when the player was drafted / entered the league. Their rookie card year = their first NBA/WNBA season. Example: Joe Johnson was drafted in 2001, so his rookie season is 2001-02 → any 2001-02 card of his is a rookie card. Delonte West and Tony Allen were drafted in 2004, rookie season 2004-05 → any 2004-05 card is a rookie card. Josip Sesar played for Boston in 2000-01 → is_rookie=true for that season.
@@ -195,7 +196,7 @@ Chronicles is an OMNIBUS set that contains multiple sub-sets. The back will say 
 ## EXAMPLES
 
 Example 1 — Base card:
-{"player":"Anthony Edwards","sport":"Basket","team":"Minnesota Timberwolves","year":"2023-24","brand":"Panini","set":"Prizm","insert":"","parallel":"Base","parallel_confidence":97,"card_number":"#83","numbered":"","is_rookie":false,"condition_notes":"","card_type":"base"}
+{"player":"Anthony Edwards","sport":"Basket","team":"Minnesota Timberwolves","year":"2023-24","brand":"Panini","set":"Prizm","insert":"","parallel":"Base","parallel_confidence":97,"card_number":"#83","numbered":"","serial_number":"","is_rookie":false,"condition_notes":"","card_type":"base"}
 
 Example 2 — Insert with numbered parallel:
 {"player":"Victor Wembanyama","team":"San Antonio Spurs","year":"2023-24","brand":"Panini","set":"Donruss Optic","insert":"White Hot Rookies","parallel":"Holo","parallel_confidence":91,"card_number":"#1","numbered":"/99","is_rookie":true,"condition_notes":"","card_type":"numbered"}
@@ -214,5 +215,6 @@ Example 6 — Prizm Mojo (read from back):
 
 ## OUTPUT FORMAT
 Return ONLY a valid JSON object. No markdown, no explanation, no surrounding text.
+Always include every documented field, including both "numbered" and "serial_number".
 Use empty strings for unknown text fields. Do not output placeholders like "***", "unknown", or "N/A".
 If parallel_confidence < 80, put your top 2 guesses in "parallel" separated by " / "."""

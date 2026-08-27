@@ -68,6 +68,7 @@ class CardCreate(BaseModel):
     parallel_confidence: Optional[int] = None
     card_number: Optional[str] = None
     numbered: Optional[str] = None
+    serial_number: Optional[str] = None
     is_rookie: Optional[bool] = None
     condition_notes: Optional[str] = None
     status: Optional[str] = "collection"
@@ -108,6 +109,7 @@ class CardUpdate(BaseModel):
     parallel_confidence: Optional[int] = None
     card_number: Optional[str] = None
     numbered: Optional[str] = None
+    serial_number: Optional[str] = None
     is_rookie: Optional[bool] = None
     condition_notes: Optional[str] = None
     status: Optional[str] = None

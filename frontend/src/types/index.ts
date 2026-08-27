@@ -20,6 +20,7 @@ export interface Card {
   parallel_confidence: number | null;
   card_number: string | null;
   numbered: string | null;
+  serial_number: string | null;
   is_rookie: boolean | null;
   condition_notes: string | null;
   status: CardStatus;
@@ -88,9 +89,49 @@ export interface AIIdentificationResult {
   parallel_confidence: number;
   card_number: string;
   numbered: string;
+  serial_number: string;
   is_rookie: boolean;
   condition_notes: string;
   card_type: CardType;
+}
+
+export type ImportClassification = 'processing' | 'match' | 'probable' | 'new' | 'insufficient' | 'error';
+export type ImportAction = 'shelve' | 'create' | 'increment' | 'ignore' | 'review';
+
+export interface ImportMatch {
+  card_id: string;
+  score: number;
+  coverage: number;
+  reasons: string[];
+  conflicts: string[];
+  hard_conflict: boolean;
+}
+
+export interface ImportItem {
+  id: string;
+  batch_id: string;
+  position: number;
+  front_image_url: string;
+  back_image_url: string | null;
+  front_filename: string | null;
+  back_filename: string | null;
+  identification: (AIIdentificationResult & { set_name?: string; insert_name?: string; parallel_name?: string }) | null;
+  classification: ImportClassification;
+  matches: ImportMatch[];
+  error: string | null;
+  action: ImportAction | null;
+  target_card_id: string | null;
+  created_card_id: string | null;
+  action_at: string | null;
+}
+
+export interface ImportBatch {
+  id: string;
+  name: string;
+  status: 'open' | 'completed';
+  created_at: string;
+  updated_at: string;
+  items?: ImportItem[];
 }
 
 export interface VintedPayload {

@@ -18,7 +18,7 @@ def _estimate_cost(input_tokens: int, output_tokens: int) -> float:
     return (input_tokens * _INPUT_COST_PER_M + output_tokens * _OUTPUT_COST_PER_M) / 1_000_000
 
 
-async def identify_gemini(front_base64: str, back_base64: str) -> dict:
+async def identify_gemini(front_base64: str, back_base64: str | None = None) -> dict:
     """Call Gemini 2.0 Flash. Returns dict with keys: result, latency_ms, cost_usd, error."""
     api_key = os.environ.get("GOOGLE_API_KEY", "")
     if not api_key:
@@ -26,16 +26,20 @@ async def identify_gemini(front_base64: str, back_base64: str) -> dict:
 
     url = f"{_API_BASE}/{_GEMINI_MODEL}:generateContent?key={api_key}"
 
+    image_parts = [{"inline_data": {"mime_type": "image/jpeg", "data": front_base64}}]
+    if back_base64:
+        image_parts.append({"inline_data": {"mime_type": "image/jpeg", "data": back_base64}})
+    instruction = (
+        "Image 1 is the FRONT and image 2 is the BACK. Read the back first for year, card number, brand, set, print run and individual serial number. "
+        if back_base64 else
+        "Only the FRONT image is available. Be conservative and leave unreadable identity fields empty. "
+    )
     payload = {
         "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
         "contents": [
             {
                 "role": "user",
-                "parts": [
-                    {"inline_data": {"mime_type": "image/jpeg", "data": front_base64}},
-                    {"inline_data": {"mime_type": "image/jpeg", "data": back_base64}},
-                    {"text": "Image 1 is the FRONT of the card. Image 2 is the BACK. Start by reading the back carefully for year, card number, brand, and set. Then analyze the front for parallel finish, insert name, and surface treatment. Return the JSON."},
-                ],
+                "parts": image_parts + [{"text": instruction + "Then analyze the front for parallel finish, insert name, and surface treatment. Return the JSON."}],
             }
         ],
         "generationConfig": {

@@ -34,6 +34,7 @@ import { CollectionView } from './components/views/CollectionView';
 import { AddCardView } from './components/views/AddCardView';
 import { StudioView } from './components/views/StudioView';
 import { BatchView } from './components/views/BatchView';
+import { ImportReviewView } from './components/views/ImportReviewView';
 import { ReviewView } from './components/views/ReviewView';
 import { SalesView } from './components/views/SalesView';
 import { CompareView } from './components/views/CompareView';
@@ -591,6 +592,7 @@ function AppShell() {
             {activeView === 'add_card' && <AddCardView />}
             {activeView === 'studio' && <StudioView />}
             {activeView === 'batch' && <BatchView />}
+            {activeView === 'import_review' && <ImportReviewView />}
             {activeView === 'review' && <ReviewView />}
             {activeView === 'sales' && <SalesView />}
             {activeView === 'compare' && isAdmin && <CompareView />}

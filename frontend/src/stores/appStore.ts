@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type ActiveView = 'dashboard' | 'collection' | 'add_card' | 'studio' | 'batch' | 'review' | 'sales' | 'compare' | 'players' | 'grading' | 'requests' | 'migration' | 'ebay';
+export type ActiveView = 'dashboard' | 'collection' | 'add_card' | 'studio' | 'batch' | 'import_review' | 'review' | 'sales' | 'compare' | 'players' | 'grading' | 'requests' | 'migration' | 'ebay';
 type ViewMode = 'grid' | 'table';
 
 export interface DrillFilter {
@@ -15,11 +15,13 @@ interface AppStore {
   viewMode: ViewMode;
   drillFilter: DrillFilter;
   reviewSessionId: string | null;
+  importBatchId: string | null;
   setActiveView: (view: ActiveView) => void;
   setViewMode: (mode: ViewMode) => void;
   setDrillFilter: (filter: DrillFilter) => void;
   clearDrillFilter: () => void;
   setReviewSessionId: (sessionId: string | null) => void;
+  setImportBatchId: (batchId: string | null) => void;
 }
 
 export const useAppStore = create<AppStore>((set) => ({
@@ -27,9 +29,11 @@ export const useAppStore = create<AppStore>((set) => ({
   viewMode: 'grid',
   drillFilter: {},
   reviewSessionId: null,
+  importBatchId: null,
   setActiveView: (view) => set({ activeView: view }),
   setViewMode: (mode) => set({ viewMode: mode }),
   setDrillFilter: (filter) => set({ drillFilter: filter }),
   clearDrillFilter: () => set({ drillFilter: {} }),
   setReviewSessionId: (sessionId) => set({ reviewSessionId: sessionId }),
+  setImportBatchId: (batchId) => set({ importBatchId: batchId }),
 }));

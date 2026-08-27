@@ -11,7 +11,7 @@ SPORTS = {"Basket", "Foot", "Baseball", "Football US", "Hockey", "Autre"}
 
 class IdentifyRequest(BaseModel):
     front_base64: str
-    back_base64: str
+    back_base64: str | None = None
 
 
 @router.post("/identify")
