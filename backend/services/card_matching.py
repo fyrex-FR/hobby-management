@@ -106,3 +106,14 @@ def classify_matches(target: dict, cards: list[dict], has_back: bool = True, lim
     else:
         classification = "new"
     return {"classification": classification, "fingerprint": fp, "matches": matches}
+
+
+def recommended_action(item: dict) -> tuple[str, str | None] | None:
+    """Return only actions safe enough for unattended bulk processing."""
+    matches = item.get("matches") or []
+    best = matches[0] if matches else None
+    if item.get("classification") == "match" and best and best.get("score", 0) >= 85:
+        return "shelve", best.get("card_id")
+    if item.get("classification") == "new" and (not best or best.get("score", 0) < 55):
+        return "create", None
+    return None

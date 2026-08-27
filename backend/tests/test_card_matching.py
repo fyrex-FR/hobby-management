@@ -1,6 +1,6 @@
 import unittest
 
-from services.card_matching import classify_matches
+from services.card_matching import classify_matches, recommended_action
 
 
 BASE = {
@@ -35,6 +35,12 @@ class CardMatchingTests(unittest.TestCase):
         target = {**BASE, "brand": "", "set_name": "", "parallel_name": "", "numbered": "", "serial_number": ""}
         result = classify_matches(target, [BASE], has_back=False)
         self.assertEqual(result["classification"], "probable")
+
+    def test_bulk_recommendations_are_conservative(self):
+        self.assertEqual(recommended_action({"classification": "new", "matches": [{"score": 30}]}), ("create", None))
+        self.assertEqual(recommended_action({"classification": "match", "matches": [{"score": 91, "card_id": "card-1"}]}), ("shelve", "card-1"))
+        self.assertIsNone(recommended_action({"classification": "probable", "matches": [{"score": 70, "card_id": "card-2"}]}))
+        self.assertIsNone(recommended_action({"classification": "insufficient", "matches": []}))
 
 
 if __name__ == "__main__":

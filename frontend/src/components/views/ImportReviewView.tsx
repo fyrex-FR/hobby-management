@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ArrowRight, Check, CopyPlus, Eye, PackageCheck, Plus, RefreshCw, X } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Check, CopyPlus, Eye, PackageCheck, Plus, RefreshCw, Sparkles, X } from 'lucide-react';
 import { apiFetch } from '../../api/client';
 import { useCards } from '../../hooks/useCards';
 import { useAppStore } from '../../stores/appStore';
 import type { Card, ImportAction, ImportBatch, ImportItem } from '../../types';
 
 const CLASS_LABEL = { match: 'Déjà en collection', probable: 'Doublon probable', new: 'Nouvelle carte', insufficient: 'Identification insuffisante', error: 'Erreur', processing: 'Analyse en cours' } as const;
+interface BulkResult { processed: number; created: number; shelved: number; remaining: number; manual_review: number }
 
 export function ImportReviewView() {
   const batchId = useAppStore((state) => state.importBatchId);
@@ -17,6 +18,8 @@ export function ImportReviewView() {
   const [index, setIndex] = useState(0);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showBulkConfirm, setShowBulkConfirm] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -24,10 +27,18 @@ export function ImportReviewView() {
     apiFetch<ImportBatch>(`/imports/${batchId}`).then(setBatch).catch((cause) => setError(cause.message));
   }, [batchId]);
 
-  const items = batch?.items || [];
+  const items = useMemo(() => batch?.items || [], [batch?.items]);
   const item = items[index];
   const cardById = useMemo(() => new Map(cards.map((card) => [card.id, card])), [cards]);
   const candidates = (item?.matches || []).map((match) => ({ match, card: cardById.get(match.card_id) })).filter((entry): entry is { match: ImportItem['matches'][number]; card: Card } => Boolean(entry.card));
+  const recommended = useMemo(() => items.filter((entry) => {
+    if (entry.action_at) return false;
+    const best = entry.matches?.[0];
+    return (entry.classification === 'match' && !!best && best.score >= 85)
+      || (entry.classification === 'new' && (!best || best.score < 55));
+  }), [items]);
+  const recommendedCreates = recommended.filter((entry) => entry.classification === 'new').length;
+  const recommendedShelves = recommended.length - recommendedCreates;
 
   useEffect(() => { setSelectedCardId(candidates[0]?.card.id || null); }, [item?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -54,6 +65,29 @@ export function ImportReviewView() {
     } catch (cause) { setError((cause as Error).message); } finally { setBusy(false); }
   }
 
+  async function applyBulk() {
+    if (!batchId || busy || recommended.length === 0) return;
+    setBusy(true); setError(''); setShowBulkConfirm(false);
+    const total = recommended.length;
+    let done = 0;
+    setBulkProgress({ done, total });
+    try {
+      let remaining = total;
+      while (remaining > 0) {
+        const result = await apiFetch<BulkResult>(`/imports/${batchId}/apply-recommended`, {
+          method: 'POST', body: JSON.stringify({ limit: 50 }),
+        }, 90000);
+        if (result.processed === 0) break;
+        done += result.processed;
+        remaining = result.remaining;
+        setBulkProgress({ done, total });
+      }
+      const refreshed = await apiFetch<ImportBatch>(`/imports/${batchId}`);
+      setBatch(refreshed);
+      await queryClient.invalidateQueries({ queryKey: ['cards'] });
+    } catch (cause) { setError((cause as Error).message); } finally { setBusy(false); }
+  }
+
   if (!batchId) return <div className="p-10">Aucun sas sélectionné.</div>;
   if (!batch || !item) return <div className="p-10">{error || 'Chargement…'}</div>;
   const identification = item.identification;
@@ -64,6 +98,15 @@ export function ImportReviewView() {
       <div className="text-center"><strong>{CLASS_LABEL[item.classification]}</strong><small className="block text-[var(--text-muted)]">{index + 1} / {items.length} · {batch.name}</small></div>
       <div className="flex gap-2"><button disabled={index === 0} onClick={() => setIndex(index - 1)} className="p-2 rounded-lg bg-white/5"><ArrowLeft size={16} /></button><button disabled={index + 1 >= items.length} onClick={() => setIndex(index + 1)} className="p-2 rounded-lg bg-white/5"><ArrowRight size={16} /></button></div>
     </div>
+
+    {recommended.length > 0 && <section className="panel rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border border-[var(--border-accent)]">
+      <div><strong className="flex items-center gap-2"><Sparkles size={17} className="text-[var(--accent)]" /> {recommended.length} décisions sûres peuvent être appliquées ensemble</strong><small className="text-[var(--text-muted)]">{recommendedCreates} nouvelles cartes à créer · {recommendedShelves} matchs ≥85 % à mettre de côté · cas ambigus exclus</small></div>
+      <button disabled={busy} onClick={() => setShowBulkConfirm(true)} className="px-5 py-3 rounded-xl bg-[var(--accent)] text-black font-black whitespace-nowrap">Appliquer en masse</button>
+    </section>}
+
+    {bulkProgress && <section className="panel rounded-2xl p-4 space-y-2"><div className="flex justify-between text-sm"><strong>Décisions en masse</strong><span>{bulkProgress.done} / {bulkProgress.total}</span></div><div className="h-2 rounded-full bg-white/5 overflow-hidden"><div className="h-full bg-[var(--accent)] transition-all" style={{ width: `${Math.round((bulkProgress.done / bulkProgress.total) * 100)}%` }} /></div></section>}
+
+    {showBulkConfirm && <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setShowBulkConfirm(false)}><div className="panel max-w-md w-full rounded-3xl p-6 space-y-5" onClick={(event) => event.stopPropagation()}><h2 className="text-xl font-black">Confirmer les décisions en masse</h2><p className="text-sm text-[var(--text-muted)]">Créer {recommendedCreates} nouvelles cartes et mettre de côté {recommendedShelves} correspondances à au moins 85 %. Les doublons probables et identifications insuffisantes resteront à vérifier manuellement.</p><div className="grid grid-cols-2 gap-2"><button onClick={() => setShowBulkConfirm(false)} className="p-3 rounded-xl bg-white/5">Annuler</button><button onClick={applyBulk} className="p-3 rounded-xl bg-[var(--accent)] text-black font-black">Appliquer {recommended.length}</button></div></div></div>}
 
     <div className="grid lg:grid-cols-[minmax(300px,0.8fr)_minmax(420px,1.2fr)] gap-6">
       <section className="panel rounded-3xl p-5 space-y-4">

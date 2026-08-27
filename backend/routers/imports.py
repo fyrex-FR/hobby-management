@@ -1,4 +1,5 @@
 import base64
+import asyncio
 import os
 import uuid
 from datetime import datetime, timezone
@@ -11,7 +12,7 @@ from pydantic import BaseModel
 from .auth import current_user
 from .cards import SUPABASE_URL, fetch_all_rows, supabase_headers
 from .upload import R2_BUCKET_NAME, R2_PUBLIC_URL, _get_s3
-from services.card_matching import classify_matches
+from services.card_matching import classify_matches, recommended_action
 from services.gemini import identify_gemini
 
 router = APIRouter()
@@ -34,8 +35,32 @@ class ItemAction(BaseModel):
     target_card_id: str | None = None
 
 
+class RecommendedActionsRequest(BaseModel):
+    limit: int = 50
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _card_payload(item: dict, user_id: str, card_id: str | None = None) -> dict:
+    identification = item.get("identification") or {}
+    payload = {
+        "user_id": user_id, "sport": identification.get("sport") or "Basket",
+        "player": identification.get("player") or None, "team": identification.get("team") or None,
+        "year": identification.get("year") or None, "brand": identification.get("brand") or None,
+        "set_name": identification.get("set_name") or identification.get("set") or None,
+        "insert_name": identification.get("insert_name") or identification.get("insert") or None,
+        "parallel_name": identification.get("parallel_name") or identification.get("parallel") or None,
+        "parallel_confidence": identification.get("parallel_confidence"),
+        "card_number": identification.get("card_number") or None, "numbered": identification.get("numbered") or None,
+        "serial_number": identification.get("serial_number") or None, "is_rookie": identification.get("is_rookie"),
+        "condition_notes": identification.get("condition_notes") or None, "card_type": identification.get("card_type") or None,
+        "status": "collection", "quantity": 1, "image_front_url": item["front_image_url"], "image_back_url": item.get("back_image_url"),
+    }
+    if card_id:
+        payload["id"] = card_id
+    return payload
 
 
 async def _one(client: httpx.AsyncClient, table: str, params: dict) -> dict:
@@ -160,20 +185,7 @@ async def apply_action(item_id: str, body: ItemAction, user: dict = Depends(curr
 
         created_card_id = None
         if body.action == "create":
-            identification = item.get("identification") or {}
-            card = await _insert(client, "cards", {
-                "user_id": user_id, "sport": identification.get("sport") or "Basket",
-                "player": identification.get("player") or None, "team": identification.get("team") or None,
-                "year": identification.get("year") or None, "brand": identification.get("brand") or None,
-                "set_name": identification.get("set_name") or identification.get("set") or None,
-                "insert_name": identification.get("insert_name") or identification.get("insert") or None,
-                "parallel_name": identification.get("parallel_name") or identification.get("parallel") or None,
-                "parallel_confidence": identification.get("parallel_confidence"),
-                "card_number": identification.get("card_number") or None, "numbered": identification.get("numbered") or None,
-                "serial_number": identification.get("serial_number") or None, "is_rookie": identification.get("is_rookie"),
-                "condition_notes": identification.get("condition_notes") or None, "card_type": identification.get("card_type") or None,
-                "status": "collection", "quantity": 1, "image_front_url": item["front_image_url"], "image_back_url": item.get("back_image_url"),
-            })
+            card = await _insert(client, "cards", _card_payload(item, user_id))
             created_card_id = card["id"]
         elif body.action == "increment":
             if not body.target_card_id:
@@ -199,6 +211,56 @@ async def apply_action(item_id: str, body: ItemAction, user: dict = Depends(curr
                 "status": "completed", "updated_at": _now(),
             })
         return updated
+
+
+@router.post("/imports/{batch_id}/apply-recommended")
+async def apply_recommended(batch_id: str, body: RecommendedActionsRequest, user: dict = Depends(current_user)):
+    """Apply only conservative recommendations, in bounded idempotent chunks."""
+    user_id = user["sub"]
+    limit = max(1, min(body.limit, 50))
+    async with httpx.AsyncClient(timeout=60) as client:
+        await _one(client, "import_batches", {"id": f"eq.{batch_id}", "user_id": f"eq.{user_id}"})
+        items = await fetch_all_rows(client, f"{SUPABASE_URL}/rest/v1/import_items", {
+            "batch_id": f"eq.{batch_id}", "user_id": f"eq.{user_id}", "action_at": "is.null",
+            "select": "id,batch_id,user_id,front_image_url,back_image_url,identification,classification,matches",
+            "order": "position.asc,created_at.asc",
+        })
+
+        recommended: list[tuple[dict, str, str | None]] = []
+        for item in items:
+            action = recommended_action(item)
+            if action:
+                recommended.append((item, action[0], action[1]))
+
+        chunk = recommended[:limit]
+
+        async def process(entry: tuple[dict, str, str | None]) -> str:
+            item, action, target_card_id = entry
+            created_card_id = None
+            if action == "create":
+                # Stable UUID makes retries safe if the card insert succeeds before the item update.
+                created_card_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"cardvaults-import:{item['id']}"))
+                response = await client.post(
+                    f"{SUPABASE_URL}/rest/v1/cards",
+                    headers={**supabase_headers(), "Prefer": "resolution=ignore-duplicates,return=minimal"},
+                    json=_card_payload(item, user_id, created_card_id),
+                )
+                if response.status_code not in (200, 201, 204):
+                    raise HTTPException(response.status_code, response.text)
+            await _patch(client, "import_items", {"id": f"eq.{item['id']}", "user_id": f"eq.{user_id}", "action_at": "is.null"}, {
+                "action": action, "target_card_id": target_card_id, "created_card_id": created_card_id,
+                "action_at": _now(), "updated_at": _now(),
+            })
+            return action
+
+        actions = await asyncio.gather(*(process(entry) for entry in chunk)) if chunk else []
+        return {
+            "processed": len(actions),
+            "created": actions.count("create"),
+            "shelved": actions.count("shelve"),
+            "remaining": len(recommended) - len(chunk),
+            "manual_review": len(items) - len(recommended),
+        }
 
 
 @router.post("/imports/items/{item_id}/retry")
