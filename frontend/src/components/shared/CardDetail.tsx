@@ -266,19 +266,10 @@ export function CardDetail({ card, onClose }: Props) {
   }
 
   async function handleReanalyze() {
-    if (!card.image_front_url || !card.image_back_url) return;
+    if (!card.image_front_url) return;
     setReanalyzeError('');
     try {
-      async function urlToFile(url: string, name: string): Promise<File> {
-        const resp = await fetch(url);
-        const blob = await resp.blob();
-        return new File([blob], name, { type: blob.type || 'image/jpeg' });
-      }
-      const [frontFile, backFile] = await Promise.all([
-        urlToFile(card.image_front_url, 'front.jpg'),
-        urlToFile(card.image_back_url, 'back.jpg'),
-      ]);
-      const r = await identify.mutateAsync({ frontFile, backFile });
+      const r = await identify.mutateAsync({ cardId: card.id });
       setFields((prev) => ({
         ...prev,
         sport: r.sport || prev.sport,

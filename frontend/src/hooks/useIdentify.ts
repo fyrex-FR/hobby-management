@@ -22,7 +22,13 @@ async function fileToBase64(file: File): Promise<string> {
 
 export function useIdentify() {
   return useMutation({
-    mutationFn: async ({ frontFile, backFile }: { frontFile: File; backFile: File }) => {
+    mutationFn: async (input: { frontFile: File; backFile: File } | { cardId: string }) => {
+      if ('cardId' in input) {
+        return apiFetch<AIIdentificationResult>(`/cards/${input.cardId}/reanalyze`, {
+          method: 'POST',
+        });
+      }
+      const { frontFile, backFile } = input;
       const [front_base64, back_base64] = await Promise.all([
         fileToBase64(frontFile),
         fileToBase64(backFile),

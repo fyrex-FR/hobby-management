@@ -1,5 +1,7 @@
 import logging
 import os
+import base64
+from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel
 from typing import Literal, Optional
@@ -7,6 +9,7 @@ import httpx
 
 from .auth import current_user
 from services.marketplace_pricing import calculate_ebay_price
+from services.gemini import identify_gemini
 
 logger = logging.getLogger("cards")
 
@@ -23,6 +26,7 @@ router = APIRouter()
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
+R2_PUBLIC_URL = os.environ.get("R2_PUBLIC_URL", "")
 
 
 def supabase_headers() -> dict:
@@ -52,6 +56,24 @@ async def fetch_all_rows(client: httpx.AsyncClient, url: str, params: dict, page
             break
         offset += page
     return rows
+
+
+def _is_allowed_card_image_url(url: str) -> bool:
+    """Only fetch images from the configured public R2 host (SSRF guard)."""
+    image = urlparse(url)
+    public = urlparse(R2_PUBLIC_URL)
+    return image.scheme == "https" and bool(public.hostname) and image.hostname == public.hostname
+
+
+async def _download_card_image(client: httpx.AsyncClient, url: str) -> str:
+    if not _is_allowed_card_image_url(url):
+        raise HTTPException(status_code=422, detail="Image URL is not hosted on CardVaults storage")
+    resp = await client.get(url)
+    if resp.status_code != 200:
+        raise HTTPException(status_code=502, detail="Unable to load card image")
+    if not resp.headers.get("content-type", "").startswith("image/"):
+        raise HTTPException(status_code=422, detail="Card image has an invalid content type")
+    return base64.b64encode(resp.content).decode("ascii")
 
 
 
@@ -173,6 +195,45 @@ async def create_card(body: CardCreate, user: dict = Depends(current_user)):
         raise HTTPException(status_code=resp.status_code, detail=resp.text)
     data = resp.json()
     return data[0] if isinstance(data, list) else data
+
+
+@router.post("/cards/{card_id}/reanalyze")
+async def reanalyze_card(card_id: str, user: dict = Depends(current_user)):
+    """Re-analyze stored photos server-side so browser CORS never blocks R2 images."""
+    user_id = user["sub"]
+    async with httpx.AsyncClient(timeout=65, follow_redirects=False) as client:
+        resp = await client.get(
+            f"{SUPABASE_URL}/rest/v1/cards",
+            headers=supabase_headers(),
+            params={
+                "id": f"eq.{card_id}",
+                "user_id": f"eq.{user_id}",
+                "select": "image_front_url,image_back_url",
+                "limit": "1",
+            },
+        )
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        rows = resp.json()
+        if not rows:
+            raise HTTPException(status_code=404, detail="Card not found")
+        card = rows[0]
+        if not card.get("image_front_url"):
+            raise HTTPException(status_code=422, detail="Front image is required")
+        front_base64 = await _download_card_image(client, card["image_front_url"])
+        back_base64 = None
+        if card.get("image_back_url"):
+            back_base64 = await _download_card_image(client, card["image_back_url"])
+
+    out = await identify_gemini(front_base64, back_base64)
+    if out["error"]:
+        raise HTTPException(status_code=502, detail=f"Gemini error: {out['error']}")
+    if not out["result"]:
+        raise HTTPException(status_code=422, detail="Gemini returned no result")
+    result = out["result"]
+    if result.get("sport") not in {"Basket", "Foot", "Baseball", "Football US", "Hockey", "Autre"}:
+        result["sport"] = "Basket"
+    return result
 
 
 @router.patch("/cards/{card_id}")
