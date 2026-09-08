@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../api/client';
 import { cdnImg } from '../../lib/cdn';
 import { EbayLogo } from './EbayLogo';
@@ -134,6 +134,8 @@ interface Props {
   onApplyPrice?: (eur: number) => void | Promise<unknown>;
   /** Id de la carte — active le cache des ventes côté serveur. */
   cardId?: string;
+  /** Lance la recherche dès l'affichage, utile dans les parcours en chaîne. */
+  autoFetch?: boolean;
 }
 
 /** Mini-graphe SVG de la tendance des ventes (prix dans le temps) + %. */
@@ -204,7 +206,7 @@ function SalesTrend({ sales }: { sales: EbayResult[] }) {
   );
 }
 
-export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPrice, cardId }: Props) {
+export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPrice, cardId, autoFetch = false }: Props) {
   const [effectiveQuery, setEffectiveQuery] = useState(query);
   const [selectedTitle, setSelectedTitle] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
@@ -238,7 +240,7 @@ export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPri
     }
   }
 
-  async function fetchPrices(q: string, refresh = false) {
+  const fetchPrices = useCallback(async (q: string, refresh = false) => {
     setPriceLoading(true);
     setSold(null);
     setActive(null);
@@ -262,7 +264,11 @@ export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPri
     } finally {
       setPriceLoading(false);
     }
-  }
+  }, [cardId]);
+
+  useEffect(() => {
+    if (autoFetch) void fetchPrices(query);
+  }, [autoFetch, fetchPrices, query]);
 
   function selectVisual(r: EbayResult) {
     setSelectedTitle(r.title);

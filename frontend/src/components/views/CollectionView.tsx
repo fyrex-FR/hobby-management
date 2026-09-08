@@ -22,6 +22,7 @@ import {
   ArrowUpDown,
   ShoppingBag,
   SlidersHorizontal,
+  BadgeEuro,
 } from 'lucide-react';
 import {
   createColumnHelper,
@@ -42,6 +43,7 @@ import { EbayBulkPublishModal } from '../shared/EbayBulkPublishModal';
 import { WhatnotExportModal } from '../shared/WhatnotExportModal';
 import { EbayStockSyncModal } from '../shared/EbayStockSyncModal';
 import { EbayLogo } from '../shared/EbayLogo';
+import { PricingFlow } from '../shared/PricingFlow';
 import { cdnImg } from '../../lib/cdn';
 import { RookieBadge } from '../shared/RookieBadge';
 
@@ -883,6 +885,7 @@ export function CollectionView() {
   const [ebayBulkOpen, setEbayBulkOpen] = useState(false);
   const [whatnotOpen, setWhatnotOpen] = useState(false);
   const [ebayUpdateOpen, setEbayUpdateOpen] = useState(false);
+  const [pricingOpen, setPricingOpen] = useState(false);
   const updateCard = useUpdateCard();
   const recalculateEbayPrices = useRecalculateEbayPrices();
   const deleteCard = useDeleteCard();
@@ -1062,6 +1065,10 @@ export function CollectionView() {
 
   // Tri appliqué après filtrage (grille + tableau).
   const sorted = useMemo(() => sortCards(filtered, sortBy), [filtered, sortBy]);
+  const pricingCards = useMemo(
+    () => sorted.filter((card) => (card.vinted_price ?? card.price) == null),
+    [sorted],
+  );
 
   // Compteurs annonces.
   const listingCounts = useMemo(() => {
@@ -1271,6 +1278,17 @@ export function CollectionView() {
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setPricingOpen(true)}
+              disabled={pricingCards.length === 0}
+              className="flex items-center gap-2 rounded-2xl border px-3 py-2.5 text-xs font-black transition-all active:scale-95 disabled:cursor-not-allowed disabled:opacity-35"
+              style={{ background: 'var(--accent-dim)', color: 'var(--accent)', borderColor: 'var(--border-accent)' }}
+              title="Pricer les cartes sans prix des filtres actuels"
+            >
+              <BadgeEuro size={16} />
+              <span className="hidden sm:inline">Pricing</span>
+              <span className="rounded-lg bg-black/15 px-1.5 py-0.5 text-[9px]">{pricingCards.length}</span>
+            </button>
             {/* View toggle */}
             <div className="flex p-1 rounded-2xl bg-white/5 border border-white/5 shrink-0">
               <button
@@ -1675,6 +1693,10 @@ export function CollectionView() {
 
       {selectedCard && (
         <CardDetail card={selectedCard} onClose={() => setSelectedCard(null)} />
+      )}
+
+      {pricingOpen && (
+        <PricingFlow cards={pricingCards} onClose={() => setPricingOpen(false)} />
       )}
 
       {ebayBulkOpen && (
