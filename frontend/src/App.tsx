@@ -424,6 +424,13 @@ function Header({ onShare, isAdmin }: { onShare: () => void; isAdmin: boolean })
                   {item.label}
                 </button>
               ))}
+              <button
+                onClick={() => { onShare(); setMobileMenuOpen(false); }}
+                className="col-span-2 flex items-center gap-3 rounded-2xl border border-white/5 bg-white/5 p-3 text-sm font-semibold text-[var(--text-secondary)] transition-all active:scale-[0.98]"
+              >
+                <Share2 size={18} />
+                Partager ma collection
+              </button>
             </div>
           </motion.div>
         )}
