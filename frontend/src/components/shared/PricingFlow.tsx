@@ -91,7 +91,7 @@ export function PricingFlow({ cards, onClose }: Props) {
   }
 
   const query = buildPriceSearchText(card);
-  const rawSoldUrl = `https://www.ebay.fr/sch/i.html?_nkw=${encodeURIComponent(query).replace(/%20/g, '+')}&LH_Sold=1&LH_Complete=1`;
+  const rawSoldUrl = `https://www.ebay.fr/sch/i.html?_nkw=${encodeURIComponent(query).replace(/%20/g, '+')}&LH_Sold=1&LH_Complete=1&LH_PrefLoc=2`;
 
   return (
     <div className="fixed inset-0 z-[70] flex flex-col overflow-hidden bg-[var(--bg-primary)]">

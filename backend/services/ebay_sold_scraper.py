@@ -156,6 +156,7 @@ async def scrape_ebay_sold(query: str, max_results: int = 20) -> dict:
         "_sacat": "0",
         "LH_Sold": "1",
         "LH_Complete": "1",
+        "LH_PrefLoc": "2",  # Monde entier (sinon eBay limite au pays courant)
         "_ipg": "60",  # 60 résultats par page
         "rt": "nc",
     }
