@@ -39,6 +39,7 @@ import { RookieBadge } from './RookieBadge';
 import { normalizeParallelName } from '../../lib/cardQuality';
 import { apiFetch } from '../../api/client';
 import { downloadImage } from '../../lib/downloadImage';
+import { formatVintedNumberedBadge, prepareVintedPhotos } from '../../lib/vintedPhotoBadge';
 import { calculateEbayPrice } from '../../lib/marketplacePricing';
 import { addVintedHashtags } from '../../lib/vintedHashtags';
 
@@ -120,6 +121,7 @@ export function CardDetail({ card, onClose }: Props) {
   const [showEbayPublish, setShowEbayPublish] = useState(false);
   const [withdrawingEbay, setWithdrawingEbay] = useState(false);
   const [ebayError, setEbayError] = useState('');
+  const [vintedPreview, setVintedPreview] = useState<{ image: string; payload: Record<string, unknown> } | null>(null);
 
   async function withdrawFromEbay() {
     setWithdrawingEbay(true);
@@ -246,7 +248,8 @@ export function CardDetail({ card, onClose }: Props) {
     }
 
     const photoUrls = [card.image_front_url, card.image_back_url].filter(Boolean) as string[];
-    const photos = (await Promise.all(photoUrls.map(toBase64))).filter(Boolean) as string[];
+    const sourcePhotos = (await Promise.all(photoUrls.map(toBase64))).filter(Boolean) as string[];
+    const photos = await prepareVintedPhotos(sourcePhotos, card.numbered);
 
     const baseDescription = [
       card.brand && card.set_name ? `${card.brand} ${card.set_name}` : null,
@@ -268,6 +271,14 @@ export function CardDetail({ card, onClose }: Props) {
       brand: card.brand ?? '',
       photos,
     };
+    if (card.numbered && photos[0]) {
+      setVintedPreview({ image: photos[0], payload });
+      return;
+    }
+    openVintedDraft(payload);
+  }
+
+  function openVintedDraft(payload: Record<string, unknown>) {
     const encoded = encodeURIComponent(JSON.stringify(payload));
     window.open(`https://www.vinted.fr/items/new#vinted_pending=${encoded}`, '_blank');
   }
@@ -1023,6 +1034,47 @@ export function CardDetail({ card, onClose }: Props) {
         onPublished={() => { setShowEbayPublish(false); queryClient.invalidateQueries({ queryKey: ['cards'] }); }}
       />
     )}
+    <AnimatePresence>
+      {vintedPreview && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/90 p-4 backdrop-blur-xl"
+          onClick={() => setVintedPreview(null)}
+        >
+          <motion.div
+            initial={{ scale: 0.96, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.96, opacity: 0 }}
+            className="w-full max-w-md rounded-3xl border border-white/10 bg-[#121214] p-5 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-black text-white">Aperçu de la photo Vinted</p>
+                <p className="mt-1 text-xs text-[var(--text-muted)]">{formatVintedNumberedBadge(card.numbered)}</p>
+              </div>
+              <button onClick={() => setVintedPreview(null)} className="rounded-xl bg-white/5 p-2 text-white/70 hover:bg-white/10">
+                <X size={18} />
+              </button>
+            </div>
+            <img src={vintedPreview.image} alt="Aperçu du badge de tirage" className="mx-auto max-h-[60vh] rounded-2xl object-contain" />
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <button onClick={() => setVintedPreview(null)} className="rounded-2xl border border-white/10 py-3 text-sm font-bold text-white/70 hover:bg-white/5">
+                Annuler
+              </button>
+              <button
+                onClick={() => { openVintedDraft(vintedPreview.payload); setVintedPreview(null); }}
+                className="rounded-2xl bg-[var(--accent)] py-3 text-sm font-black text-[#09090B] hover:brightness-110"
+              >
+                Continuer vers Vinted
+              </button>
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
     </>
   );
 }
