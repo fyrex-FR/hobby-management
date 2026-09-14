@@ -40,6 +40,7 @@ import { normalizeParallelName } from '../../lib/cardQuality';
 import { apiFetch } from '../../api/client';
 import { downloadImage } from '../../lib/downloadImage';
 import { calculateEbayPrice } from '../../lib/marketplacePricing';
+import { addVintedHashtags } from '../../lib/vintedHashtags';
 
 
 const inputCls = 'w-full rounded-xl px-3 py-2 text-sm outline-none transition-all bg-white/5 border border-white/10 focus:border-[var(--accent)]/50 focus:bg-white/10';
@@ -247,16 +248,22 @@ export function CardDetail({ card, onClose }: Props) {
     const photoUrls = [card.image_front_url, card.image_back_url].filter(Boolean) as string[];
     const photos = (await Promise.all(photoUrls.map(toBase64))).filter(Boolean) as string[];
 
+    const baseDescription = [
+      card.brand && card.set_name ? `${card.brand} ${card.set_name}` : null,
+      card.insert_name ? `Insert : ${card.insert_name}` : null,
+      card.parallel_name ? `Parallel : ${card.parallel_name}` : null,
+      card.card_number ? `Carte ${card.card_number}` : null,
+      card.numbered ? `Numérotée ${card.numbered}` : null,
+      card.condition_notes ? `État : ${card.condition_notes}` : 'Excellent état, jamais joué',
+    ].filter(Boolean).join('\n');
+
     const payload = {
       title: parts.join(' '),
-      description: [
-        card.brand && card.set_name ? `${card.brand} ${card.set_name}` : null,
-        card.insert_name ? `Insert : ${card.insert_name}` : null,
-        card.parallel_name ? `Parallel : ${card.parallel_name}` : null,
-        card.card_number ? `Carte ${card.card_number}` : null,
-        card.numbered ? `Numérotée ${card.numbered}` : null,
-        card.condition_notes ? `État : ${card.condition_notes}` : 'Excellent état, jamais joué',
-      ].filter(Boolean).join('\n'),
+      description: addVintedHashtags(baseDescription, {
+        player: card.player,
+        team: card.team,
+        series: card.set_name || card.brand,
+      }),
       price: card.price ?? 0,
       brand: card.brand ?? '',
       photos,
