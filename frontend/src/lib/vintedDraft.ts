@@ -1,4 +1,5 @@
 import type { Card } from '../types';
+import { cdnImg } from './cdn';
 import { addVintedHashtags } from './vintedHashtags';
 import { prepareVintedPhotos } from './vintedPhotoBadge';
 
@@ -13,7 +14,10 @@ export interface VintedDraft {
 
 async function toBase64(url: string): Promise<string | null> {
   try {
-    const response = await fetch(url);
+    // Card images live on R2. Browsers can display them cross-origin, but a
+    // direct fetch may be rejected by CORS. Use the Pages same-origin proxy so
+    // recto and verso are both available to the extension.
+    const response = await fetch(cdnImg(url) ?? url);
     if (!response.ok) return null;
     const blob = await response.blob();
     return await new Promise((resolve) => {
