@@ -264,7 +264,20 @@
   }
 
   function normalizedPrice(value) {
-    const parsed = Number(String(value ?? "").replace(",", "."));
+    let text = String(value ?? "")
+      .trim()
+      .replace(/[\s\u00a0\u202f]/g, "")
+      .replace(/[^\d,.-]/g, "");
+    const lastComma = text.lastIndexOf(",");
+    const lastDot = text.lastIndexOf(".");
+    if (lastComma >= 0 && lastDot >= 0) {
+      const decimalSeparator = lastComma > lastDot ? "," : ".";
+      const thousandsSeparator = decimalSeparator === "," ? /\./g : /,/g;
+      text = text.replace(thousandsSeparator, "").replace(decimalSeparator, ".");
+    } else {
+      text = text.replace(",", ".");
+    }
+    const parsed = Number(text);
     return Number.isFinite(parsed) ? parsed : null;
   }
 
@@ -276,7 +289,10 @@
       setInputValue(element, candidate);
       element.blur();
       await delay(120);
-      if (normalizedPrice(element.value) === expected) return;
+      const displayedValue = Number.isFinite(element.valueAsNumber)
+        ? element.valueAsNumber
+        : normalizedPrice(element.value);
+      if (displayedValue !== null && Math.abs(displayedValue - expected) < 0.001) return;
     }
     throw new Error("Vinted a refusé le prix prérempli");
   }
