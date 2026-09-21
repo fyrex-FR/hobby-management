@@ -388,7 +388,12 @@
   }
 
   async function tryAutoUploadPhotos(photos, title) {
-    const fileInput = queryFirst(['input[type="file"][accept*="image"]', 'input[type="file"]']);
+    const fileInput = queryFirst([
+      'input[type="file"][multiple][accept*="image"]',
+      'input[type="file"][multiple]',
+      'input[type="file"][accept*="image"]',
+      'input[type="file"]',
+    ]);
     if (!fileInput) return false;
 
     try {
@@ -401,18 +406,13 @@
       const dt = new DataTransfer();
       files.forEach((f) => dt.items.add(f));
       fileInput.files = dt.files;
-      fileInput.dispatchEvent(new Event("input", { bubbles: true }));
+      // Vinted traite le FileList au changement de l'input. Déclencher aussi
+      // un drop sur la zone faisait traiter le même lot deux fois et pouvait
+      // laisser uniquement le dernier fichier (le verso).
       fileInput.dispatchEvent(new Event("change", { bubbles: true }));
+      await delay(800);
 
-      const dropzone = fileInput.closest('[class*="upload"], [class*="drop"], [class*="photo"], [data-testid*="photo"]') || fileInput.parentElement || fileInput;
-      dropzone.dispatchEvent(new DragEvent("dragenter", { bubbles: true, cancelable: true, dataTransfer: dt }));
-      await delay(50);
-      dropzone.dispatchEvent(new DragEvent("dragover", { bubbles: true, cancelable: true, dataTransfer: dt }));
-      await delay(50);
-      dropzone.dispatchEvent(new DragEvent("drop", { bubbles: true, cancelable: true, dataTransfer: dt }));
-      await delay(500);
-
-      return fileInput.files && fileInput.files.length > 0;
+      return fileInput.files?.length === files.length;
     } catch (err) {
       console.log("[NBA Vinted] Erreur upload automatique:", err.message);
       return false;
