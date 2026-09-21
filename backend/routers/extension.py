@@ -1,9 +1,11 @@
 import hashlib
 import os
+import re
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Literal, Optional
+from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -299,6 +301,43 @@ class ExtensionCardCreate(BaseModel):
     is_rookie: Optional[bool] = None
     grading_company: Optional[str] = Field(default=None, max_length=20)
     grading_grade: Optional[str] = Field(default=None, max_length=10)
+
+
+class VintedListingAttach(BaseModel):
+    url: str = Field(min_length=20, max_length=500)
+
+    @field_validator("url")
+    @classmethod
+    def validate_listing_url(cls, value: str) -> str:
+        parsed = urlparse(value)
+        if parsed.scheme != "https" or parsed.hostname not in {"vinted.fr", "www.vinted.fr"}:
+            raise ValueError("URL Vinted invalide")
+        if not re.fullmatch(r"/items/\d+(?:-[^/?#]+)?/?", parsed.path):
+            raise ValueError("L'URL ne correspond pas à une annonce Vinted")
+        return f"https://www.vinted.fr{parsed.path.rstrip('/')}"
+
+
+@router.patch("/cards/{card_id}/vinted-listing")
+async def attach_vinted_listing(
+    card_id: str,
+    body: VintedListingAttach,
+    user: dict = Depends(current_extension_user),
+):
+    rows = await _rest("GET", "cards", params={
+        "id": f"eq.{card_id}", "user_id": f"eq.{user['sub']}", "select": "id", "limit": "1"
+    })
+    if not rows:
+        raise HTTPException(status_code=404, detail="Carte introuvable")
+    updated = await _rest(
+        "PATCH",
+        "cards",
+        params={"id": f"eq.{card_id}", "user_id": f"eq.{user['sub']}"},
+        json={"vinted_url": body.url, "status": "a_vendre"},
+        prefer="return=representation",
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Carte introuvable")
+    return {"card_id": card_id, "vinted_url": body.url, "status": "a_vendre"}
 
 
 @router.post("/cards", status_code=201)

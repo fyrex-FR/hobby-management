@@ -42,8 +42,9 @@ import { CardDetail } from '../shared/CardDetail';
 import { EbayBulkPublishModal } from '../shared/EbayBulkPublishModal';
 import { WhatnotExportModal } from '../shared/WhatnotExportModal';
 import { EbayStockSyncModal } from '../shared/EbayStockSyncModal';
-import { EbayLogo } from '../shared/EbayLogo';
+import { EbayLogo, VintedLogo } from '../shared/EbayLogo';
 import { PricingFlow } from '../shared/PricingFlow';
+import { VintedPublishFlow } from '../shared/VintedPublishFlow';
 import { cdnImg } from '../../lib/cdn';
 import { RookieBadge } from '../shared/RookieBadge';
 
@@ -885,6 +886,7 @@ export function CollectionView() {
   const [ebayBulkOpen, setEbayBulkOpen] = useState(false);
   const [whatnotOpen, setWhatnotOpen] = useState(false);
   const [ebayUpdateOpen, setEbayUpdateOpen] = useState(false);
+  const [vintedPublishOpen, setVintedPublishOpen] = useState(false);
   const [pricingOpen, setPricingOpen] = useState(false);
   const updateCard = useUpdateCard();
   const recalculateEbayPrices = useRecalculateEbayPrices();
@@ -1658,6 +1660,10 @@ export function CollectionView() {
                   <BulkMenuItem onClick={() => { close(); setEbayUpdateOpen(true); }}>
                     Mettre à jour les annonces (prix + stock)
                   </BulkMenuItem>
+                  <BulkMenuLabel><VintedLogo width={38} height={12} /></BulkMenuLabel>
+                  <BulkMenuItem onClick={() => { close(); setVintedPublishOpen(true); }}>
+                    Publier les non listées en chaîne
+                  </BulkMenuItem>
                   <BulkMenuLabel>Whatnot</BulkMenuLabel>
                   <BulkMenuItem onClick={() => { close(); setWhatnotOpen(true); }}>
                     <Download size={13} /> Exporter en CSV
@@ -1717,6 +1723,13 @@ export function CollectionView() {
         <EbayStockSyncModal
           cardIds={[...selectedIds]}
           onClose={() => setEbayUpdateOpen(false)}
+        />
+      )}
+
+      {vintedPublishOpen && (
+        <VintedPublishFlow
+          cards={cards.filter((c) => selectedIds.has(c.id))}
+          onClose={() => setVintedPublishOpen(false)}
         />
       )}
 

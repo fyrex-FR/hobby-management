@@ -6,6 +6,7 @@
   const UPLOAD_ARROW_ID = "nba-vinted-prefill-upload-arrow";
   const ACTION_DELAY_MS = 400;
   let uploadArrowTrackingEnabled = false;
+  let activeCardId = null;
 
   function showBanner({ id, text, background, color, top }) {
     let banner = document.getElementById(id);
@@ -102,7 +103,7 @@
   }
 
   function formatPriceForVinted(value) {
-    return String(value ?? "").trim().replace(/\./g, ",");
+    return String(value ?? "").trim().replace(/\s/g, "");
   }
 
   function findVintedFields() {
@@ -260,6 +261,24 @@
     else element.value = text;
     element.dispatchEvent(new Event("input", { bubbles: true }));
     element.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  function normalizedPrice(value) {
+    const parsed = Number(String(value ?? "").replace(",", "."));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+
+  async function setPriceValue(element, value) {
+    const expected = normalizedPrice(value);
+    if (expected === null) throw new Error("Prix Vinted invalide");
+    const candidates = [String(value).replace(",", "."), String(value).replace(".", ",")];
+    for (const candidate of [...new Set(candidates)]) {
+      setInputValue(element, candidate);
+      element.blur();
+      await delay(120);
+      if (normalizedPrice(element.value) === expected) return;
+    }
+    throw new Error("Vinted a refusé le prix prérempli");
   }
 
   function sanitizeFilenamePart(value) {
@@ -461,11 +480,12 @@
   async function fillVintedForm() {
     const pending = readPendingPayload();
     if (!pending) return;
+    activeCardId = pending.cardId || null;
 
     const fields = await waitForFields();
     setInputValue(fields.title, pending.title || "");
     setInputValue(fields.description, pending.description || "");
-    setInputValue(fields.price, formatPriceForVinted(pending.price || ""));
+    await setPriceValue(fields.price, formatPriceForVinted(pending.price || ""));
     await applyVintedSelections(pending);
 
     if (Array.isArray(pending.photos) && pending.photos.length > 0) {
@@ -488,13 +508,19 @@
   let bootstrapRan = false;
 
   async function bootstrap() {
+    const published = location.pathname.match(/^\/items\/\d+(?:-[^/?#]+)?\/?$/);
+    if (published) {
+      chrome.runtime.sendMessage({ type: "VINTED_LISTING_PUBLISHED", url: `${location.origin}${location.pathname}` }).catch(() => {});
+      return;
+    }
     if (!location.pathname.includes("/items/new")) return;
     if (bootstrapRan) return;
     bootstrapRan = true;
     try {
       await fillVintedForm();
-    } catch {
+    } catch (error) {
       showBanner({ id: SUCCESS_BANNER_ID, text: "Pré-remplissage impossible sur cette page.", background: "#f59e0b", color: "#111827", top: 12 });
+      chrome.runtime.sendMessage({ type: "VINTED_DRAFT_ERROR", cardId: activeCardId, error: error?.message }).catch(() => {});
     }
   }
 

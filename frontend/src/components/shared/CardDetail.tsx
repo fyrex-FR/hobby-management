@@ -39,9 +39,9 @@ import { RookieBadge } from './RookieBadge';
 import { normalizeParallelName } from '../../lib/cardQuality';
 import { apiFetch } from '../../api/client';
 import { downloadImage } from '../../lib/downloadImage';
-import { formatVintedNumberedBadge, prepareVintedPhotos } from '../../lib/vintedPhotoBadge';
+import { formatVintedNumberedBadge } from '../../lib/vintedPhotoBadge';
 import { calculateEbayPrice } from '../../lib/marketplacePricing';
-import { addVintedHashtags } from '../../lib/vintedHashtags';
+import { buildVintedDraft, openVintedDraft, type VintedDraft } from '../../lib/vintedDraft';
 
 
 const inputCls = 'w-full rounded-xl px-3 py-2 text-sm outline-none transition-all bg-white/5 border border-white/10 focus:border-[var(--accent)]/50 focus:bg-white/10';
@@ -121,7 +121,7 @@ export function CardDetail({ card, onClose }: Props) {
   const [showEbayPublish, setShowEbayPublish] = useState(false);
   const [withdrawingEbay, setWithdrawingEbay] = useState(false);
   const [ebayError, setEbayError] = useState('');
-  const [vintedPreview, setVintedPreview] = useState<{ image: string; payload: Record<string, unknown> } | null>(null);
+  const [vintedPreview, setVintedPreview] = useState<{ image: string; payload: VintedDraft } | null>(null);
 
   async function withdrawFromEbay() {
     setWithdrawingEbay(true);
@@ -225,62 +225,12 @@ export function CardDetail({ card, onClose }: Props) {
   }
 
   async function publishToVinted() {
-    const parts = [
-      card.player, card.year, card.brand, card.set_name, card.insert_name,
-      card.parallel_name && card.parallel_name !== 'Base' ? card.parallel_name : null,
-      card.numbered ?? null,
-    ].filter(Boolean);
-
-    // Convertir les images en base64 pour les passer à l'extension
-    async function toBase64(url: string): Promise<string | null> {
-      try {
-        const resp = await fetch(url);
-        const blob = await resp.blob();
-        return await new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = () => resolve(null);
-          reader.readAsDataURL(blob);
-        });
-      } catch {
-        return null;
-      }
-    }
-
-    const photoUrls = [card.image_front_url, card.image_back_url].filter(Boolean) as string[];
-    const sourcePhotos = (await Promise.all(photoUrls.map(toBase64))).filter(Boolean) as string[];
-    const photos = await prepareVintedPhotos(sourcePhotos, card.numbered);
-
-    const baseDescription = [
-      card.brand && card.set_name ? `${card.brand} ${card.set_name}` : null,
-      card.insert_name ? `Insert : ${card.insert_name}` : null,
-      card.parallel_name ? `Parallel : ${card.parallel_name}` : null,
-      card.card_number ? `Carte ${card.card_number}` : null,
-      card.numbered ? `Numérotée ${card.numbered}` : null,
-      card.condition_notes ? `État : ${card.condition_notes}` : 'Excellent état, jamais joué',
-    ].filter(Boolean).join('\n');
-
-    const payload = {
-      title: parts.join(' '),
-      description: addVintedHashtags(baseDescription, {
-        player: card.player,
-        team: card.team,
-        series: card.set_name || card.brand,
-      }),
-      price: card.price ?? 0,
-      brand: card.brand ?? '',
-      photos,
-    };
-    if (card.numbered && photos[0]) {
-      setVintedPreview({ image: photos[0], payload });
+    const draft = await buildVintedDraft(card);
+    if (card.numbered && draft.photos[0]) {
+      setVintedPreview({ image: draft.photos[0], payload: draft });
       return;
     }
-    openVintedDraft(payload);
-  }
-
-  function openVintedDraft(payload: Record<string, unknown>) {
-    const encoded = encodeURIComponent(JSON.stringify(payload));
-    window.open(`https://www.vinted.fr/items/new#vinted_pending=${encoded}`, '_blank');
+    openVintedDraft(draft);
   }
 
   async function handleReanalyze() {
