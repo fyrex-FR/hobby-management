@@ -32,6 +32,14 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
+  if (message?.type === "VINTED_GET_PENDING_DRAFT") {
+    queueState().then((state) => {
+      const draft = _sender.tab?.id === state.vintedTabId ? state.draft || null : null;
+      sendResponse({ draft });
+    }).catch((error) => sendResponse({ error: error.message }));
+    return true;
+  }
+
   if (message?.type === "VINTED_LISTING_PUBLISHED") {
     completeVintedDraft(message.url, _sender.tab).then(sendResponse).catch(async (error) => {
       const state = await queueState();
@@ -64,11 +72,13 @@ async function startVintedDraft(draft, sourceTab) {
   const encoded = encodeURIComponent(JSON.stringify(draft));
   const url = `${VINTED_NEW_URL}#vinted_pending=${encoded}`;
   if (vintedTab?.id) {
+    await setQueueState({ collectionTabId: sourceTab.id, vintedTabId: vintedTab.id, cardId: draft.cardId, draft });
     await chrome.tabs.update(vintedTab.id, { url, active: true });
   } else {
-    vintedTab = await chrome.tabs.create({ url, active: true });
+    vintedTab = await chrome.tabs.create({ url: "about:blank", active: true });
+    await setQueueState({ collectionTabId: sourceTab.id, vintedTabId: vintedTab.id, cardId: draft.cardId, draft });
+    await chrome.tabs.update(vintedTab.id, { url });
   }
-  await setQueueState({ collectionTabId: sourceTab.id, vintedTabId: vintedTab.id, cardId: draft.cardId });
   return { accepted: true };
 }
 
@@ -96,6 +106,6 @@ async function completeVintedDraft(url, sourceTab) {
     method: "PATCH", body: JSON.stringify({ url }),
   });
   await notifyCollection("VINTED_QUEUE_PUBLISHED", result);
-  await setQueueState({ ...state, cardId: null });
+  await setQueueState({ ...state, cardId: null, draft: null });
   return result;
 }

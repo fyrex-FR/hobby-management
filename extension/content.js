@@ -57,7 +57,7 @@
     if (banner.__label) banner.__label.textContent = text;
   }
 
-  function readPendingPayload() {
+  async function readPendingPayload() {
     // Méthode 1 : hash de l'URL (#vinted_pending=...)
     try {
       const match = location.hash.match(/[#&]vinted_pending=([^&]*)/);
@@ -87,6 +87,13 @@
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed === "object") return parsed;
       }
+    } catch { /* no-op */ }
+
+    // Méthode 4 : stockage interne de l'extension. Vinted peut retirer le hash
+    // avant l'exécution du content script lors de certaines navigations SPA.
+    try {
+      const response = await chrome.runtime.sendMessage({ type: "VINTED_GET_PENDING_DRAFT" });
+      if (response?.draft && typeof response.draft === "object") return response.draft;
     } catch { /* no-op */ }
 
     return null;
@@ -494,7 +501,7 @@
   }
 
   async function fillVintedForm() {
-    const pending = readPendingPayload();
+    const pending = await readPendingPayload();
     if (!pending) return;
     activeCardId = pending.cardId || null;
 
