@@ -22,6 +22,7 @@ import {
   ShoppingBag,
   FileClock,
   Camera,
+  Sparkles,
   Menu,
   Puzzle,
   CheckCircle2,
@@ -56,6 +57,8 @@ import { ExtensionPairView } from './components/views/ExtensionPairView';
 import { supabase } from './lib/supabase';
 import { Popover } from './components/shared/Popover';
 import { setVitrineUser } from './lib/vitrine';
+import { VitrineSettingsModal } from './components/shared/VitrineSettings';
+import { useVitrineSettingsModal } from './stores/vitrineSettingsStore';
 import { CommandPalette, CommandPaletteTrigger } from './components/shared/CommandPalette';
 import { FeedbackHost, Field, Modal, Notice, ThemeSwitcher } from './components/ui';
 
@@ -245,6 +248,7 @@ function AccountMenu({ email, onShare, compact = false }: { email: string; onSha
   const [showChangePassword, setShowChangePassword] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
   const initial = email.charAt(0).toUpperCase();
+  const openVitrine = useVitrineSettingsModal((s) => s.setOpen);
 
   return (
     <>
@@ -270,6 +274,9 @@ function AccountMenu({ email, onShare, compact = false }: { email: string; onSha
           {compact && <div className="truncate px-2.5 pb-1.5 pt-2 text-xs text-[var(--text-muted)]">{email}</div>}
           <button className="ui-menu-item" onClick={() => { setOpen(false); onShare(); }}>
             <Share2 size={15} className="text-[var(--text-secondary)]" /> Partager ma collection
+          </button>
+          <button className="ui-menu-item" onClick={() => { setOpen(false); openVitrine(true); }}>
+            <Sparkles size={15} className="text-[var(--text-secondary)]" /> Photos vitrine
           </button>
           <button className="ui-menu-item" onClick={() => { window.location.href = '/extension/pair'; }}>
             <Puzzle size={15} className="text-[var(--text-secondary)]" /> Extension Chrome
@@ -635,6 +642,7 @@ function AuthedShell({ userId, email, showShare, setShowShare }: { userId: strin
       </div>
       {showShare && <ShareModal onClose={() => setShowShare(false)} />}
       <CommandPalette isAdmin={isAdmin} onShare={() => setShowShare(true)} />
+      <VitrineSettingsModal />
       {isAdmin && <ImpersonateBanner />}
     </div>
   );

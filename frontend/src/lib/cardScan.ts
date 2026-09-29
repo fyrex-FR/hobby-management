@@ -155,13 +155,16 @@ export async function warpCard(
   source: HTMLImageElement | HTMLCanvasElement,
   corners: [Point, Point, Point, Point],
   side: 'front' | 'back',
+  /** Garde les proportions mesurées (slab gradé plus haut qu'une carte) au lieu du format 2,5 × 3,5. */
+  keepRatio = false,
 ): Promise<File> {
   const [tl, tr, br, bl] = corners;
   const widthPx = (dist(tl, tr) + dist(bl, br)) / 2;
   const heightPx = (dist(tl, bl) + dist(tr, br)) / 2;
-  let outW = Math.round(Math.max(widthPx, heightPx * CARD_RATIO));
+  const ratio = keepRatio ? widthPx / heightPx : CARD_RATIO;
+  let outW = Math.round(Math.max(widthPx, heightPx * ratio));
   outW = Math.min(1400, Math.max(400, outW));
-  const outH = Math.round(outW / CARD_RATIO);
+  const outH = Math.round(outW / ratio);
 
   const srcW = (source as any).naturalWidth || (source as any).width;
   const srcH = (source as any).naturalHeight || (source as any).height;

@@ -18,6 +18,7 @@ import {
   Share2,
   ShoppingBag,
   Sun,
+  Sparkles,
   TrendingUp,
   Upload,
   User,
@@ -33,6 +34,7 @@ import { cdnImg } from '../../lib/cdn';
 import type { Card } from '../../types';
 import { CardDetail } from './CardDetail';
 import { useCommandPalette } from '../../stores/commandPaletteStore';
+import { useVitrineSettingsModal } from '../../stores/vitrineSettingsStore';
 
 
 interface Item {
@@ -140,6 +142,7 @@ function PaletteBody({ isAdmin, onShare, onOpenCard }: { isAdmin: boolean; onSha
       { id: 'a-add', group: 'Actions' as const, label: 'Ajouter une carte', hint: 'Identification IA', icon: Plus, keywords: 'nouvelle ajout rapide photo', run: go('add_card') },
       { id: 'a-studio', group: 'Actions' as const, label: 'Ouvrir le studio photo', icon: ScanLine, keywords: 'camera session', run: go('studio') },
       { id: 'a-batch', group: 'Actions' as const, label: 'Importer un lot de photos', icon: Upload, keywords: 'import batch glisser', run: go('batch') },
+      { id: 'a-vitrine', group: 'Actions' as const, label: 'Réglages des photos vitrine', icon: Sparkles, keywords: 'fond stand pseudo detourage photo', run: () => { close(); useVitrineSettingsModal.getState().setOpen(true); } },
       { id: 'a-share', group: 'Actions' as const, label: 'Partager ma collection', icon: Share2, keywords: 'lien public', run: () => { close(); onShare(); } },
       { id: 'a-light', group: 'Actions' as const, label: 'Thème clair', icon: Sun, keywords: 'light mode apparence', run: () => { setTheme('light'); close(); } },
       { id: 'a-dark', group: 'Actions' as const, label: 'Thème sombre', icon: Moon, keywords: 'dark mode apparence', run: () => { setTheme('dark'); close(); } },

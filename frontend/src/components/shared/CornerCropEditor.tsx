@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Check, X, Wand2, Loader2 } from 'lucide-react';
 import { detectCardCorners, warpCard, defaultCorners, type Point } from '../../lib/cardScan';
+import { findCardBox } from '../../lib/vitrine';
 
 type Corners = [Point, Point, Point, Point];
 
@@ -9,9 +10,11 @@ interface Props {
   side: 'front' | 'back';
   onDone: (cropped: File) => void;
   onCancel: () => void;
+  /** Garde les proportions du cadre tracé (slabs) au lieu du format carte. */
+  keepRatio?: boolean;
 }
 
-export function CornerCropEditor({ file, side, onDone, onCancel }: Props) {
+export function CornerCropEditor({ file, side, onDone, onCancel, keepRatio = false }: Props) {
   const [url] = useState(() => URL.createObjectURL(file));
   const imgRef = useRef<HTMLImageElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
@@ -28,6 +31,16 @@ export function CornerCropEditor({ file, side, onDone, onCancel }: Props) {
   async function runDetect(img: HTMLImageElement) {
     setAutoBusy(true);
     setNote('');
+    // Détection par les bords, instantanée ; OpenCV (lent à charger) en secours.
+    const box = findCardBox(img);
+    if (box) {
+      setCorners([
+        { x: box.x, y: box.y }, { x: box.x + box.w, y: box.y },
+        { x: box.x + box.w, y: box.y + box.h }, { x: box.x, y: box.y + box.h },
+      ]);
+      setAutoBusy(false);
+      return;
+    }
     try {
       const found = await detectCardCorners(img);
       if (found) setCorners(found);
@@ -85,7 +98,7 @@ export function CornerCropEditor({ file, side, onDone, onCancel }: Props) {
     if (!img || !corners) return;
     setWarping(true);
     try {
-      const cropped = await warpCard(img, corners, side);
+      const cropped = await warpCard(img, corners, side, keepRatio);
       onDone(cropped);
     } catch {
       setNote('Redressement impossible — réessaie.');

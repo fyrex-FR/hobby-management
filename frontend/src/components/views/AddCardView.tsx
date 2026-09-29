@@ -14,7 +14,7 @@ import { useIdentify } from '../../hooks/useIdentify';
 import { useCreateCard, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { compressImage } from '../../lib/storage';
 import { applyVitrine } from '../../lib/vitrine';
-import { VitrineControls } from '../shared/VitrineControls';
+import { VitrineSummary } from '../shared/VitrineSettings';
 import { useAppStore } from '../../stores/appStore';
 import { supabase } from '../../lib/supabase';
 import { SPORTS, type CardType, type CardStatus, type Sport } from '../../types';
@@ -277,7 +277,7 @@ export function AddCardView() {
               <ImageDropzone label="Verso" file={backFile} onChange={setBackFile} />
             </div>
             <div className="mt-3">
-              <VitrineControls compact />
+              <VitrineSummary />
             </div>
 
             <div className="mt-4 space-y-2">
