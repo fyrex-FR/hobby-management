@@ -3,6 +3,8 @@ import { persist } from 'zustand/middleware';
 import { useShallow } from 'zustand/react/shallow';
 import { apiFetch } from '../api/client';
 import { cdnImg } from './cdn';
+import { warpToCanvas } from './cardScan';
+import { detectQuad, toGray, type Quad } from './cardQuad';
 
 /**
  * « Photo vitrine » : la carte est détourée de son fond, puis posée sur un
@@ -286,14 +288,62 @@ function colorBox(img: HTMLImageElement | HTMLCanvasElement): Box | null {
   return { x: bx, y: by, w: bw, h: bh };
 }
 
-function isolateCard(img: HTMLImageElement, detect = true): HTMLCanvasElement {
-  const box = detect ? findCardBox(img) : null;
-  const src = box ?? { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight };
+/** Que faire si la carte n'est pas trouvée : cadre de visée du scan, photo entière, ou pas de vitrine. */
+export type VitrineFallback = 'guide' | 'whole' | 'skip';
+export type CutoutMethod = 'quad' | 'box' | 'guide' | 'whole' | 'manual';
+
+export class VitrineSkipped extends Error {
+  constructor() { super('Carte non détectée : photo gardée telle quelle'); }
+}
+
+/** Quadrilatère de la carte (même penchée), en coordonnées de l'image. */
+export function findCardQuad(img: HTMLImageElement | HTMLCanvasElement): { corners: Quad; confidence: number } | null {
+  const W0 = (img as HTMLImageElement).naturalWidth || img.width;
+  const H0 = (img as HTMLImageElement).naturalHeight || img.height;
+  const k = 320 / Math.max(W0, H0);
+  const w = Math.max(16, Math.round(W0 * k));
+  const h = Math.max(16, Math.round(H0 * k));
   const c = document.createElement('canvas');
-  c.width = Math.round(src.w);
-  c.height = Math.round(src.h);
-  c.getContext('2d')!.drawImage(img, src.x, src.y, src.w, src.h, 0, 0, c.width, c.height);
-  return c;
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext('2d', { willReadFrequently: true })!;
+  ctx.drawImage(img, 0, 0, w, h);
+  const res = detectQuad(toGray(ctx.getImageData(0, 0, w, h).data, w, h), w, h);
+  if (!res) return null;
+  return { corners: res.corners.map((p) => ({ x: p.x / k, y: p.y / k })) as Quad, confidence: res.confidence };
+}
+
+function isolateCard(img: HTMLImageElement, detect: boolean, fallback: VitrineFallback): { card: HTMLCanvasElement; method: CutoutMethod } {
+  const W0 = img.naturalWidth, H0 = img.naturalHeight;
+  const crop = (b: Box, method: CutoutMethod) => {
+    const c = document.createElement('canvas');
+    c.width = Math.round(b.w);
+    c.height = Math.round(b.h);
+    c.getContext('2d')!.drawImage(img, b.x, b.y, b.w, b.h, 0, 0, c.width, c.height);
+    return { card: c, method };
+  };
+  if (!detect) return crop({ x: 0, y: 0, w: W0, h: H0 }, 'manual');
+
+  // 1. Carte penchée ou en perspective : redressée.
+  const quad = findCardQuad(img);
+  if (quad) {
+    const [tl, tr, br, bl] = quad.corners;
+    const qw = (Math.hypot(tr.x - tl.x, tr.y - tl.y) + Math.hypot(br.x - bl.x, br.y - bl.y)) / 2;
+    const qh = (Math.hypot(bl.x - tl.x, bl.y - tl.y) + Math.hypot(br.x - tr.x, br.y - tr.y)) / 2;
+    const outH = Math.round(Math.min(1400, Math.max(600, qh)));
+    return { card: warpToCanvas(img, quad.corners, Math.round(outH * (qw / qh)), outH), method: 'quad' };
+  }
+  // 2. Boîte droite (bords, puis couleur du fond).
+  const box = findCardBox(img);
+  if (box) return crop(box, 'box');
+  // 3. Secours.
+  if (fallback === 'guide') {
+    // La capture du scan = cadre de visée + 6 % de marge : on retire la marge.
+    const m = 0.06 / 1.12;
+    return crop({ x: W0 * m, y: H0 * m, w: W0 * (1 - 2 * m), h: H0 * (1 - 2 * m) }, 'guide');
+  }
+  if (fallback === 'whole') return crop({ x: 0, y: 0, w: W0, h: H0 }, 'whole');
+  throw new VitrineSkipped();
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
@@ -461,14 +511,16 @@ export interface VitrineOptions {
   backdropUrl?: string | null;
   /** Photo déjà recadrée sur la carte (ajustement manuel) : pas de détection. */
   precropped?: boolean;
+  /** Carte non trouvée : 'skip' (défaut) garde la photo d'origine. */
+  fallback?: VitrineFallback;
 }
 
-/** Compose la photo vitrine (JPEG 1200 × 1600) à partir d'une photo de carte. */
-export async function makeVitrine(photo: Blob, opts: VitrineOptions): Promise<Blob> {
+/** Compose la photo vitrine et indique comment la carte a été isolée. */
+export async function makeVitrineDetailed(photo: Blob, opts: VitrineOptions): Promise<{ blob: Blob; method: CutoutMethod }> {
   const url = URL.createObjectURL(photo);
   try {
     const [img] = await Promise.all([loadImage(url), document.fonts?.load('600 40px Geist').catch(() => undefined)]);
-    const card = opts.precropped ? isolateCard(img, false) : isolateCard(img);
+    const { card, method } = isolateCard(img, !opts.precropped, opts.fallback ?? 'skip');
     const canvas = document.createElement('canvas');
     canvas.width = OUT_W;
     canvas.height = OUT_H;
@@ -497,12 +549,18 @@ export async function makeVitrine(photo: Blob, opts: VitrineOptions): Promise<Bl
       paintSignature(ctx, signature, opts.tone);
     }
 
-    return await new Promise<Blob>((resolve, reject) =>
+    const blob = await new Promise<Blob>((resolve, reject) =>
       canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Composition impossible'))), 'image/jpeg', 0.9),
     );
+    return { blob, method };
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+/** Compose la photo vitrine (JPEG 1200 × 1600) à partir d'une photo de carte. */
+export async function makeVitrine(photo: Blob, opts: VitrineOptions): Promise<Blob> {
+  return (await makeVitrineDetailed(photo, opts)).blob;
 }
 
 /**

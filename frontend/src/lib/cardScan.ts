@@ -149,6 +149,51 @@ function solveLinear(A: number[][], b: number[]): number[] {
   return M.map((row) => row[n]);
 }
 
+/** Projette le quadrilatère `corners` (TL,TR,BR,BL) de `source` sur un canvas
+ *  droit de `outW` × `outH` (échantillonnage bilinéaire). */
+export function warpToCanvas(
+  source: HTMLImageElement | HTMLCanvasElement,
+  corners: [Point, Point, Point, Point],
+  outW: number,
+  outH: number,
+): HTMLCanvasElement {
+  const [tl, tr, br, bl] = corners;
+  const srcW = (source as HTMLImageElement).naturalWidth || source.width;
+  const srcH = (source as HTMLImageElement).naturalHeight || source.height;
+  const srcCanvas = document.createElement('canvas');
+  srcCanvas.width = srcW;
+  srcCanvas.height = srcH;
+  const sctx = srcCanvas.getContext('2d')!;
+  sctx.drawImage(source, 0, 0, srcW, srcH);
+  const sd = sctx.getImageData(0, 0, srcW, srcH).data;
+  const H = getPerspectiveTransform([{ x: 0, y: 0 }, { x: outW, y: 0 }, { x: outW, y: outH }, { x: 0, y: outH }], [tl, tr, br, bl]);
+  const out = document.createElement('canvas');
+  out.width = outW;
+  out.height = outH;
+  const octx = out.getContext('2d')!;
+  const dst = octx.createImageData(outW, outH);
+  const dd = dst.data;
+  for (let v = 0; v < outH; v++) {
+    for (let u = 0; u < outW; u++) {
+      const W = H[6] * u + H[7] * v + H[8];
+      const X = (H[0] * u + H[1] * v + H[2]) / W;
+      const Y = (H[3] * u + H[4] * v + H[5]) / W;
+      const x0 = Math.floor(X), y0 = Math.floor(Y);
+      const di = (v * outW + u) * 4;
+      if (x0 >= 0 && y0 >= 0 && x0 < srcW - 1 && y0 < srcH - 1) {
+        const fx = X - x0, fy = Y - y0;
+        const i00 = (y0 * srcW + x0) * 4, i10 = i00 + 4, i01 = i00 + srcW * 4, i11 = i01 + 4;
+        for (let c = 0; c < 3; c++) {
+          dd[di + c] = (sd[i00 + c] * (1 - fx) + sd[i10 + c] * fx) * (1 - fy) + (sd[i01 + c] * (1 - fx) + sd[i11 + c] * fx) * fy;
+        }
+      }
+      dd[di + 3] = 255;
+    }
+  }
+  octx.putImageData(dst, 0, 0);
+  return out;
+}
+
 /** Redresse la carte définie par 4 coins (TL,TR,BR,BL) en un rectangle droit
  *  au ratio carte. 100% canvas, aucune dépendance externe. */
 export async function warpCard(
