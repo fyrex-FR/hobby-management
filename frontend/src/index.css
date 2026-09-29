@@ -306,3 +306,73 @@ body {
     color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em;
   }
 }
+
+/* ------------------------------------------------------------------ */
+/* Cartes holographiques (HoloCard)                                     */
+/* ------------------------------------------------------------------ */
+.holo { perspective: 900px; }
+.holo > .holo-inner { width: 100%; height: 100%; }
+.holo-inner {
+  position: relative; overflow: hidden; isolation: isolate;
+  transform: rotateX(var(--holo-rx, 0deg)) rotateY(var(--holo-ry, 0deg));
+  transition: transform 600ms cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 600ms;
+  will-change: transform;
+}
+.holo[data-active='true'] .holo-inner {
+  transition: transform 90ms linear, box-shadow 300ms;
+  box-shadow: 0 30px 60px -20px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(255 255 255 / 0.06);
+}
+.holo-glare, .holo-foil, .holo-sparkle {
+  position: absolute; inset: 0; pointer-events: none; opacity: 0;
+  transition: opacity 400ms;
+}
+/* Reflet de lumière qui suit le pointeur (toutes les cartes). */
+.holo-glare {
+  background:
+    radial-gradient(circle at var(--holo-x, 50%) var(--holo-y, 50%),
+      rgb(255 255 255 / 0.6) 0%, rgb(255 255 255 / 0.15) 25%, transparent 55%),
+    radial-gradient(circle at calc(100% - var(--holo-x, 50%)) calc(100% - var(--holo-y, 50%)),
+      rgb(0 0 0 / 0.28) 0%, transparent 60%);
+  mix-blend-mode: soft-light;
+}
+.holo[data-active='true'] .holo-glare { opacity: 1; }
+/* Film irisé : bandes arc-en-ciel qui glissent avec l'angle. */
+.holo-foil {
+  background-image:
+    repeating-linear-gradient(115deg,
+      hsl(0 100% 72%) 0%, hsl(48 100% 66%) 7%, hsl(140 85% 64%) 14%,
+      hsl(195 100% 68%) 21%, hsl(265 90% 74%) 28%, hsl(330 95% 72%) 35%, hsl(0 100% 72%) 42%);
+  background-size: 260% 260%;
+  background-position: var(--holo-x, 50%) var(--holo-y, 50%);
+  mix-blend-mode: overlay;
+  filter: saturate(1.6) contrast(1.1);
+  -webkit-mask-image: radial-gradient(circle at var(--holo-x, 50%) var(--holo-y, 50%), #000 0%, rgb(0 0 0 / 0.55) 45%, transparent 85%);
+  mask-image: radial-gradient(circle at var(--holo-x, 50%) var(--holo-y, 50%), #000 0%, rgb(0 0 0 / 0.55) 45%, transparent 85%);
+}
+.holo[data-active='true'][data-rarity='rookie'] .holo-foil { opacity: 0.25; }
+.holo[data-active='true'][data-rarity='parallel'] .holo-foil { opacity: 0.42; }
+.holo[data-active='true'][data-rarity='graded'] .holo-foil { opacity: 0.5; }
+.holo[data-active='true'][data-rarity='numbered'] .holo-foil { opacity: 0.68; }
+.holo[data-active='true'][data-rarity='auto'] .holo-foil { opacity: 0.75; }
+/* Paillettes : réservées aux autos et aux gradées. */
+.holo-sparkle {
+  /* Trois trames de tailles premières décalées : aucun motif régulier visible. */
+  background-image:
+    radial-gradient(circle at 30% 40%, rgb(255 255 255 / 0.95) 0 0.9px, transparent 1.5px),
+    radial-gradient(circle at 70% 20%, rgb(255 236 190 / 0.85) 0 0.7px, transparent 1.3px),
+    radial-gradient(circle at 55% 75%, rgb(210 230 255 / 0.9) 0 1.1px, transparent 1.8px);
+  background-size: 23px 29px, 41px 37px, 67px 59px;
+  background-position:
+    calc(var(--holo-x, 50%) * 0.4) calc(var(--holo-y, 50%) * 0.3),
+    calc(var(--holo-x, 50%) * -0.3) calc(var(--holo-y, 50%) * -0.2),
+    calc(var(--holo-x, 50%) * 0.15) calc(var(--holo-y, 50%) * -0.35);
+  mix-blend-mode: normal;
+  filter: drop-shadow(0 0 1px rgb(255 255 255 / 0.9));
+  -webkit-mask-image: radial-gradient(circle at var(--holo-x, 50%) var(--holo-y, 50%), #000 0%, transparent 55%);
+  mask-image: radial-gradient(circle at var(--holo-x, 50%) var(--holo-y, 50%), #000 0%, transparent 55%);
+}
+.holo[data-active='true'][data-rarity='auto'] .holo-sparkle,
+.holo[data-active='true'][data-rarity='graded'] .holo-sparkle { opacity: 0.7; }
+@media (prefers-reduced-motion: reduce) {
+  .holo-inner { transform: none !important; }
+}

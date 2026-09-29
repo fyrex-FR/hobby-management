@@ -282,3 +282,4 @@ export function Modal({
 }
 export { ThemeSwitcher, ThemeToggleButton } from './ThemeSwitcher';
 export { FeedbackHost } from './Feedback';
+export { HoloCard } from './HoloCard';

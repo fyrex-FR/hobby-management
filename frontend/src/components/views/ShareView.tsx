@@ -27,7 +27,8 @@ import { errorMessage, toast } from '../../lib/feedback';
 import type { Card } from '../../types';
 import { RookieBadge } from '../shared/RookieBadge';
 import { Popover } from '../shared/Popover';
-import { EmptyState, Field, Modal, ThemeToggleButton } from '../ui';
+import { EmptyState, Field, HoloCard, Modal, ThemeToggleButton } from '../ui';
+import { holoRarity } from '../../lib/holo';
 import { playerLastName, stripDiacritics } from '../../lib/playerName';
 import { cdnImg } from '../../lib/cdn';
 
@@ -329,13 +330,15 @@ function CardModal({ card, showPrice, onClose, interested, onToggleInterest }: {
                 onClick={() => setLightboxUrl(cdnImg(card.image_front_url)!)}
                 aria-label="Agrandir le recto"
               >
-                <img
-                  src={cdnImg(card.image_front_url)}
-                  alt={card.player ?? ''}
-                  loading="lazy"
-                  decoding="async"
-                  className="mx-auto max-h-[360px] w-full object-contain"
-                />
+                <HoloCard rarity={holoRarity(card)} maxTilt={12} className="mx-auto w-fit">
+                  <img
+                    src={cdnImg(card.image_front_url)}
+                    alt={card.player ?? ''}
+                    loading="lazy"
+                    decoding="async"
+                    className="block max-h-[360px] w-auto object-contain"
+                  />
+                </HoloCard>
               </button>
             ) : (
               <div className="flex aspect-[3/4] w-full flex-col items-center justify-center gap-2 text-[var(--text-muted)]">
@@ -403,12 +406,13 @@ function SharedCard({ card, showPrice, onClick, interested, onToggleInterest }: 
   const meta = [card.year, card.brand, card.set_name].filter(Boolean).join(' · ');
 
   return (
+    <HoloCard rarity={holoRarity(card)} maxTilt={7} className="h-full">
     <div
       role="button"
       tabIndex={0}
       onClick={onClick}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
-      className={`group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-xl border bg-[var(--bg-card)] text-left transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)] focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${
+      className={`group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-xl border bg-[var(--bg-card)] text-left transition-[border-color,box-shadow] duration-200 hover:shadow-[var(--shadow-md)] focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${
         interested ? 'border-[var(--accent)] ring-1 ring-[var(--accent)]' : 'border-[var(--border)] hover:border-[var(--border-strong)]'
       }`}
     >
@@ -465,6 +469,7 @@ function SharedCard({ card, showPrice, onClick, interested, onToggleInterest }: 
         {variant && <p className="truncate text-xs text-[var(--text-secondary)]">{variant}</p>}
       </div>
     </div>
+    </HoloCard>
   );
 }
 
@@ -793,7 +798,9 @@ export function ShareView({ token }: { token: string }) {
                     onClick={() => setSelected(c)}
                     className={`absolute w-[150px] overflow-hidden rounded-xl border border-[var(--border-strong)] bg-[var(--bg-card)] shadow-[var(--shadow-lg)] transition-transform duration-300 hover:-translate-y-2 ${pose}`}
                   >
-                    <img src={cdnImg(c.image_front_url)} alt="" className="aspect-[3/4] w-full object-cover" />
+                    <HoloCard rarity={holoRarity(c)} maxTilt={10} rounded="rounded-none">
+                      <img src={cdnImg(c.image_front_url)} alt="" className="aspect-[3/4] w-full object-cover" />
+                    </HoloCard>
                   </button>
                 );
               })}

@@ -44,7 +44,8 @@ import { EbayLogo, VintedLogo } from '../shared/EbayLogo';
 import { PricingFlow } from '../shared/PricingFlow';
 import { VintedPublishFlow } from '../shared/VintedPublishFlow';
 import { Popover } from '../shared/Popover';
-import { Badge, Modal } from '../ui';
+import { Badge, HoloCard, Modal } from '../ui';
+import { holoRarity } from '../../lib/holo';
 import { ActiveFilterChips, FilterRow, SearchField, StatusTabs } from '../shared/CollectionFilterBar';
 import { cdnImg } from '../../lib/cdn';
 import { RookieBadge } from '../shared/RookieBadge';
@@ -414,13 +415,14 @@ function GridCard({
   const activate = () => (selectMode ? onToggleSelect?.(card.id) : onClick());
 
   return (
+    <HoloCard rarity={holoRarity(card)} maxTilt={7} disabled={selectMode} className="h-full">
     <div
       role="button"
       tabIndex={0}
       data-jump={anchorLetter}
       onClick={activate}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); } }}
-      className={`group relative flex cursor-pointer flex-col overflow-hidden rounded-xl border bg-[var(--bg-card)] text-left transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)] focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${
+      className={`group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-xl border bg-[var(--bg-card)] text-left transition-[border-color,box-shadow] duration-200 hover:shadow-[var(--shadow-md)] focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${
         selected ? 'border-[var(--accent)] ring-1 ring-[var(--accent)]' : 'border-[var(--border)] hover:border-[var(--border-strong)]'
       }`}
     >
@@ -483,6 +485,7 @@ function GridCard({
         )}
       </div>
     </div>
+    </HoloCard>
   );
 }
 
