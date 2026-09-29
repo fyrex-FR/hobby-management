@@ -9,6 +9,7 @@ import {
   Save,
   Camera,
   Download,
+  Rotate3d,
   RefreshCw,
   Sparkles,
   ChevronDown,
@@ -40,12 +41,13 @@ import { compressImage } from '../../lib/storage';
 import { cdnImg } from '../../lib/cdn';
 import { RookieBadge } from './RookieBadge';
 import { formatCardNumber, normalizeParallelName } from '../../lib/cardQuality';
+import { holoRarity, requestGyroPermission } from '../../lib/holo';
 import { apiFetch } from '../../api/client';
 import { downloadImage } from '../../lib/downloadImage';
 import { formatVintedNumberedBadge } from '../../lib/vintedPhotoBadge';
 import { calculateEbayPrice } from '../../lib/marketplacePricing';
 import { buildVintedDraft, openVintedDraft, type VintedDraft } from '../../lib/vintedDraft';
-import { Badge, Field, Modal, Notice } from '../ui';
+import { Badge, Field, HoloCard, Modal, Notice } from '../ui';
 
 
 
@@ -303,6 +305,8 @@ export function CardDetail({ card, onClose }: Props) {
   const [showGrading, setShowGrading] = useState(false);
   const [lightboxSide, setLightboxSide] = useState<'front' | 'back' | null>(null);
   const [downloadingPhotos, setDownloadingPhotos] = useState(false);
+  const [gyroOn, setGyroOn] = useState(false);
+  const canTilt = typeof window !== 'undefined' && window.matchMedia('(hover: none)').matches && 'DeviceOrientationEvent' in window;
   const [showEbayPublish, setShowEbayPublish] = useState(false);
   const [withdrawingEbay, setWithdrawingEbay] = useState(false);
   const [ebayError, setEbayError] = useState('');
@@ -574,6 +578,13 @@ export function CardDetail({ card, onClose }: Props) {
 
   const photoStage = (
     <div className="flex flex-col items-center gap-3">
+      <HoloCard
+        rarity={holoRarity(card)}
+        maxTilt={11}
+        gyro={gyroOn}
+        disabled={editing || !shownUrl}
+        className="w-full max-w-[min(18rem,calc((94dvh_-_18rem)*0.714))] md:max-w-[min(100%,calc((92dvh_-_16rem)*0.714))]"
+      >
       <div
         {...dropProps(side)}
         role={shownUrl ? 'button' : undefined}
@@ -581,7 +592,7 @@ export function CardDetail({ card, onClose }: Props) {
         aria-label={shownUrl ? (editing ? `Remplacer la photo (${SIDE_LABEL[side].toLowerCase()})` : 'Afficher en plein écran') : undefined}
         onClick={() => handleImageClick(side)}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleImageClick(side); } }}
-        className={`group relative aspect-[5/7] w-full max-w-[min(18rem,calc((94dvh_-_18rem)*0.714))] overflow-hidden rounded-xl border transition-colors focus-visible:outline-2 focus-visible:outline-[var(--accent)] md:max-w-[min(100%,calc((92dvh_-_16rem)*0.714))] ${
+        className={`group relative aspect-[5/7] w-full overflow-hidden rounded-xl border transition-colors focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${
           dragOver === side ? 'border-[var(--accent)] bg-[var(--accent-dim)]' : 'border-[var(--border)] bg-[var(--bg-secondary)]'
         } ${shownUrl ? (editing ? 'cursor-pointer' : 'cursor-zoom-in') : ''}`}
       >
@@ -619,6 +630,7 @@ export function CardDetail({ card, onClose }: Props) {
           </div>
         )}
       </div>
+      </HoloCard>
 
       <div className="flex w-full max-w-[min(18rem,calc((94dvh_-_18rem)*0.714))] items-center gap-2 md:max-w-none">
         {SIDES.map((s) => {
@@ -679,6 +691,16 @@ export function CardDetail({ card, onClose }: Props) {
                   className="ui-btn ui-btn-icon"
                 >
                   {downloadingPhotos ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                </button>
+              )}
+              {shownUrl && canTilt && !gyroOn && (
+                <button
+                  onClick={async () => setGyroOn(await requestGyroPermission())}
+                  title="Effet 3D : incline ton téléphone"
+                  aria-label="Activer l'effet 3D au gyroscope"
+                  className="ui-btn ui-btn-icon"
+                >
+                  <Rotate3d size={15} />
                 </button>
               )}
               {shownUrl && (
