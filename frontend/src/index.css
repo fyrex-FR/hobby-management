@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
-:root {
+:root,
+.dark-scope {
   color-scheme: dark;
 
   /* --- Surfaces --- */
@@ -16,6 +17,8 @@
   --accent-dim: hsla(39, 91%, 55%, 0.10);
   --accent-glow: hsla(39, 91%, 55%, 0.18);
   --on-accent: #111113;
+  --violet: #C4B5FD;
+  --orange: #FDBA74;
 
   /* --- Sémantiques (utilisées partout, jamais déclarées jusqu'ici) --- */
   --red: #F87171;
@@ -40,6 +43,54 @@
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
   --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.4);
   --shadow-lg: 0 16px 40px -8px rgb(0 0 0 / 0.6);
+
+  --bg-popover: #17171A;
+  --backdrop: rgb(0 0 0 / 0.65);
+}
+
+/* Thème clair. Appliqué via <html data-theme="light"> (script inline dans
+   index.html, avant le premier rendu). Les éléments .dark-scope gardent la
+   palette sombre : ils sont posés sur des photos. */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --bg-primary: #F5F5F6;
+  --bg-secondary: #EDEDF0;
+  --bg-card: #FFFFFF;
+  --bg-elevated: #F1F1F3;
+  --bg-hover: #E6E6EA;
+
+  --accent: #B7780A;
+  --accent-light: #CC8A12;
+  --accent-dim: hsla(38, 90%, 38%, 0.10);
+  --accent-glow: hsla(38, 90%, 38%, 0.16);
+  --on-accent: #1C1400;
+
+  --red: #DC2626;
+  --green: #059669;
+  --blue: #2563EB;
+  --violet: #7C3AED;
+  --orange: #C2410C;
+
+  --text-primary: #18181B;
+  --text-secondary: #52525B;
+  --text-muted: #71717A;
+
+  --border: hsla(240, 6%, 10%, 0.09);
+  --border-strong: hsla(240, 6%, 10%, 0.15);
+  --border-accent: hsla(38, 90%, 38%, 0.35);
+
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.06);
+  --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.10);
+  --shadow-lg: 0 16px 40px -8px rgb(0 0 0 / 0.18);
+
+  --bg-popover: #FFFFFF;
+  --backdrop: rgb(15 15 20 / 0.40);
+}
+
+/* .dark-scope doit aussi imposer couleur de texte et color-scheme localement. */
+.dark-scope {
+  color-scheme: dark;
 }
 
 @theme {
@@ -237,7 +288,7 @@ body {
   .ui-segmented .count { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 
   .popover-surface {
-    background: #17171A; border: 1px solid var(--border-strong);
+    background: var(--bg-popover); border: 1px solid var(--border-strong);
     border-radius: 12px; box-shadow: var(--shadow-lg);
   }
 

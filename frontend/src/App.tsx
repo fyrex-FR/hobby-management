@@ -53,6 +53,7 @@ import MigrationView from './components/views/MigrationView';
 import { ExtensionPairView } from './components/views/ExtensionPairView';
 import { supabase } from './lib/supabase';
 import { Popover } from './components/shared/Popover';
+import { ThemeSwitcher } from './components/ui';
 import { Field, Modal, Notice } from './components/ui';
 
 const queryClient = new QueryClient();
@@ -258,7 +259,7 @@ function AccountMenu({ email, onShare, compact = false }: { email: string; onSha
           </>
         )}
       </button>
-      <Popover anchorRef={anchor} open={open} onClose={() => setOpen(false)} width={240} align={compact ? 'end' : 'start'}>
+      <Popover anchorRef={anchor} open={open} onClose={() => setOpen(false)} width={272} align={compact ? 'end' : 'start'}>
         <div className="p-1">
           {compact && <div className="truncate px-2.5 pb-1.5 pt-2 text-xs text-[var(--text-muted)]">{email}</div>}
           <button className="ui-menu-item" onClick={() => { setOpen(false); onShare(); }}>
@@ -267,6 +268,11 @@ function AccountMenu({ email, onShare, compact = false }: { email: string; onSha
           <button className="ui-menu-item" onClick={() => { window.location.href = '/extension/pair'; }}>
             <Puzzle size={15} className="text-[var(--text-secondary)]" /> Extension Chrome
           </button>
+          <div className="px-1 pb-1 pt-1.5">
+            <div className="ui-menu-label px-1.5 pt-0">Thème</div>
+            <ThemeSwitcher />
+          </div>
+          <div className="mx-1 my-1 h-px bg-[var(--border)]" />
           <button className="ui-menu-item" onClick={() => { setShowChangePassword(true); setOpen(false); }}>
             <Key size={15} className="text-[var(--text-secondary)]" /> Changer le mot de passe
           </button>
@@ -380,7 +386,7 @@ function MobileTabBar({ isAdmin }: { isAdmin: boolean }) {
       <AnimatePresence>
         {moreOpen && (
           <motion.div className="mobile-only fixed inset-0 z-[60]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <div className="absolute inset-0 bg-black/60" onClick={() => setMoreOpen(false)} />
+            <div className="absolute inset-0 bg-[var(--backdrop)]" onClick={() => setMoreOpen(false)} />
             <motion.div
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
@@ -465,7 +471,7 @@ function ImpersonateSelector({ compact = false }: { compact?: boolean }) {
     <div ref={ref} className={compact ? 'relative' : 'relative w-full'}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className={`flex items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors hover:bg-white/10 ${compact ? 'h-9' : 'h-8 w-full'}`}
+        className={`flex items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors hover:bg-[var(--bg-hover)] ${compact ? 'h-9' : 'h-8 w-full'}`}
         style={{
           background: impersonatedUserId ? 'var(--red, #ef4444)' : 'var(--bg-elevated)',
           color: impersonatedUserId ? '#fff' : 'var(--text-secondary)',
@@ -488,18 +494,18 @@ function ImpersonateSelector({ compact = false }: { compact?: boolean }) {
           >
             {impersonatedUserId && (
               <>
-                <button onClick={reset} className="w-full px-3.5 py-2.5 text-left text-sm font-semibold rounded-xl hover:bg-white/5"
+                <button onClick={reset} className="w-full px-3.5 py-2.5 text-left text-sm font-semibold rounded-xl hover:bg-[var(--bg-hover)]"
                   style={{ color: 'var(--red, #ef4444)' }}>
                   ✕ Revenir à mon compte
                 </button>
-                <div className="h-px bg-white/5 my-1 mx-2" />
+                <div className="h-px bg-[var(--border)] my-1 mx-2" />
               </>
             )}
             {users.map((u) => (
               <button
                 key={u.id}
                 onClick={() => select(u.id, u.email)}
-                className="w-full px-3.5 py-2.5 text-left text-sm rounded-xl hover:bg-white/5 flex items-center gap-2"
+                className="w-full px-3.5 py-2.5 text-left text-sm rounded-xl hover:bg-[var(--bg-hover)] flex items-center gap-2"
                 style={{ color: u.id === impersonatedUserId ? 'var(--accent)' : 'var(--text-primary)' }}
               >
                 <User size={13} className="shrink-0 opacity-40" />

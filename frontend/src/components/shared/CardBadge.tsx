@@ -3,11 +3,11 @@ import type { CardType } from '../../types';
 const CONFIG: Record<CardType, { label: string; color: string }> = {
   base:       { label: 'Base',       color: 'var(--text-secondary)' },
   insert:     { label: 'Insert',     color: 'var(--blue)' },
-  parallel:   { label: 'Parallel',   color: '#C4B5FD' },
+  parallel:   { label: 'Parallel',   color: 'var(--violet)' },
   numbered:   { label: 'Numbered',   color: 'var(--accent)' },
   auto:       { label: 'Auto',       color: 'var(--green)' },
   patch:      { label: 'Patch',      color: 'var(--red)' },
-  auto_patch: { label: 'Auto/Patch', color: '#FDBA74' },
+  auto_patch: { label: 'Auto/Patch', color: 'var(--orange)' },
 };
 
 export function CardBadge({ type }: { type: CardType | null }) {

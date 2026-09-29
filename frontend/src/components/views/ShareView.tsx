@@ -28,7 +28,7 @@ import {
 import type { Card } from '../../types';
 import { RookieBadge } from '../shared/RookieBadge';
 import { Popover } from '../shared/Popover';
-import { Badge, EmptyState, Field, Modal, Spinner } from '../ui';
+import { Badge, EmptyState, Field, Modal, Spinner, ThemeToggleButton } from '../ui';
 import { playerLastName, stripDiacritics } from '../../lib/playerName';
 import { cdnImg } from '../../lib/cdn';
 
@@ -166,10 +166,13 @@ function ShareHeader() {
           <LogoMark />
           <span className="text-sm font-bold tracking-tight text-[var(--text-primary)]">CardVaults</span>
         </div>
-        <span className="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
-          <Globe size={13} />
-          Collection partagée
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="hidden items-center gap-1.5 text-xs text-[var(--text-muted)] sm:inline-flex">
+            <Globe size={13} />
+            Collection partagée
+          </span>
+          <ThemeToggleButton />
+        </div>
       </div>
     </header>
   );
@@ -179,7 +182,7 @@ function ShareHeader() {
 function PhotoTag({ children, color = 'var(--text-primary)', background }: { children: ReactNode; color?: string; background?: string }) {
   return (
     <span
-      className={`tabular inline-flex h-5 items-center rounded-md px-1.5 text-[10px] font-semibold ring-1 ring-white/10 ${background ? '' : 'bg-black/70'}`}
+      className={`tabular inline-flex h-5 items-center rounded-md px-1.5 text-[10px] font-semibold ring-1 ring-white/10 ${background ? '' : 'dark-scope bg-black/70'}`}
       style={{ color, background }}
     >
       {children}
@@ -385,7 +388,7 @@ function CardModal({ card, showPrice, onClose, interested, onToggleInterest }: {
 
       {lightboxUrl && createPortal(
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4 sm:p-8"
+          className="fixed inset-0 z-[100] flex items-center justify-center dark-scope bg-black/90 p-4 sm:p-8"
           onClick={(e) => { e.stopPropagation(); setLightboxUrl(null); }}
         >
           <img src={lightboxUrl} alt="" className="max-h-full max-w-full rounded-xl object-contain" />
@@ -438,7 +441,7 @@ function SharedCard({ card, showPrice, onClick, interested, onToggleInterest }: 
             className={`absolute right-2 top-2 z-20 flex h-9 w-9 items-center justify-center rounded-full ring-1 transition-colors ${
               interested
                 ? 'bg-[var(--accent)] text-[var(--on-accent)] ring-transparent'
-                : 'bg-black/60 text-[var(--text-primary)] ring-white/15 hover:bg-black/80'
+                : 'dark-scope bg-black/60 text-white ring-white/15 hover:bg-black/80'
             }`}
             title={interested ? 'Retirer de ma sélection' : 'Ça m’intéresse'}
             aria-label="Ça m'intéresse"
@@ -922,7 +925,7 @@ export function ShareView({ token }: { token: string }) {
                       </button>
                       <button
                         onClick={() => toggleInterest(c.id)}
-                        className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-[var(--text-primary)] ring-1 ring-white/15 transition-colors hover:bg-[var(--red)]"
+                        className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full dark-scope bg-black/70 text-[var(--text-primary)] ring-1 ring-white/15 transition-colors hover:bg-[var(--red)]"
                         title="Retirer"
                         aria-label="Retirer"
                       >

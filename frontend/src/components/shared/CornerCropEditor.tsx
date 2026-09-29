@@ -97,7 +97,7 @@ export function CornerCropEditor({ file, side, onDone, onCancel }: Props) {
   const poly = corners ? corners.map((c) => `${c.x},${c.y}`).join(' ') : '';
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-black">
+    <div className="fixed inset-0 z-[60] flex flex-col dark-scope bg-black">
       {/* En-tête */}
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-3 pb-2 pt-[calc(env(safe-area-inset-top)+0.5rem)]">
         <button onClick={onCancel} className="ui-btn ui-btn-ghost">

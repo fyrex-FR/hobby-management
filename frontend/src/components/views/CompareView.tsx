@@ -96,10 +96,10 @@ function ImageDropzone({ label, file, onChange }: { label: string; file: File | 
       {preview ? (
         <>
           <img src={preview} alt={label} className="h-full w-full object-cover" />
-          <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
+          <div className="absolute inset-0 flex items-center justify-center dark-scope bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
             <span className="ui-btn ui-btn-sm pointer-events-none">Changer</span>
           </div>
-          <span className="absolute bottom-2 left-2 inline-flex h-5 items-center rounded-md bg-black/70 px-1.5 text-[11px] font-medium text-[var(--text-primary)] ring-1 ring-white/10">
+          <span className="absolute bottom-2 left-2 inline-flex h-5 items-center rounded-md dark-scope bg-black/70 px-1.5 text-[11px] font-medium text-[var(--text-primary)] ring-1 ring-white/10">
             {label}
           </span>
         </>

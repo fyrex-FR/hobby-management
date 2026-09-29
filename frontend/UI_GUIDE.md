@@ -44,3 +44,10 @@ Référence visuelle : `src/components/views/CollectionView.tsx`, `src/component
 ## Responsive
 - Mobile d'abord : pas de scroll horizontal de page, cibles tactiles ≥ 36px. Une barre d'onglets fixe occupe le bas de l'écran (3.5rem + safe area) : rien d'important ne doit y être caché (le conteneur de vue a déjà le padding).
 - Les tableaux larges deviennent des listes sur mobile, ou défilent dans leur propre conteneur `overflow-x-auto`.
+
+## Thème clair / sombre
+- Le thème est porté par `<html data-theme="light|dark">`, posé avant le premier rendu par le script inline d'`index.html` et piloté par `src/lib/theme.ts` (préférence Système / Clair / Sombre, stockée dans `localStorage` sous `cv-theme`).
+- N'utiliser que les tokens : aucune couleur en dur (`text-white`, `bg-white/5`, `#18181b`…) sur une surface de l'app, sinon elle casse dans l'autre thème.
+- Tout ce qui est posé sur une photo, une visionneuse plein écran ou la caméra porte la classe `dark-scope` (palette sombre forcée localement) : les pastilles restent lisibles quel que soit le thème. `bg-black/…` s'accompagne toujours de `dark-scope`.
+- Fonds de modale : `bg-[var(--backdrop)]`. Menus : `popover-surface` (`--bg-popover`).
+- Sélecteurs : `<ThemeSwitcher />` (menu de compte) et `<ThemeToggleButton />` (pages publiques).

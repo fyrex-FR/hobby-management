@@ -43,7 +43,7 @@ import { EbayLogo, VintedLogo } from '../shared/EbayLogo';
 import { PricingFlow } from '../shared/PricingFlow';
 import { VintedPublishFlow } from '../shared/VintedPublishFlow';
 import { Popover } from '../shared/Popover';
-import { Modal } from '../ui';
+import { Badge, Modal } from '../ui';
 import { ActiveFilterChips, FilterRow, SearchField, StatusTabs } from '../shared/CollectionFilterBar';
 import { cdnImg } from '../../lib/cdn';
 import { RookieBadge } from '../shared/RookieBadge';
@@ -238,7 +238,7 @@ function buildColumns(
           {checked ? (
             <CheckCircle2 size={20} className="text-[var(--accent)]" fill="currentColor" />
           ) : (
-            <Circle size={20} className="text-white/40" />
+            <Circle size={20} className="text-[var(--text-muted)]" />
           )}
         </button>
       );
@@ -283,28 +283,28 @@ function buildColumns(
               <GradingBadge card={card} compact />
             )}
             {isAuto && (
-              <span className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-black shrink-0" style={{ background: 'rgba(16,185,129,0.15)', color: 'rgb(16,185,129)', border: '1px solid rgba(16,185,129,0.3)' }} title="Autographe">✍</span>
+              <Badge tone="green" className="text-[10px] font-semibold"><span title="Autographe">AUTO</span></Badge>
             )}
             {isPatch && (
-              <span className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-black shrink-0" style={{ background: 'rgba(239,68,68,0.15)', color: 'rgb(239,68,68)', border: '1px solid rgba(239,68,68,0.3)' }} title="Patch">P</span>
+              <Badge tone="red" className="text-[10px] font-semibold"><span title="Patch">PATCH</span></Badge>
             )}
             {card.numbered && (
-              <span className="text-[10px] font-bold px-1 py-0.5 rounded shrink-0 whitespace-nowrap" style={{ background: 'rgba(245,166,35,0.15)', color: 'var(--accent)', border: '1px solid rgba(245,166,35,0.25)' }}>{card.numbered}</span>
+              <Badge tone="accent" className="tabular text-[10px] font-semibold">{card.numbered}</Badge>
             )}
             {(card.quantity ?? 1) > 1 && (
-              <span className="text-[10px] font-bold px-1 py-0.5 rounded shrink-0 whitespace-nowrap text-white" style={{ background: '#6366F1' }} title={`${card.quantity} exemplaires`}>×{card.quantity}</span>
+              <Badge tone="blue" className="tabular text-[10px] font-semibold"><span title={`${card.quantity} exemplaires`}>×{card.quantity}</span></Badge>
             )}
             {card.vinted_url && (
-              <span className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-black shrink-0 text-white" style={{ background: '#007782' }} title="Annonce Vinted">V</span>
+              <MarketDot kind="vinted" />
             )}
             {card.ebay_url && (
-              <span className="w-5 h-5 rounded flex items-center justify-center text-[10px] font-black shrink-0 text-white" style={{ background: '#E53238' }} title="Annonce eBay">e</span>
+              <MarketDot kind="ebay" />
             )}
             {(card.folder_ids ?? []).map((fid) => {
               const f = folderById.get(fid);
               if (!f) return null;
               return (
-                <span key={fid} className="text-[10px] font-bold px-1 py-0.5 rounded shrink-0 whitespace-nowrap max-w-[90px] truncate" style={{ background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.12)' }} title={`${f.emoji ?? ''} ${f.name}`.trim()}>
+                <span key={fid} className="h-5 max-w-[90px] shrink-0 truncate whitespace-nowrap rounded-md bg-[var(--bg-elevated)] px-1.5 text-[10px] font-medium leading-5 text-[var(--text-secondary)]" title={`${f.emoji ?? ''} ${f.name}`.trim()}>
                   {f.emoji || f.name}
                 </span>
               );
@@ -370,7 +370,7 @@ function PhotoTag({ children, tone, title }: { children: React.ReactNode; tone: 
   return (
     <span
       title={title}
-      className="tabular inline-flex h-5 items-center rounded-md bg-black/70 px-1.5 text-[10px] font-semibold ring-1 ring-white/10 backdrop-blur-sm"
+      className="tabular inline-flex h-5 items-center rounded-md dark-scope bg-black/70 px-1.5 text-[10px] font-semibold ring-1 ring-white/10 backdrop-blur-sm"
       style={{ color }}
     >
       {children}
@@ -424,7 +424,7 @@ function GridCard({
         selected ? 'border-[var(--accent)] ring-1 ring-[var(--accent)]' : 'border-[var(--border)] hover:border-[var(--border-strong)]'
       }`}
     >
-      <div className="relative aspect-[3/4] overflow-hidden bg-[var(--bg-secondary)]">
+      <div className="dark-scope relative aspect-[3/4] overflow-hidden bg-[var(--bg-secondary)]">
         {card.image_front_url ? (
           <img
             src={cdnImg(card.image_front_url)}
@@ -601,7 +601,7 @@ function TableView({
                 key={row.id}
                 data-jump={rowAnchor.get(row.id)}
                 onClick={() => (selectMode ? onToggleSelect(row.original.id) : onRowClick(row.original))}
-                className={`group cursor-pointer border-b border-[var(--border)] transition-colors last:border-b-0 hover:bg-white/[0.03] ${isSelected ? 'bg-[var(--accent-dim)]' : ''}`}
+                className={`group cursor-pointer border-b border-[var(--border)] transition-colors last:border-b-0 hover:bg-[var(--bg-elevated)] ${isSelected ? 'bg-[var(--accent-dim)]' : ''}`}
               >
                 {row.getVisibleCells().map((cell) => (
                   <td key={cell.id} className="px-3 py-2.5 align-middle text-[var(--text-primary)]">
@@ -1098,7 +1098,7 @@ export function CollectionView() {
                   className={`h-6 w-6 shrink-0 rounded-md text-[11px] font-semibold transition-colors ${
                     has
                       ? 'text-[var(--text-secondary)] hover:bg-[var(--accent)] hover:text-[var(--on-accent)]'
-                      : 'cursor-default text-white/15'
+                      : 'cursor-default text-[var(--text-muted)] opacity-40'
                   }`}
                 >
                   {letter}
@@ -1393,8 +1393,8 @@ function FolderQuickAssign({
         tabIndex={0}
         onClick={openMenu}
         className={variant === 'overlay'
-          ? 'inline-flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 bg-black/55 text-white shadow-lg backdrop-blur-sm hover:bg-black/75'
-          : 'inline-flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] hover:bg-white/10 hover:text-white'}
+          ? 'inline-flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 dark-scope bg-black/55 text-white shadow-lg backdrop-blur-sm hover:bg-black/75'
+          : 'inline-flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}
         title="Ranger dans un dossier"
       >
         <FolderIcon size={variant === 'overlay' ? 15 : 14} />
@@ -1415,7 +1415,7 @@ function FolderQuickAssign({
                 onClick={(e) => toggle(e, f.id)}
                 className="ui-menu-item"
               >
-                <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${active ? 'border-[var(--accent)] bg-[var(--accent)] text-black' : 'border-white/20 text-transparent'}`}>
+                <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${active ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--on-accent)]' : 'border-[var(--border-strong)] text-transparent'}`}>
                   <Check size={11} />
                 </span>
                 {f.emoji && <span>{f.emoji}</span>}
@@ -1468,7 +1468,7 @@ function EmojiPicker({ value, onChange }: { value: string; onChange: (emoji: str
             <button
               type="button"
               onClick={() => { onChange(''); setOpen(false); }}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:bg-white/10"
+              className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--text-muted)] hover:bg-[var(--bg-hover)]"
               title="Aucun"
             >
               <X size={13} />
@@ -1478,7 +1478,7 @@ function EmojiPicker({ value, onChange }: { value: string; onChange: (emoji: str
                 type="button"
                 key={e}
                 onClick={() => { onChange(e); setOpen(false); }}
-                className={`flex h-7 w-7 items-center justify-center rounded-lg text-base hover:bg-white/10 ${value === e ? 'bg-[var(--accent-dim)] ring-1 ring-[var(--accent)]' : ''}`}
+                className={`flex h-7 w-7 items-center justify-center rounded-lg text-base hover:bg-[var(--bg-hover)] ${value === e ? 'bg-[var(--accent-dim)] ring-1 ring-[var(--accent)]' : ''}`}
               >
                 {e}
               </button>

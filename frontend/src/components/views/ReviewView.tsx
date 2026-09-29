@@ -34,7 +34,7 @@ function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       transition={{ duration: 0.15 }}
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4"
+      className="fixed inset-0 z-[60] flex items-center justify-center dark-scope bg-black/90 p-4"
       onClick={onClose}
     >
       <img
@@ -224,7 +224,7 @@ function DraftEditor({
                     <img src={side.url} alt={side.label} className="h-full w-full object-contain" />
                     <button
                       onClick={() => setLightbox(side.url!)}
-                      className="absolute inset-0 flex cursor-zoom-in items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100"
+                      className="absolute inset-0 flex cursor-zoom-in items-center justify-center dark-scope bg-black/40 opacity-0 transition-opacity group-hover:opacity-100"
                       aria-label={`Agrandir le ${side.label.toLowerCase()}`}
                     >
                       <Maximize2 size={20} className="text-white" />

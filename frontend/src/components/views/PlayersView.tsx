@@ -206,7 +206,7 @@ function PlayerModal({ stats, onClose }: { stats: PlayerStats; onClose: () => vo
                     <div className="flex h-full w-full items-center justify-center text-[var(--text-muted)]"><Library size={18} /></div>
                   )}
                   {card.numbered && (
-                    <span className="tabular absolute right-1 top-1 rounded-md bg-black/75 px-1.5 py-0.5 text-[11px] font-medium text-[var(--accent)]">
+                    <span className="tabular absolute right-1 top-1 rounded-md dark-scope bg-black/75 px-1.5 py-0.5 text-[11px] font-medium text-[var(--accent)]">
                       {printRun(card.numbered)}
                     </span>
                   )}
