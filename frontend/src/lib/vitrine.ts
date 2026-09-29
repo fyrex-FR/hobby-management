@@ -1,5 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { useShallow } from 'zustand/react/shallow';
+import { apiFetch } from '../api/client';
+import { cdnImg } from './cdn';
 
 /**
  * « Photo vitrine » : la carte est détourée de son fond, puis posée sur un
@@ -11,33 +14,83 @@ import { persist } from 'zustand/middleware';
 export type VitrineStyle = 'studio' | 'stand' | 'backdrop';
 export type VitrineTone = 'dark' | 'light';
 
-/** Fond personnalisé (image IA), servi depuis /public. Absent tant qu'il n'est pas fourni. */
-export const BACKDROP_URL: Record<VitrineTone, string> = {
-  dark: '/vitrine/backdrop-dark.jpg',
-  light: '/vitrine/backdrop-light.jpg',
-};
-
 export const VITRINE_STYLE_LABELS: Record<VitrineStyle, string> = {
   studio: 'Studio',
   stand: 'Stand',
   backdrop: 'Mon fond',
 };
 
-interface VitrineSettings {
+export interface VitrinePrefs {
   enabled: boolean;
   style: VitrineStyle;
   tone: VitrineTone;
   /** Gravé sur le stand / discret en bas des autres styles. Vide = rien. */
   signature: string;
-  set: (patch: Partial<Omit<VitrineSettings, 'set'>>) => void;
 }
 
-export const useVitrine = create<VitrineSettings>()(
+/** Désactivé par défaut : chaque compte choisit s'il veut ses photos en vitrine. */
+const DEFAULT_PREFS: VitrinePrefs = { enabled: false, style: 'stand', tone: 'dark', signature: '' };
+
+interface VitrineStore {
+  userId: string | null;
+  /** Réglages par compte (pseudo, style…) : deux comptes sur le même navigateur ne se mélangent pas. */
+  byUser: Record<string, VitrinePrefs>;
+  setUser: (id: string | null) => void;
+  update: (patch: Partial<VitrinePrefs>) => void;
+}
+
+const useVitrineStore = create<VitrineStore>()(
   persist(
-    (set) => ({ enabled: true, style: 'stand', tone: 'dark', signature: '', set: (patch) => set(patch) }),
-    { name: 'cv-vitrine', partialize: ({ enabled, style, tone, signature }) => ({ enabled, style, tone, signature }) },
+    (set, get) => ({
+      userId: null,
+      byUser: {},
+      setUser: (userId) => set({ userId }),
+      update: (patch) => {
+        const { userId, byUser } = get();
+        if (!userId) return;
+        set({ byUser: { ...byUser, [userId]: { ...DEFAULT_PREFS, ...byUser[userId], ...patch } } });
+      },
+    }),
+    { name: 'cv-vitrine-v2', partialize: ({ byUser }) => ({ byUser }) },
   ),
 );
+
+/** À appeler quand le compte connecté change (shell de l'app). */
+export function setVitrineUser(id: string | null) {
+  if (useVitrineStore.getState().userId !== id) useVitrineStore.getState().setUser(id);
+}
+
+function prefsOf(state: VitrineStore): VitrinePrefs {
+  return { ...DEFAULT_PREFS, ...(state.userId ? state.byUser[state.userId] : undefined) };
+}
+
+/** Réglages vitrine du compte connecté. */
+export function useVitrine(): VitrinePrefs & { set: (patch: Partial<VitrinePrefs>) => void } {
+  const prefs = useVitrineStore(useShallow(prefsOf));
+  const update = useVitrineStore((s) => s.update);
+  return { ...prefs, set: update };
+}
+
+/* ── Fonds personnalisés (un par ton, stockés dans le dossier du compte) ── */
+
+export type Backdrops = Record<VitrineTone, { url: string } | null>;
+
+let backdropsPromise: Promise<Backdrops> | null = null;
+
+/** Fonds du compte, mis en cache ; `fresh` force un rechargement (après envoi / suppression). */
+export function fetchBackdrops(fresh = false): Promise<Backdrops> {
+  if (!backdropsPromise || fresh) {
+    backdropsPromise = apiFetch<Backdrops>('/vitrine/backdrops').catch(() => ({ dark: null, light: null }));
+  }
+  return backdropsPromise;
+}
+
+const imageCache = new Map<string, Promise<HTMLImageElement | null>>();
+/** Image de fond via le proxy /cdn (même origine : le canvas reste exportable). */
+function loadBackdropImage(url: string): Promise<HTMLImageElement | null> {
+  if (!imageCache.has(url)) imageCache.set(url, loadImage(cdnImg(url) ?? url).catch(() => null));
+  return imageCache.get(url)!;
+}
 
 const OUT_W = 1200;
 const OUT_H = 1600;
@@ -50,14 +103,6 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     img.onerror = () => reject(new Error(`Image introuvable : ${src}`));
     img.src = src;
   });
-}
-
-const backdropCache = new Map<string, Promise<HTMLImageElement | null>>();
-/** Image de fond si elle a été fournie (sinon null, et le style « Mon fond » est masqué). */
-export function loadBackdrop(tone: VitrineTone): Promise<HTMLImageElement | null> {
-  const url = BACKDROP_URL[tone];
-  if (!backdropCache.has(url)) backdropCache.set(url, loadImage(url).catch(() => null));
-  return backdropCache.get(url)!;
 }
 
 /** Plus longue suite d'indices où `on[i]` est vrai, en tolérant de petits trous. */
@@ -313,6 +358,8 @@ export interface VitrineOptions {
   style: VitrineStyle;
   tone: VitrineTone;
   signature?: string;
+  /** URL du fond du compte pour le style « Mon fond ». */
+  backdropUrl?: string | null;
 }
 
 /** Compose la photo vitrine (JPEG 1200 × 1600) à partir d'une photo de carte. */
@@ -326,7 +373,7 @@ export async function makeVitrine(photo: Blob, opts: VitrineOptions): Promise<Bl
     canvas.height = OUT_H;
     const ctx = canvas.getContext('2d')!;
 
-    const backdrop = opts.style === 'backdrop' ? await loadBackdrop(opts.tone) : null;
+    const backdrop = opts.style === 'backdrop' && opts.backdropUrl ? await loadBackdropImage(opts.backdropUrl) : null;
     if (backdrop) paintBackdrop(ctx, backdrop);
     else paintBackground(ctx, opts.tone);
 
@@ -362,10 +409,11 @@ export async function makeVitrine(photo: Blob, opts: VitrineOptions): Promise<Bl
  * d'enregistrer une photo. En cas d'échec, la photo d'origine est gardée.
  */
 export async function applyVitrine(photo: Blob): Promise<Blob> {
-  const { enabled, style, tone, signature } = useVitrine.getState();
+  const { enabled, style, tone, signature } = prefsOf(useVitrineStore.getState());
   if (!enabled) return photo;
   try {
-    return await makeVitrine(photo, { style, tone, signature });
+    const backdropUrl = style === 'backdrop' ? (await fetchBackdrops())[tone]?.url : null;
+    return await makeVitrine(photo, { style, tone, signature, backdropUrl });
   } catch {
     return photo;
   }

@@ -16,6 +16,7 @@ import { CardDetail } from '../shared/CardDetail';
 import { HoloCard } from '../ui';
 import { VitrineControls } from '../shared/VitrineControls';
 import { makeVitrine, useVitrine } from '../../lib/vitrine';
+import { useVitrineBackdrops } from '../../hooks/useVitrineBackdrops';
 
 /**
  * Scan live : on vise une carte, l'IA l'identifie sur la seule photo du recto,
@@ -173,8 +174,10 @@ export function ScanView() {
   const vitrine = useVitrine();
   // Photos vitrine du résultat courant, recalculées quand le style change.
   const [vitrineOut, setVitrineOut] = useState<{ key: string; front: string; frontBlob: Blob; back?: string; backBlob?: Blob } | null>(null);
+  const { data: backdrops } = useVitrineBackdrops();
+  const backdropUrl = vitrine.style === 'backdrop' ? backdrops?.[vitrine.tone]?.url ?? null : null;
   const vitrineKey = current && vitrine.enabled
-    ? `${current.id}|${current.backBlob ? 'fb' : 'f'}|${vitrine.style}|${vitrine.tone}|${vitrine.signature.trim()}`
+    ? `${current.id}|${current.backBlob ? 'fb' : 'f'}|${vitrine.style}|${vitrine.tone}|${vitrine.signature.trim()}|${backdropUrl ?? ''}`
     : null;
 
   useEffect(() => {
@@ -183,7 +186,7 @@ export function ScanView() {
     // Petit délai : évite de recomposer à chaque lettre du pseudo.
     const t = window.setTimeout(async () => {
       try {
-        const opts = { style: vitrine.style, tone: vitrine.tone, signature: vitrine.signature };
+        const opts = { style: vitrine.style, tone: vitrine.tone, signature: vitrine.signature, backdropUrl };
         const [frontBlob, backBlob] = await Promise.all([
           makeVitrine(current.blob, opts),
           current.backBlob ? makeVitrine(current.backBlob, opts) : Promise.resolve(undefined),
@@ -424,7 +427,7 @@ export function ScanView() {
       let frontBlob = current.blob;
       let backBlob = current.backBlob;
       if (vitrine.enabled) {
-        const opts = { style: vitrine.style, tone: vitrine.tone, signature: vitrine.signature };
+        const opts = { style: vitrine.style, tone: vitrine.tone, signature: vitrine.signature, backdropUrl };
         try {
           frontBlob = vitrineReady ? vitrineOut!.frontBlob : await makeVitrine(current.blob, opts);
           if (current.backBlob) backBlob = vitrineReady && vitrineOut!.backBlob ? vitrineOut!.backBlob : await makeVitrine(current.backBlob, opts);
