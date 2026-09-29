@@ -28,7 +28,8 @@ import {
   getCoreRowModel,
   useReactTable,
 } from '@tanstack/react-table';
-import { useCards, useDeleteCard, useRecalculateEbayPrices, useUpdateCard } from '../../hooks/useCards';
+import { useCards, useDeleteCardsWithUndo, useRecalculateEbayPrices, useUpdateCard } from '../../hooks/useCards';
+import { confirmDialog, errorMessage, promptDialog, toast } from '../../lib/feedback';
 import { useFolders, useCreateFolder, useUpdateFolder, useDeleteFolder } from '../../hooks/useFolders';
 import { useAppStore } from '../../stores/appStore';
 import { useCollectionFilters } from '../../stores/collectionFilterStore';
@@ -94,7 +95,7 @@ declare module '@tanstack/react-table' {
 }
 
 function TableActions({ card, onEdit }: { card: Card; onEdit: () => void }) {
-  const deleteCard = useDeleteCard();
+  const deleteWithUndo = useDeleteCardsWithUndo();
   return (
     <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100">
       <button
@@ -107,8 +108,7 @@ function TableActions({ card, onEdit }: { card: Card; onEdit: () => void }) {
       <button
         onClick={async (e) => {
           e.stopPropagation();
-          if (!confirm(`Supprimer ${card.player ?? 'cette carte'} ?`)) return;
-          await deleteCard.mutateAsync(card.id);
+          deleteWithUndo([card.id], `${card.player ?? 'Carte'} supprimée`);
         }}
         className="ui-btn ui-btn-sm ui-btn-icon ui-btn-danger"
         title="Supprimer"
@@ -794,7 +794,7 @@ export function CollectionView() {
   const [pricingOpen, setPricingOpen] = useState(false);
   const updateCard = useUpdateCard();
   const recalculateEbayPrices = useRecalculateEbayPrices();
-  const deleteCard = useDeleteCard();
+  const deleteWithUndo = useDeleteCardsWithUndo();
   const deleteFolder = useDeleteFolder();
 
   // Arrivée depuis le dashboard ou la vue Joueurs : le critère cliqué
@@ -834,20 +834,32 @@ export function CollectionView() {
   }
 
   async function applyBulkPrice() {
-    const raw = prompt('Prix de vente à appliquer aux cartes sélectionnées (€) :');
+    const raw = await promptDialog({
+      title: 'Prix de vente',
+      description: `Appliqué aux ${selectedIds.size} carte${selectedIds.size > 1 ? 's' : ''} sélectionnée${selectedIds.size > 1 ? 's' : ''}. Laisse vide pour retirer le prix.`,
+      placeholder: '0,00',
+      inputMode: 'decimal',
+      suffix: '€',
+      confirmLabel: 'Appliquer',
+      validate: (v) => {
+        const t = v.trim();
+        if (t === '') return null;
+        const n = parseFloat(t.replace(',', '.'));
+        return Number.isNaN(n) || n < 0 ? 'Saisis un prix valide, par exemple 12,50.' : null;
+      },
+    });
     if (raw === null) return;
     const trimmed = raw.trim();
     const price = trimmed === '' ? null : parseFloat(trimmed.replace(',', '.'));
-    if (price !== null && (Number.isNaN(price) || price < 0)) {
-      alert('Prix invalide.');
-      return;
-    }
     setBulkBusy(true);
     try {
       await Promise.all(
         [...selectedIds].map((id) => updateCard.mutateAsync({ id, price })),
       );
+      toast.success(price === null ? 'Prix retirés' : `Prix appliqué à ${selectedIds.size} carte${selectedIds.size > 1 ? 's' : ''}`);
       exitSelectMode();
+    } catch (e) {
+      toast.error('Impossible de mettre à jour les prix', { description: errorMessage(e) });
     } finally {
       setBulkBusy(false);
     }
@@ -856,15 +868,22 @@ export function CollectionView() {
   async function applyEbayPriceCalculation(onlyMissing: boolean) {
     if (selectedIds.size === 0) return;
     const action = onlyMissing ? 'calculer les prix eBay manquants' : 'recalculer et remplacer tous les prix eBay';
-    if (!confirm(`Confirmer : ${action} pour ${selectedIds.size} carte(s) ?\nLes annonces eBay en ligne ne seront pas modifiées.`)) return;
+    const ok = await confirmDialog({
+      title: onlyMissing ? 'Calculer les prix eBay manquants ?' : 'Recalculer tous les prix eBay ?',
+      description: `${action.charAt(0).toUpperCase()}${action.slice(1)} pour ${selectedIds.size} carte${selectedIds.size > 1 ? 's' : ''}.\nLes annonces eBay déjà en ligne ne seront pas modifiées.`,
+      confirmLabel: onlyMissing ? 'Calculer' : 'Recalculer',
+    });
+    if (!ok) return;
     setBulkBusy(true);
     try {
       const result = await recalculateEbayPrices.mutateAsync({
         card_ids: [...selectedIds],
         only_missing: onlyMissing,
       });
-      alert(`${result.updated} prix eBay mis à jour · ${result.skipped} carte(s) ignorée(s).`);
+      toast.success(`${result.updated} prix eBay mis à jour`, { description: result.skipped ? `${result.skipped} carte${result.skipped > 1 ? 's' : ''} ignorée${result.skipped > 1 ? 's' : ''}` : undefined });
       exitSelectMode();
+    } catch (e) {
+      toast.error('Le calcul des prix eBay a échoué', { description: errorMessage(e) });
     } finally {
       setBulkBusy(false);
     }
@@ -882,7 +901,10 @@ export function CollectionView() {
       await Promise.all(
         [...selectedIds].map((id) => updateCard.mutateAsync({ id, status })),
       );
+      toast.success(`Statut mis à jour pour ${selectedIds.size} carte${selectedIds.size > 1 ? 's' : ''}`);
       exitSelectMode();
+    } catch (e) {
+      toast.error('Impossible de changer le statut', { description: errorMessage(e) });
     } finally {
       setBulkBusy(false);
     }
@@ -890,14 +912,15 @@ export function CollectionView() {
 
   async function bulkDelete() {
     if (selectedIds.size === 0) return;
-    if (!confirm(`Supprimer ${selectedIds.size} carte(s) ?`)) return;
-    setBulkBusy(true);
-    try {
-      await Promise.all([...selectedIds].map((id) => deleteCard.mutateAsync(id)));
-      exitSelectMode();
-    } finally {
-      setBulkBusy(false);
-    }
+    const n = selectedIds.size;
+    const ok = await confirmDialog({
+      title: `Supprimer ${n} carte${n > 1 ? 's' : ''} ?`,
+      description: 'Tu pourras annuler pendant quelques secondes.',
+      danger: true,
+    });
+    if (!ok) return;
+    deleteWithUndo([...selectedIds], `${n} carte${n > 1 ? 's' : ''} supprimée${n > 1 ? 's' : ''}`);
+    exitSelectMode();
   }
 
   // Ajoute ou retire un dossier sur les cartes sélectionnées (fusion du tableau folder_ids).
@@ -915,7 +938,11 @@ export function CollectionView() {
           return updateCard.mutateAsync({ id, folder_ids: [...set] });
         }),
       );
+      const folder = folders.find((f) => f.id === folderId);
+      toast.success(`${selectedIds.size} carte${selectedIds.size > 1 ? 's' : ''} ${add ? 'ajoutée' : 'retirée'}${selectedIds.size > 1 ? 's' : ''} ${add ? 'à' : 'de'} « ${folder?.name ?? 'dossier'} »`);
       exitSelectMode();
+    } catch (e) {
+      toast.error('Impossible de mettre à jour les dossiers', { description: errorMessage(e) });
     } finally {
       setBulkBusy(false);
     }
@@ -923,7 +950,13 @@ export function CollectionView() {
 
   // Supprime un dossier + nettoie les cartes qui le référencent.
   async function removeFolder(folderId: string) {
-    if (!confirm('Supprimer ce dossier ? Les cartes ne seront pas supprimées.')) return;
+    const folder = folders.find((f) => f.id === folderId);
+    const ok = await confirmDialog({
+      title: `Supprimer le dossier « ${folder?.name ?? ''} » ?`,
+      description: 'Les cartes qu\'il contient restent dans ta collection.',
+      danger: true,
+    });
+    if (!ok) return;
     const affected = cards.filter((c) => (c.folder_ids ?? []).includes(folderId));
     await Promise.all(
       affected.map((c) =>
@@ -931,6 +964,7 @@ export function CollectionView() {
       ),
     );
     await deleteFolder.mutateAsync(folderId);
+    toast.success('Dossier supprimé');
     if (filters.facets.folder.includes(folderId)) useCollectionFilters.getState().toggleFacet('folder', folderId);
   }
 

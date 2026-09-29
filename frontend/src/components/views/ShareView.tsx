@@ -25,6 +25,7 @@ import {
   ImageOff,
   Link2Off,
 } from 'lucide-react';
+import { errorMessage, toast } from '../../lib/feedback';
 import type { Card } from '../../types';
 import { RookieBadge } from '../shared/RookieBadge';
 import { Popover } from '../shared/Popover';
@@ -568,7 +569,7 @@ export function ShareView({ token }: { token: string }) {
       setInterest(new Set());
       setReqMessage('');
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Erreur');
+      toast.error('Envoi impossible', { description: errorMessage(e, 'Réessaie dans un instant.') });
     } finally {
       setSubmitting(false);
     }

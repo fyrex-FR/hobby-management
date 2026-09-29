@@ -53,8 +53,8 @@ import MigrationView from './components/views/MigrationView';
 import { ExtensionPairView } from './components/views/ExtensionPairView';
 import { supabase } from './lib/supabase';
 import { Popover } from './components/shared/Popover';
-import { ThemeSwitcher } from './components/ui';
-import { Field, Modal, Notice } from './components/ui';
+import { CommandPalette, CommandPaletteTrigger } from './components/shared/CommandPalette';
+import { FeedbackHost, Field, Modal, Notice, ThemeSwitcher } from './components/ui';
 
 const queryClient = new QueryClient();
 
@@ -298,8 +298,9 @@ function Sidebar({ isAdmin, email, onShare }: { isAdmin: boolean; email: string;
           <Logo subtitle={`${cardCount} cartes`} />
         </button>
       </div>
-      <div className="px-3 pb-3">
+      <div className="space-y-2 px-3 pb-3">
         <AddMenu onSelect={setActiveView} variant="sidebar" />
+        <CommandPaletteTrigger />
       </div>
       <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-1" aria-label="Navigation principale">
         <div className="space-y-0.5">
@@ -332,6 +333,7 @@ function MobileTopBar({ isAdmin, email, onShare }: { isAdmin: boolean; email: st
       </button>
       <div className="flex items-center gap-2">
         {isAdmin && <ImpersonateSelector compact />}
+        <CommandPaletteTrigger compact />
         <AddMenu onSelect={setActiveView} variant="icon" />
         <AccountMenu email={email} onShare={onShare} compact />
       </div>
@@ -623,6 +625,7 @@ function AuthedShell({ email, showShare, setShowShare }: { email: string; showSh
         <MobileTabBar isAdmin={isAdmin} />
       </div>
       {showShare && <ShareModal onClose={() => setShowShare(false)} />}
+      <CommandPalette isAdmin={isAdmin} onShare={() => setShowShare(true)} />
       {isAdmin && <ImpersonateBanner />}
     </div>
   );
@@ -632,6 +635,7 @@ export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <AppShell />
+      <FeedbackHost />
     </QueryClientProvider>
   );
 }
