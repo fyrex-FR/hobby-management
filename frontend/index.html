@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#0A0A0C" />
+    <meta name="theme-color" content="#09090B" />
     <script>
       // Thème appliqué avant le premier rendu (pas de flash). Même logique que src/lib/theme.ts.
       (function () {
@@ -12,12 +12,12 @@
         try { pref = localStorage.getItem('cv-theme') || 'system'; } catch (e) {}
         var dark = pref === 'dark' || (pref !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
         document.documentElement.dataset.theme = dark ? 'dark' : 'light';
-        document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#0A0A0C' : '#F5F5F6');
+        document.querySelector('meta[name="theme-color"]').setAttribute('content', dark ? '#09090B' : '#FAFAFA');
       })();
     </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400..800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&display=swap" rel="stylesheet" />
     <title>CardVaults</title>
   </head>
   <body>

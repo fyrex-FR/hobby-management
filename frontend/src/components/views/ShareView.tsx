@@ -362,7 +362,7 @@ function CardModal({ card, showPrice, onClose, interested, onToggleInterest }: {
           {showPrice && card.price != null && (
             <div>
               <p className="text-xs text-[var(--text-muted)]">Prix</p>
-              <p className="tabular text-2xl font-semibold tracking-tight text-[var(--accent)]">{formatEuro(card.price)}</p>
+              <p className="tabular text-2xl font-semibold tracking-tight text-[var(--price)]">{formatEuro(card.price)}</p>
             </div>
           )}
 
@@ -462,7 +462,7 @@ function SharedCard({ card, showPrice, onClick, interested, onToggleInterest }: 
         <div className="flex items-baseline justify-between gap-2">
           <p className="truncate text-[13px] font-semibold text-[var(--text-primary)]">{card.player || '—'}</p>
           {showPrice && card.price != null && (
-            <span className="tabular shrink-0 text-[13px] font-semibold text-[var(--accent)]">{formatEuro(card.price)}</span>
+            <span className="tabular shrink-0 text-[13px] font-semibold text-[var(--price)]">{formatEuro(card.price)}</span>
           )}
         </div>
         <p className="truncate text-xs text-[var(--text-muted)]">{meta || '—'}</p>
@@ -933,7 +933,7 @@ export function ShareView({ token }: { token: string }) {
                       </button>
                       <div className="mt-1 truncate text-xs font-medium text-[var(--text-primary)]" title={c.player ?? ''}>{c.player ?? '—'}</div>
                       {data.show_prices && c.price != null && (
-                        <div className="tabular text-xs font-semibold text-[var(--accent)]">{formatEuro(c.price)}</div>
+                        <div className="tabular text-xs font-semibold text-[var(--price)]">{formatEuro(c.price)}</div>
                       )}
                     </div>
                   ))}

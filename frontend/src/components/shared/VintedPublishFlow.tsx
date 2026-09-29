@@ -152,7 +152,7 @@ export function VintedPublishFlow({ cards, onClose }: { cards: Card[]; onClose: 
             <div className="min-w-0 flex-1 space-y-1">
               <p className="text-sm font-semibold text-[var(--text-primary)]">{current.player || 'Carte sans joueur'}</p>
               <p className="text-[13px] text-[var(--text-secondary)]">{[current.year, current.brand, current.set_name, current.parallel_name].filter(Boolean).join(' · ')}</p>
-              {price != null && <p className="tabular pt-2 text-2xl font-semibold text-[var(--accent)]">{price.toFixed(2)} €</p>}
+              {price != null && <p className="tabular pt-2 text-2xl font-semibold text-[var(--price)]">{price.toFixed(2)} €</p>}
             </div>
           </div>
         )}

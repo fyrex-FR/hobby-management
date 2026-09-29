@@ -23,7 +23,7 @@ function resolve(pref: ThemePreference): 'light' | 'dark' {
 function apply(pref: ThemePreference) {
   const theme = resolve(pref);
   document.documentElement.dataset.theme = theme;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0A0A0C' : '#F5F5F6');
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#09090B' : '#FAFAFA');
 }
 
 interface ThemeStore {

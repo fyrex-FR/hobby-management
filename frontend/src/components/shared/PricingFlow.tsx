@@ -170,7 +170,7 @@ export function PricingFlow({ cards, onClose }: Props) {
             </Field>
             <div className="ui-card p-4">
               <p className="flex items-center gap-1.5 text-xs font-medium text-[var(--text-muted)]"><EbayLogo width={30} height={12} /> Prix eBay calculé</p>
-              <p className="tabular mt-1 text-2xl font-semibold text-[var(--accent)]">{ebayPrice != null ? `${ebayPrice} €` : '—'}</p>
+              <p className="tabular mt-1 text-2xl font-semibold text-[var(--price)]">{ebayPrice != null ? `${ebayPrice} €` : '—'}</p>
             </div>
             {error && <Notice tone="error" icon={AlertCircle}>{error}</Notice>}
             <button onClick={() => void saveAndNext()} disabled={!validPrice || updateCard.isPending} className="ui-btn ui-btn-primary ui-btn-lg w-full">

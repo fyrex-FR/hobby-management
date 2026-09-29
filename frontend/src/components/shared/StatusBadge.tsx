@@ -3,7 +3,7 @@ import type { CardStatus } from '../../types';
 const CONFIG: Record<CardStatus, { label: string; color: string }> = {
   draft:      { label: 'Brouillon',  color: 'var(--text-secondary)' },
   collection: { label: 'Collection', color: 'var(--text-secondary)' },
-  a_vendre:   { label: 'À vendre',   color: 'var(--accent)' },
+  a_vendre:   { label: 'À vendre',   color: 'var(--violet)' },
   reserve:    { label: 'Réservé',    color: 'var(--blue)' },
   vendu:      { label: 'Vendu',      color: 'var(--green)' },
 };

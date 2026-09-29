@@ -167,7 +167,7 @@ function SalesDashboard({ cards }: { cards: Card[] }) {
         <Panel
           title="Ventes des 6 derniers mois"
           icon={BarChart3}
-          action={<span className="tabular text-[13px] font-medium text-[var(--accent)]">{euro0.format(sixMonthsTotal)}</span>}
+          action={<span className="tabular text-[13px] font-medium text-[var(--price)]">{euro0.format(sixMonthsTotal)}</span>}
         >
           <div className="flex h-44 items-stretch gap-2 sm:gap-3">
             {stats.months.map((m) => (
@@ -281,7 +281,7 @@ function SalesCard({ card, tab, onUpdate, onClick }: { card: Card; tab: SalesTab
 
         {tab === 'pret' && (
           <>
-            <span className="tabular text-sm font-medium text-[var(--accent)]">{card.price != null ? fmt(card.price) : '—'}</span>
+            <span className="tabular text-sm font-medium text-[var(--price)]">{card.price != null ? fmt(card.price) : '—'}</span>
             <button
               onClick={() => onUpdate(card.id, { is_listed: true })}
               className="ui-btn ui-btn-sm ui-btn-primary"

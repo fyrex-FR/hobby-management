@@ -353,7 +353,7 @@ function buildColumns(
     columnHelper.accessor((c) => displayPrice(c), {
       id: 'price',
       header: 'Prix',
-      cell: (info) => <span className="tabular text-sm font-medium whitespace-nowrap text-[var(--accent)]">{info.getValue() != null ? formatEuro(info.getValue() as number) : <span style={{ color: 'var(--text-muted)' }}>—</span>}</span>,
+      cell: (info) => <span className="tabular text-sm font-medium whitespace-nowrap text-[var(--price)]">{info.getValue() != null ? formatEuro(info.getValue() as number) : <span style={{ color: 'var(--text-muted)' }}>—</span>}</span>,
     }),
     columnHelper.display({
       id: 'actions',
@@ -366,7 +366,7 @@ function buildColumns(
 
 /** Pastille posée sur la photo : fond sombre translucide, texte coloré. */
 function PhotoTag({ children, tone, title }: { children: React.ReactNode; tone: 'accent' | 'green' | 'red' | 'indigo'; title?: string }) {
-  const color = { accent: 'var(--accent)', green: 'var(--green)', red: 'var(--red)', indigo: '#A5B4FC' }[tone];
+  const color = { accent: 'var(--violet)', green: 'var(--green)', red: 'var(--red)', indigo: 'var(--blue)' }[tone];
   return (
     <span
       title={title}
@@ -472,7 +472,7 @@ function GridCard({
       <div className="flex flex-1 flex-col gap-0.5 p-3">
         <div className="flex items-baseline justify-between gap-2">
           <p className="truncate text-[13px] font-semibold text-[var(--text-primary)]">{card.player ?? '—'}</p>
-          {price != null && <span className="tabular shrink-0 text-[13px] font-semibold text-[var(--accent)]">{formatEuro(price)}</span>}
+          {price != null && <span className="tabular shrink-0 text-[13px] font-semibold text-[var(--price)]">{formatEuro(price)}</span>}
         </div>
         <p className="truncate text-xs text-[var(--text-muted)]">
           {[card.year, card.brand, card.set_name].filter(Boolean).join(' · ') || '—'}
@@ -558,7 +558,7 @@ function TableView({
                 </div>
               </div>
               <div className="flex shrink-0 flex-col items-end gap-1.5">
-                <span className={`tabular text-sm font-semibold ${price != null ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
+                <span className={`tabular text-sm font-semibold ${price != null ? 'text-[var(--price)]' : 'text-[var(--text-muted)]'}`}>
                   {price != null ? formatEuro(price) : '—'}
                 </span>
                 {card.status !== 'collection' && <StatusBadge status={card.status} />}
