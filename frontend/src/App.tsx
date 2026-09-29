@@ -55,6 +55,7 @@ import MigrationView from './components/views/MigrationView';
 import { ExtensionPairView } from './components/views/ExtensionPairView';
 import { supabase } from './lib/supabase';
 import { Popover } from './components/shared/Popover';
+import { setVitrineUser } from './lib/vitrine';
 import { CommandPalette, CommandPaletteTrigger } from './components/shared/CommandPalette';
 import { FeedbackHost, Field, Modal, Notice, ThemeSwitcher } from './components/ui';
 
@@ -560,11 +561,13 @@ function AppShell() {
 
   if (window.location.pathname === '/extension/pair') return <ExtensionPairView />;
 
-  return <AuthedShell email={session.user.email ?? ''} showShare={showShare} setShowShare={setShowShare} />;
+  return <AuthedShell userId={session.user.id} email={session.user.email ?? ''} showShare={showShare} setShowShare={setShowShare} />;
 }
 
-function AuthedShell({ email, showShare, setShowShare }: { email: string; showShare: boolean; setShowShare: (v: boolean) => void }) {
+function AuthedShell({ userId, email, showShare, setShowShare }: { userId: string; email: string; showShare: boolean; setShowShare: (v: boolean) => void }) {
   const { activeView, setActiveView } = useAppStore();
+  // Réglages « photo vitrine » propres au compte connecté.
+  useEffect(() => { setVitrineUser(userId); }, [userId]);
   const isAdmin = email === 'xavier.andrieux@gmail.com';
 
   // Retour du flux OAuth eBay (?ebay=connected | ?ebay=error&reason=...) :
