@@ -4,7 +4,11 @@ import { apiFetch } from '../../api/client';
 import { cdnImg } from '../../lib/cdn';
 import { Notice } from '../ui';
 import { EbayLogo } from './EbayLogo';
-import { computeStats, filterRelevant, toEurPrice, type EbayData, type EbayResult, type MatchInfo } from '../../lib/ebayComps';
+import { cleanTitle, computeStats, filterRelevant, toEurPrice, type EbayData, type EbayResult, type MatchInfo } from '../../lib/ebayComps';
+
+function withCleanTitles(data: EbayData): EbayData {
+  return data.results ? { ...data, results: data.results.map((r) => ({ ...r, title: cleanTitle(r.title) })) } : data;
+}
 
 function formatDate(iso: string): string {
   if (!iso) return '';
@@ -160,7 +164,7 @@ export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPri
         method: 'POST',
         body: JSON.stringify({ image_base64 }),
       });
-      setVisual(result);
+      setVisual(withCleanTitles(result));
     } catch (e) {
       setVisual({ error: (e as Error).message });
     } finally {
@@ -183,8 +187,8 @@ export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPri
           body: JSON.stringify({ query: q }),
         }),
       ]);
-      setSold(soldRes);
-      setActive(activeRes);
+      setSold(withCleanTitles(soldRes));
+      setActive(withCleanTitles(activeRes));
     } catch (e) {
       const err = { error: (e as Error).message };
       setSold(err);

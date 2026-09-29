@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Camera, CameraOff, Check, ImageUp, Library, Loader2, Plus, RotateCcw, ScanLine, Sparkles, TrendingUp, X } from 'lucide-react';
+import { Camera, CameraOff, Check, ChevronDown, ExternalLink, ImageUp, ListChecks, Library, Loader2, Plus, RotateCcw, ScanLine, Sparkles, TrendingUp, X } from 'lucide-react';
 import { apiFetch } from '../../api/client';
 import { useCards, useCreateCard, useUpdateCard } from '../../hooks/useCards';
 import { useAppStore } from '../../stores/appStore';
 import { supabase } from '../../lib/supabase';
-import { computeStats, filterRelevant, toEurPrice, trimOutliers, withoutGraded, type EbayData, type EbayResult } from '../../lib/ebayComps';
+import type { EbayData } from '../../lib/ebayComps';
+import { REASON_LABELS, classifyComps, estimateFrom, isKept, type CompOverrides, type CompSource, type Comps, type Estimate, type ScanIdent } from '../../lib/scanEstimate';
 import { holoRarity } from '../../lib/holo';
-import { playerLastName, playerNameKey } from '../../lib/playerName';
+import { playerNameKey } from '../../lib/playerName';
 import { formatCardNumber } from '../../lib/cardQuality';
 import { errorMessage, toast } from '../../lib/feedback';
 import type { AIIdentificationResult, Card } from '../../types';
@@ -28,25 +29,25 @@ const CARD_RATIO = 63 / 88;
 
 type Phase = 'live' | 'analyzing' | 'result';
 
-interface Estimate {
-  status: 'loading' | 'ready' | 'none' | 'error';
-  source?: 'sold' | 'active';
-  /** Obtenue avec la recherche élargie (joueur + set) : moins précise. */
-  broad?: boolean;
-  value?: number;
-  min?: number;
-  max?: number;
-  count?: number;
-  thumbs?: string[];
-}
-
 interface ScanResult {
   id: string;
   imageUrl: string;
   blob: Blob;
+  /** Verso : le tirage (/99), le numéro et souvent la saison y sont imprimés. */
+  backUrl?: string;
+  backBlob?: Blob;
   ident: AIIdentificationResult;
-  estimate: Estimate;
+  comps: Comps | null;
+  compsStatus: 'loading' | 'ready' | 'error';
+  /** Choix manuels dans le panneau des ventes (retenue / écartée). */
+  overrides: CompOverrides;
   addedCardId?: string;
+}
+
+function estimateOf(r: ScanResult): Estimate {
+  if (r.compsStatus === 'loading') return { status: 'loading' };
+  if (r.compsStatus === 'error' || !r.comps) return { status: 'error' };
+  return estimateFrom(r.comps, r.overrides);
 }
 
 function buildQuery(r: AIIdentificationResult): string {
@@ -109,65 +110,40 @@ async function downscaleFile(file: File): Promise<Blob> {
   );
 }
 
-/** Ventes (ou annonces) vraiment comparables : bon joueur, bonne carte, brute, sans prix aberrant. */
-function comparable(results: EbayResult[], ident: AIIdentificationResult): EbayResult[] {
-  let pool = results;
-  const last = playerLastName(ident.player).toLowerCase();
-  if (last) {
-    const byPlayer = pool.filter((r) => r.title.toLowerCase().includes(last));
-    if (byPlayer.length >= 2) pool = byPlayer;
-  }
-  const relevant = filterRelevant(pool, { year: ident.year, cardNumber: ident.card_number, numbered: ident.numbered, setName: ident.set });
-  if (relevant.length >= 2) pool = relevant;
-  // La carte scannée est brute : les slabs gradés faussent l'estimation.
-  const raw = withoutGraded(pool);
-  if (raw.length >= 2) pool = raw;
-  return trimOutliers(pool);
-}
-
 /** Requête large : joueur + set + insert, sans année ni parallel (souvent mal lus sur photo). */
 function broadQuery(r: AIIdentificationResult): string {
   return [r.player, r.set || r.brand, r.insert].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
 }
 
-async function fetchEstimate(ident: AIIdentificationResult): Promise<Estimate> {
-  const precise = await estimateFor(buildQuery(ident), ident);
-  if (precise.status === 'ready') return precise;
-  const broad = broadQuery(ident);
-  if (!broad || broad === buildQuery(ident)) return precise;
-  // Sans année ni parallel, on filtre seulement sur le joueur et la carte brute.
-  const loose = { ...ident, year: '', numbered: '', card_number: '' };
-  const wide = await estimateFor(broad, loose);
-  return wide.status === 'ready' ? { ...wide, broad: true } : precise;
-}
-
-async function estimateFor(query: string, ident: AIIdentificationResult): Promise<Estimate> {
+async function compsFor(query: string, ident: ScanIdent, broad: boolean): Promise<Comps> {
   const body = JSON.stringify({ query });
-  // Ventes réelles d'abord ; si eBay bloque la recherche des ventes (anti-bot),
-  // on retombe sur les annonces en cours, via l'API officielle.
+  // Ventes réelles et annonces en cours en parallèle : si eBay bloque la
+  // recherche des ventes, l'estimation retombe sur les annonces.
   const [sold, active] = await Promise.allSettled([
     apiFetch<EbayData>('/ebay/sold-items', { method: 'POST', body }, 45000),
     apiFetch<EbayData>('/ebay/active-items', { method: 'POST', body }, 30000),
   ]);
-  const pick = (res: PromiseSettledResult<EbayData>, source: 'sold' | 'active'): Estimate | null => {
-    if (res.status !== 'fulfilled') return null;
-    const pool = comparable(res.value.results ?? [], ident);
-    const stats = computeStats(pool);
-    if (!stats || stats.count < 2) return null;
-    return {
-      status: 'ready',
-      source,
-      value: toEurPrice(stats.median),
-      min: toEurPrice(stats.min),
-      max: toEurPrice(stats.max),
-      count: stats.count,
-      thumbs: pool.map((r) => r.image).filter(Boolean).slice(0, 4),
-    };
+  const results = (res: PromiseSettledResult<EbayData>) => (res.status === 'fulfilled' ? res.value.results ?? [] : []);
+  const unavailable = (res: PromiseSettledResult<EbayData>) =>
+    res.status === 'rejected' || (!!res.value.error && !(res.value.results ?? []).length);
+  return {
+    query,
+    broad,
+    sold: classifyComps(results(sold), ident),
+    active: classifyComps(results(active), ident),
+    soldUnavailable: unavailable(sold),
+    activeUnavailable: unavailable(active),
   };
-  const estimate = pick(sold, 'sold') ?? pick(active, 'active');
-  if (estimate) return estimate;
-  const blocked = sold.status === 'fulfilled' && !!sold.value.error && !(sold.value.results ?? []).length;
-  return { status: blocked && active.status === 'rejected' ? 'error' : 'none' };
+}
+
+async function fetchComps(ident: AIIdentificationResult): Promise<Comps> {
+  const precise = await compsFor(buildQuery(ident), ident, false);
+  if (estimateFrom(precise).status === 'ready') return precise;
+  const broad = broadQuery(ident);
+  if (!broad || broad === buildQuery(ident)) return precise;
+  // Sans année ni tirage, on ne filtre que sur le joueur et la carte brute.
+  const wide = await compsFor(broad, { player: ident.player, set: ident.set }, true);
+  return estimateFrom(wide).status === 'ready' ? wide : precise;
 }
 
 export function ScanView() {
@@ -182,6 +158,21 @@ export function ScanView() {
   const [history, setHistory] = useState<ScanResult[]>([]);
   const [adding, setAdding] = useState(false);
   const [openCardId, setOpenCardId] = useState<string | null>(null);
+  // Recto + verso par défaut : sur les cartes de sport, le tirage et le numéro
+  // sont au dos. Choix mémorisé (le mode « recto seul » est plus rapide).
+  const [withBack, setWithBackState] = useState(() => {
+    try { return localStorage.getItem('cv-scan-back') !== '0'; } catch { return true; }
+  });
+  const [side, setSide] = useState<'front' | 'back'>('front');
+  const [pendingFront, setPendingFront] = useState<{ blob: Blob; url: string } | null>(null);
+  /** Résultat auquel on ajoute un verso après coup (« Ajouter le verso »). */
+  const [refineOf, setRefineOf] = useState<ScanResult | null>(null);
+  const [shownBack, setShownBack] = useState(false);
+
+  function setWithBack(v: boolean) {
+    setWithBackState(v);
+    try { localStorage.setItem('cv-scan-back', v ? '1' : '0'); } catch { /* stockage indisponible */ }
+  }
   const { data: cards = [] } = useCards();
   const createCard = useCreateCard();
   const updateCard = useUpdateCard();
@@ -232,31 +223,85 @@ export function ScanView() {
     [cards],
   );
 
-  async function analyze(blob: Blob) {
-    const imageUrl = URL.createObjectURL(blob);
-    setFrozen(imageUrl);
+  async function analyze(front: Blob, back?: Blob, opts: { frontUrl?: string; replaceId?: string } = {}) {
+    const imageUrl = opts.frontUrl ?? URL.createObjectURL(front);
+    const backUrl = back ? URL.createObjectURL(back) : undefined;
+    setFrozen(backUrl ?? imageUrl);
     setPhase('analyzing');
     try {
+      const [front_base64, back_base64] = await Promise.all([blobToBase64(front), back ? blobToBase64(back) : Promise.resolve(undefined)]);
       const ident = await apiFetch<AIIdentificationResult>('/identify', {
         method: 'POST',
-        body: JSON.stringify({ front_base64: await blobToBase64(blob) }),
+        body: JSON.stringify({ front_base64, ...(back_base64 ? { back_base64 } : {}) }),
       }, 60000);
-      const result: ScanResult = { id: crypto.randomUUID(), imageUrl, blob, ident, estimate: { status: 'loading' } };
+      const result: ScanResult = {
+        id: opts.replaceId ?? crypto.randomUUID(),
+        imageUrl, blob: front, backUrl, backBlob: back, ident, comps: null, compsStatus: 'loading', overrides: {},
+      };
       setCurrent(result);
+      setShownBack(false);
       setPhase('result');
       navigator.vibrate?.(18);
       // Le nom s'affiche tout de suite ; la valeur arrive quand eBay répond.
-      fetchEstimate(ident)
-        .catch(() => ({ status: 'error' }) as Estimate)
-        .then((estimate) => {
-          setCurrent((c) => (c?.id === result.id ? { ...c, estimate } : c));
-          setHistory((h) => [{ ...result, estimate }, ...h].slice(0, 12));
+      fetchComps(ident)
+        .then((comps) => ({ comps, compsStatus: 'ready' as const }))
+        .catch(() => ({ comps: null, compsStatus: 'error' as const }))
+        .then((patch) => {
+          setCurrent((c) => (c?.id === result.id ? { ...c, ...patch } : c));
+          setHistory((h) => {
+            const done = { ...result, ...patch };
+            return opts.replaceId ? h.map((x) => (x.id === opts.replaceId ? done : x)) : [done, ...h].slice(0, 12);
+          });
         });
     } catch (e) {
       toast.error('Carte non reconnue', { description: errorMessage(e, 'Réessaie avec la carte bien à plat dans le cadre, sans reflet.') });
       setFrozen(null);
       setPhase('live');
     }
+  }
+
+  /** Une photo vient d'être prise (caméra ou import) pour le côté en cours. */
+  async function onCaptured(blob: Blob) {
+    if (refineOf) {
+      const target = refineOf;
+      setRefineOf(null);
+      setSide('front');
+      await analyze(target.blob, blob, { frontUrl: target.imageUrl, replaceId: target.id });
+      return;
+    }
+    if (side === 'front' && withBack) {
+      setPendingFront({ blob, url: URL.createObjectURL(blob) });
+      setSide('back');
+      navigator.vibrate?.([10, 60, 10]);
+      return;
+    }
+    if (side === 'back' && pendingFront) {
+      const front = pendingFront;
+      setPendingFront(null);
+      setSide('front');
+      await analyze(front.blob, blob, { frontUrl: front.url });
+      return;
+    }
+    await analyze(blob);
+  }
+
+  /** Verso ignoré : on analyse le recto seul. */
+  async function skipBack() {
+    if (refineOf) { setRefineOf(null); setSide('front'); setFrozen(current?.imageUrl ?? null); setPhase('result'); return; }
+    if (!pendingFront) return;
+    const front = pendingFront;
+    setPendingFront(null);
+    setSide('front');
+    await analyze(front.blob, undefined, { frontUrl: front.url });
+  }
+
+  /** Depuis le résultat : reprendre le verso pour préciser tirage et numéro. */
+  function addBack() {
+    if (!current) return;
+    setRefineOf(current);
+    setSide('back');
+    setFrozen(null);
+    setPhase('live');
   }
 
   async function shoot() {
@@ -268,7 +313,7 @@ export function ScanView() {
     window.setTimeout(() => setFlash(false), 180);
     navigator.vibrate?.(10);
     try {
-      await analyze(await captureFrame(video, frame));
+      await onCaptured(await captureFrame(video, frame));
     } catch (e) {
       toast.error('Capture impossible', { description: errorMessage(e) });
     }
@@ -277,15 +322,26 @@ export function ScanView() {
   async function onFile(file: File | undefined) {
     if (!file) return;
     try {
-      await analyze(await downscaleFile(file));
+      await onCaptured(await downscaleFile(file));
     } catch (e) {
       toast.error('Image illisible', { description: errorMessage(e) });
     }
   }
 
+  /** Retient / écarte un résultat eBay : l'estimation se recalcule aussitôt. */
+  function toggleComp(key: string, kept: boolean) {
+    if (!current) return;
+    const next = { ...current, overrides: { ...current.overrides, [key]: kept } };
+    setCurrent(next);
+    setHistory((h) => h.map((x) => (x.id === next.id ? next : x)));
+  }
+
   function again() {
     setCurrent(null);
     setFrozen(null);
+    setPendingFront(null);
+    setRefineOf(null);
+    setSide('front');
     setPhase('live');
   }
 
@@ -312,20 +368,26 @@ export function ScanView() {
         status: 'collection',
       });
       const { data } = await supabase.auth.getSession();
-      const form = new FormData();
-      form.append('file', new File([current.blob], 'front.jpg', { type: 'image/jpeg' }));
-      form.append('card_id', card.id);
-      form.append('side', 'front');
-      const resp = await fetch(`${API_BASE}/api/upload`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${data.session?.access_token ?? ''}` },
-        body: form,
-      });
-      if (resp.ok) {
-        const { url } = await resp.json();
-        await updateCard.mutateAsync({ id: card.id, image_front_url: url });
-      } else {
-        toast.error('Carte ajoutée sans photo', { description: 'L’envoi de la photo a échoué, tu pourras l’ajouter depuis la fiche.' });
+      const upload = async (blob: Blob, which: 'front' | 'back'): Promise<string | null> => {
+        const form = new FormData();
+        form.append('file', new File([blob], `${which}.jpg`, { type: 'image/jpeg' }));
+        form.append('card_id', card.id);
+        form.append('side', which);
+        const resp = await fetch(`${API_BASE}/api/upload`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${data.session?.access_token ?? ''}` },
+          body: form,
+        });
+        return resp.ok ? (await resp.json()).url : null;
+      };
+      const [frontUrl, backUrl] = await Promise.all([
+        upload(current.blob, 'front'),
+        current.backBlob ? upload(current.backBlob, 'back') : Promise.resolve(null),
+      ]);
+      const images = { ...(frontUrl ? { image_front_url: frontUrl } : {}), ...(backUrl ? { image_back_url: backUrl } : {}) };
+      if (Object.keys(images).length) await updateCard.mutateAsync({ id: card.id, ...images });
+      if (!frontUrl || (current.backBlob && !backUrl)) {
+        toast.error('Photo non enregistrée', { description: 'L’envoi d’une photo a échoué, tu pourras l’ajouter depuis la fiche.' });
       }
       const added = { ...current, addedCardId: card.id };
       setCurrent(added);
@@ -355,7 +417,8 @@ export function ScanView() {
 
   const owned = useMemo(() => (current ? ownedMatches(current.ident) : []), [current, ownedMatches]);
   const openCard = openCardId ? cards.find((c) => c.id === openCardId) : undefined;
-  const sessionTotal = history.reduce((s, h) => s + (h.estimate.value ?? 0), 0);
+  const sessionTotal = history.reduce((s, h) => s + (estimateOf(h).value ?? 0), 0);
+  const est = current ? estimateOf(current) : null;
 
   return (
     <div className="dark-scope relative flex h-full flex-col overflow-hidden bg-black text-[var(--text-primary)]">
@@ -378,6 +441,26 @@ export function ScanView() {
           >
             {phase === 'analyzing' && frozen && (
               <img src={frozen} alt="" className="absolute inset-0 h-full w-full rounded-[18px] object-cover" />
+            )}
+            <AnimatePresence>
+              {phase === 'live' && side === 'back' && (
+                <motion.div
+                  key="flip"
+                  className="absolute inset-0 flex items-center justify-center rounded-[18px] border-2 border-[var(--violet)] bg-[color-mix(in_srgb,var(--violet)_18%,transparent)]"
+                  initial={{ rotateY: 0, opacity: 0.9 }}
+                  animate={{ rotateY: 180, opacity: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.7, ease: 'easeInOut' }}
+                  style={{ transformPerspective: 800 }}
+                >
+                  <RotateCcw size={34} className="text-white" />
+                </motion.div>
+              )}
+            </AnimatePresence>
+            {phase === 'live' && withBack && (
+              <span className="absolute -top-9 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-black/60 px-3 py-1 text-xs font-medium text-white backdrop-blur">
+                {side === 'front' ? 'Recto · 1/2' : 'Verso · 2/2'}
+              </span>
             )}
             {(['tl', 'tr', 'bl', 'br'] as const).map((c) => (
               <span
@@ -441,9 +524,24 @@ export function ScanView() {
       {/* Déclencheur + historique */}
       {phase !== 'result' && (
         <div className="absolute inset-x-0 bottom-0 flex flex-col items-center gap-4 bg-gradient-to-t from-black via-black/80 to-transparent px-4 pb-6 pt-10">
-          <p className="text-[13px] text-[var(--text-secondary)]">
-            {phase === 'analyzing' ? 'Ne bouge plus…' : 'Place la carte dans le cadre, puis touche le bouton'}
+          <p className="text-center text-[13px] text-[var(--text-secondary)]">
+            {phase === 'analyzing'
+              ? (side === 'back' || current?.backUrl ? 'Lecture des deux faces…' : 'Ne bouge plus…')
+              : side === 'back'
+                ? <>Retourne la carte : <span className="text-white">tirage et numéro sont souvent au dos</span></>
+                : 'Place la carte dans le cadre, puis touche le bouton'}
           </p>
+          {phase === 'live' && side === 'front' && !refineOf && (
+            <div className="ui-segmented" role="radiogroup" aria-label="Faces à scanner">
+              <button role="radio" aria-checked={withBack} data-active={withBack} onClick={() => setWithBack(true)}>Recto + verso</button>
+              <button role="radio" aria-checked={!withBack} data-active={!withBack} onClick={() => setWithBack(false)}>Recto seul</button>
+            </div>
+          )}
+          {phase === 'live' && side === 'back' && (
+            <button className="text-[13px] font-medium text-[var(--text-secondary)] underline-offset-4 hover:text-white hover:underline" onClick={() => void skipBack()}>
+              {refineOf ? 'Annuler' : 'Passer le verso'}
+            </button>
+          )}
           <div className="flex items-center gap-8">
             <button className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white backdrop-blur hover:bg-white/20" onClick={() => fileRef.current?.click()} aria-label="Importer une photo" title="Importer une photo">
               <ImageUp size={18} />
@@ -458,7 +556,12 @@ export function ScanView() {
               {phase === 'analyzing' && <Loader2 size={24} className="absolute animate-spin text-black" />}
             </button>
             <div className="h-11 w-11">
-              {history[0] && (
+              {side === 'back' && (pendingFront || refineOf) ? (
+                <div className="relative h-11 w-11 overflow-hidden rounded-lg ring-2 ring-[var(--violet)]" title="Recto déjà pris">
+                  <img src={pendingFront?.url ?? refineOf?.imageUrl} alt="Recto" className="h-full w-full object-cover" />
+                  <span className="absolute inset-x-0 bottom-0 bg-black/70 text-center text-[9px] font-semibold">RECTO</span>
+                </div>
+              ) : history[0] && (
                 <button onClick={() => { setCurrent(history[0]); setFrozen(history[0].imageUrl); setPhase('result'); }} className="h-11 w-11 overflow-hidden rounded-lg ring-2 ring-white/70" aria-label="Dernier scan">
                   <img src={history[0].imageUrl} alt="" className="h-full w-full object-cover" />
                 </button>
@@ -483,9 +586,26 @@ export function ScanView() {
               <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-[var(--border-strong)] sm:hidden" />
               <div className="flex gap-5">
                 <div className="w-28 shrink-0 sm:w-40">
-                  <HoloCard rarity={holoRarity({ card_type: current.ident.card_type, grading_company: null, numbered: current.ident.numbered, parallel_name: current.ident.parallel, is_rookie: current.ident.is_rookie })} maxTilt={14} gyro>
-                    <img src={current.imageUrl} alt="" className="aspect-[63/88] w-full object-cover" />
-                  </HoloCard>
+                  <button
+                    type="button"
+                    className="block w-full"
+                    onClick={() => current.backUrl && setShownBack((v) => !v)}
+                    aria-label={current.backUrl ? (shownBack ? 'Voir le recto' : 'Voir le verso') : undefined}
+                  >
+                    <HoloCard rarity={holoRarity({ card_type: current.ident.card_type, grading_company: null, numbered: current.ident.numbered, parallel_name: current.ident.parallel, is_rookie: current.ident.is_rookie })} maxTilt={14} gyro>
+                      <img src={shownBack && current.backUrl ? current.backUrl : current.imageUrl} alt="" className="aspect-[63/88] w-full object-cover" />
+                    </HoloCard>
+                  </button>
+                  {current.backUrl ? (
+                    <div className="mt-2 flex justify-center gap-1 text-[11px]">
+                      <button className={`rounded-md px-2 py-0.5 ${!shownBack ? 'bg-[var(--bg-hover)] text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`} onClick={() => setShownBack(false)}>Recto</button>
+                      <button className={`rounded-md px-2 py-0.5 ${shownBack ? 'bg-[var(--bg-hover)] text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}`} onClick={() => setShownBack(true)}>Verso</button>
+                    </div>
+                  ) : !current.addedCardId && (
+                    <button className="mt-2 w-full text-center text-[11px] font-medium text-[var(--violet)] hover:underline" onClick={addBack}>
+                      + Ajouter le verso
+                    </button>
+                  )}
                 </div>
                 <div className="min-w-0 flex-1 space-y-3">
                   <div>
@@ -509,37 +629,41 @@ export function ScanView() {
               {/* Valeur */}
               <div className="mt-5 rounded-2xl border border-[var(--border)] bg-[var(--bg-secondary)] p-4">
                 <div className="flex items-center gap-2 text-xs font-medium text-[var(--text-muted)]">
-                  <TrendingUp size={14} /> Valeur estimée {current.estimate.source === 'active' ? '(annonces eBay en cours)' : '(ventes eBay)'}
+                  <TrendingUp size={14} /> Valeur estimée {est!.source === 'active' ? '(annonces eBay en cours)' : '(ventes eBay)'}
                 </div>
-                {current.estimate.status === 'loading' && (
+                {est!.status === 'loading' && (
                   <div className="mt-2 flex items-center gap-3">
                     <div className="h-10 w-28 animate-pulse rounded-lg bg-[var(--bg-elevated)]" />
                     <span className="text-[13px] text-[var(--text-muted)]">Recherche des ventes…</span>
                   </div>
                 )}
-                {current.estimate.status === 'ready' && (
+                {est!.status === 'ready' && (
                   <div className="mt-1 flex flex-wrap items-end justify-between gap-3">
                     <div>
                       <motion.p initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="tabular text-4xl font-semibold tracking-tight">
-                        ≈ {euro.format(current.estimate.value!)}
+                        ≈ {euro.format(est!.value!)}
                       </motion.p>
                       <p className="mt-1 text-[13px] text-[var(--text-secondary)]">
-                        {current.estimate.count} {current.estimate.source === 'active' ? 'annonce' : 'vente'}{current.estimate.count! > 1 ? 's' : ''} comparable{current.estimate.count! > 1 ? 's' : ''} · de {euro.format(current.estimate.min!)} à {euro.format(current.estimate.max!)}
-                        {current.estimate.broad && <span className="text-[var(--orange)]"> · toutes variantes confondues</span>}
+                        {est!.count} {est!.source === 'active' ? 'annonce' : 'vente'}{est!.count! > 1 ? 's' : ''} comparable{est!.count! > 1 ? 's' : ''} · de {euro.format(est!.min!)} à {euro.format(est!.max!)}
+                        {est!.broad && <span className="text-[var(--orange)]"> · toutes variantes confondues</span>}
                       </p>
                     </div>
-                    {!!current.estimate.thumbs?.length && (
+                    {!!est!.thumbs?.length && (
                       <div className="flex -space-x-3">
-                        {current.estimate.thumbs.map((t, i) => (
+                        {est!.thumbs.map((t, i) => (
                           <img key={i} src={t} alt="" className="h-12 w-9 rounded-md border-2 border-[var(--bg-secondary)] object-cover" />
                         ))}
                       </div>
                     )}
                   </div>
                 )}
-                {current.estimate.status === 'none' && <p className="mt-2 text-[13px] text-[var(--text-secondary)]">Pas assez de ventes récentes pour estimer cette carte.</p>}
-                {current.estimate.status === 'error' && <p className="mt-2 text-[13px] text-[var(--text-secondary)]">Les ventes eBay sont indisponibles pour le moment.</p>}
+                {est!.status === 'none' && <p className="mt-2 text-[13px] text-[var(--text-secondary)]">Pas assez de ventes récentes pour estimer cette carte.</p>}
+                {est!.status === 'error' && <p className="mt-2 text-[13px] text-[var(--text-secondary)]">Les ventes eBay sont indisponibles pour le moment.</p>}
               </div>
+
+              {current.compsStatus === 'ready' && current.comps && (current.comps.sold.length > 0 || current.comps.active.length > 0) && (
+                <CompsPanel comps={current.comps} overrides={current.overrides} onToggle={toggleComp} usedSource={est?.source} />
+              )}
 
               {/* Dans la collection ? */}
               <div className="mt-3 flex items-center gap-3 rounded-2xl border border-[var(--border)] px-4 py-3">
@@ -586,5 +710,132 @@ export function ScanView() {
         <span className="sr-only"><Camera /> Caméra prête</span>
       )}
     </div>
+  );
+}
+
+const money = (v: number, currency?: string) =>
+  new Intl.NumberFormat('fr-FR', { style: 'currency', currency: currency || 'EUR', maximumFractionDigits: 2, minimumFractionDigits: 0 }).format(v);
+
+function ebaySearchUrl(query: string, source: CompSource): string {
+  const params = new URLSearchParams({ _nkw: query, ...(source === 'sold' ? { LH_Sold: '1', LH_Complete: '1' } : {}) });
+  return `https://www.ebay.fr/sch/i.html?${params}`;
+}
+
+/**
+ * Détail des ventes / annonces eBay derrière l'estimation : chaque résultat
+ * est marqué retenu ou écarté (avec la raison), et l'utilisateur peut
+ * inverser le choix pour recalculer l'estimation.
+ */
+function CompsPanel({
+  comps,
+  overrides,
+  onToggle,
+  usedSource,
+}: {
+  comps: Comps;
+  overrides: CompOverrides;
+  onToggle: (key: string, kept: boolean) => void;
+  usedSource?: CompSource;
+}) {
+  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<CompSource>(usedSource ?? (comps.sold.length ? 'sold' : 'active'));
+  const kept = (src: CompSource) => comps[src].filter((c) => isKept(c, overrides)).length;
+  const list = [...comps[tab]].sort((a, b) => Number(isKept(b, overrides)) - Number(isKept(a, overrides)) || a.price - b.price);
+  const total = comps.sold.length + comps.active.length;
+
+  return (
+    <section className="mt-3 overflow-hidden rounded-2xl border border-[var(--border)]">
+      <button
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--bg-elevated)]"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <ListChecks size={16} className="shrink-0 text-[var(--text-muted)]" />
+        <span className="flex-1 text-[13px]">
+          Vérifier les annonces
+          <span className="text-[var(--text-muted)]"> · {total} trouvée{total > 1 ? 's' : ''}</span>
+        </span>
+        <ChevronDown size={16} className={`shrink-0 text-[var(--text-muted)] transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="border-t border-[var(--border)]">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+            <div className="ui-segmented" role="tablist">
+              {(['sold', 'active'] as const).map((src) => (
+                <button key={src} role="tab" aria-selected={tab === src} data-active={tab === src} onClick={() => setTab(src)}>
+                  {src === 'sold' ? 'Vendues' : 'En cours'}
+                  <span className="count">{kept(src)}/{comps[src].length}</span>
+                </button>
+              ))}
+            </div>
+            <a
+              href={ebaySearchUrl(comps.query, tab)}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-xs font-medium text-[var(--accent)] hover:underline"
+            >
+              Voir la recherche sur eBay <ExternalLink size={12} />
+            </a>
+          </div>
+
+          {tab === 'sold' && comps.soldUnavailable && (
+            <p className="mx-4 mb-3 rounded-lg bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+              eBay bloque temporairement la recherche des ventes : l'estimation s'appuie sur les annonces en cours.
+            </p>
+          )}
+          {comps.broad && (
+            <p className="mx-4 mb-3 text-xs text-[var(--orange)]">Recherche élargie (« {comps.query} ») : vérifie bien la variante.</p>
+          )}
+
+          {list.length === 0 ? (
+            <p className="px-4 pb-4 text-[13px] text-[var(--text-muted)]">Aucune {tab === 'sold' ? 'vente' : 'annonce'} trouvée.</p>
+          ) : (
+            <ul className="max-h-[46vh] divide-y divide-[var(--border)] overflow-y-auto">
+              {list.map((c) => {
+                const on = isKept(c, overrides);
+                const manual = overrides[c.key] !== undefined && overrides[c.key] !== (c.auto === 'kept');
+                return (
+                  <li key={c.key} className={`flex items-center gap-3 px-4 py-2.5 transition-opacity ${on ? '' : 'opacity-55'}`}>
+                    <button
+                      onClick={() => onToggle(c.key, !on)}
+                      aria-pressed={on}
+                      aria-label={on ? 'Écarter de l’estimation' : 'Retenir dans l’estimation'}
+                      title={on ? 'Écarter de l’estimation' : 'Retenir dans l’estimation'}
+                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors ${
+                        on ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--on-accent)]' : 'border-[var(--border-strong)] hover:border-[var(--text-muted)]'
+                      }`}
+                    >
+                      {on && <Check size={13} strokeWidth={3} />}
+                    </button>
+                    <a href={c.url} target="_blank" rel="noreferrer" className="shrink-0" title="Ouvrir l’annonce sur eBay">
+                      {c.image
+                        ? <img src={c.image} alt="" loading="lazy" className="h-14 w-10 rounded-md bg-[var(--bg-elevated)] object-cover" />
+                        : <span className="block h-14 w-10 rounded-md bg-[var(--bg-elevated)]" />}
+                    </a>
+                    <div className="min-w-0 flex-1">
+                      <a href={c.url} target="_blank" rel="noreferrer" className="line-clamp-2 text-[13px] leading-snug text-[var(--text-primary)] hover:underline">
+                        {c.title}
+                      </a>
+                      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-[var(--text-muted)]">
+                        {tab === 'sold' && c.end_date && <span>Vendue {c.end_date.replace(/\s+/g, ' ').trim()}</span>}
+                        {tab === 'active' && <span>En vente</span>}
+                        {c.condition && <span>{c.condition}</span>}
+                        {!on && c.auto !== 'kept' && !manual && <span className="font-medium text-[var(--orange)]">Écartée · {REASON_LABELS[c.auto]}</span>}
+                        {manual && <span className="font-medium text-[var(--violet)]">{on ? 'Ajoutée par toi' : 'Écartée par toi'}</span>}
+                      </p>
+                    </div>
+                    <span className="tabular shrink-0 text-[13px] font-semibold text-[var(--price)]">{money(c.price, c.currency)}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <p className="border-t border-[var(--border)] px-4 py-2.5 text-[11px] text-[var(--text-muted)]">
+            Coche ou décoche une annonce pour recalculer l'estimation.
+          </p>
+        </div>
+      )}
+    </section>
   );
 }
