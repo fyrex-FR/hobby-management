@@ -16,7 +16,9 @@ import { CardDetail } from '../shared/CardDetail';
 import { CornerCropEditor } from '../shared/CornerCropEditor';
 import { HoloCard } from '../ui';
 import { VitrineSummary } from '../shared/VitrineSettings';
-import { makeVitrine, useVitrine } from '../../lib/vitrine';
+import { makeVitrine, makeVitrineDetailed, useVitrine } from '../../lib/vitrine';
+import { detectQuad, toGray, type Quad } from '../../lib/cardQuad';
+import { createGuideTracker } from '../../lib/scanGuide';
 import { useVitrineBackdrops } from '../../hooks/useVitrineBackdrops';
 
 /**
@@ -76,7 +78,11 @@ async function blobToBase64(blob: Blob): Promise<string> {
 }
 
 /** Recadre la vidéo sur le cadre de visée affiché (object-cover) et encode en JPEG. */
-function captureFrame(video: HTMLVideoElement, frame: HTMLElement): Promise<Blob> {
+/** Marge capturée autour du cadre de visée : l'IA lit mieux les bords (logo, numéro). */
+const FRAME_PAD = 0.06;
+
+/** Zone de la vidéo (en pixels vidéo) correspondant au cadre de visée + marge. */
+function sourceRect(video: HTMLVideoElement, frame: HTMLElement) {
   const vw = video.videoWidth;
   const vh = video.videoHeight;
   const vr = video.getBoundingClientRect();
@@ -84,14 +90,17 @@ function captureFrame(video: HTMLVideoElement, frame: HTMLElement): Promise<Blob
   const scale = Math.max(vr.width / vw, vr.height / vh); // object-cover
   const offsetX = (vw * scale - vr.width) / 2;
   const offsetY = (vh * scale - vr.height) / 2;
-  // Petite marge autour du cadre : l'IA lit mieux les bords (logo, numéro).
-  const pad = 0.06;
-  let sx = (fr.left - vr.left + offsetX) / scale - (fr.width / scale) * pad;
-  let sy = (fr.top - vr.top + offsetY) / scale - (fr.height / scale) * pad;
-  let sw = (fr.width / scale) * (1 + pad * 2);
-  let sh = (fr.height / scale) * (1 + pad * 2);
+  let sx = (fr.left - vr.left + offsetX) / scale - (fr.width / scale) * FRAME_PAD;
+  let sy = (fr.top - vr.top + offsetY) / scale - (fr.height / scale) * FRAME_PAD;
+  let sw = (fr.width / scale) * (1 + FRAME_PAD * 2);
+  let sh = (fr.height / scale) * (1 + FRAME_PAD * 2);
   sx = Math.max(0, sx); sy = Math.max(0, sy);
   sw = Math.min(vw - sx, sw); sh = Math.min(vh - sy, sh);
+  return { sx, sy, sw, sh };
+}
+
+function captureFrame(video: HTMLVideoElement, frame: HTMLElement): Promise<Blob> {
+  const { sx, sy, sw, sh } = sourceRect(video, frame);
 
   const maxEdge = 1400;
   const k = Math.min(1, maxEdge / Math.max(sw, sh));
@@ -176,9 +185,18 @@ export function ScanView() {
   const [refineOf, setRefineOf] = useState<ScanResult | null>(null);
   const [shownBack, setShownBack] = useState(false);
   const [cropSide, setCropSide] = useState<'front' | 'back' | null>(null);
+  // Guidage live : contour détecté (coords 0–1 dans la zone capturée) et stabilité.
+  const [guide, setGuide] = useState<{ corners: Quad; stable: number } | null>(null);
+  const [autoShoot, setAutoShootState] = useState(() => {
+    try { return localStorage.getItem('cv-scan-auto') !== '0'; } catch { return true; }
+  });
+  function setAutoShoot(v: boolean) {
+    setAutoShootState(v);
+    try { localStorage.setItem('cv-scan-auto', v ? '1' : '0'); } catch { /* stockage indisponible */ }
+  }
   const vitrine = useVitrine();
   // Photos vitrine du résultat courant, recalculées quand le style change.
-  const [vitrineOut, setVitrineOut] = useState<{ key: string; front: string; frontBlob: Blob; back?: string; backBlob?: Blob } | null>(null);
+  const [vitrineOut, setVitrineOut] = useState<{ key: string; front: string; frontBlob: Blob; back?: string; backBlob?: Blob; guessed: ('front' | 'back')[] } | null>(null);
   const { data: backdrops } = useVitrineBackdrops();
   const backdropUrl = vitrine.style === 'backdrop' ? backdrops?.[vitrine.tone]?.url ?? null : null;
   const vitrineKey = current && vitrine.enabled
@@ -191,20 +209,22 @@ export function ScanView() {
     // Petit délai : évite de recomposer à chaque lettre du pseudo.
     const t = window.setTimeout(async () => {
       try {
-        const opts = { style: vitrine.style, tone: vitrine.tone, signature: vitrine.signature, backdropUrl };
-        const [frontBlob, backBlob] = await Promise.all([
-          current.manualFront ? makeVitrine(current.manualFront, { ...opts, precropped: true }) : makeVitrine(current.blob, opts),
+        // Scan : si la carte n'est pas trouvée, on recadre sur le cadre de visée.
+        const opts = { style: vitrine.style, tone: vitrine.tone, signature: vitrine.signature, backdropUrl, fallback: 'guide' as const };
+        const [front, back] = await Promise.all([
+          current.manualFront ? makeVitrineDetailed(current.manualFront, { ...opts, precropped: true }) : makeVitrineDetailed(current.blob, opts),
           current.manualBack
-            ? makeVitrine(current.manualBack, { ...opts, precropped: true })
-            : current.backBlob ? makeVitrine(current.backBlob, opts) : Promise.resolve(undefined),
+            ? makeVitrineDetailed(current.manualBack, { ...opts, precropped: true })
+            : current.backBlob ? makeVitrineDetailed(current.backBlob, opts) : Promise.resolve(undefined),
         ]);
         if (!alive) return;
         setVitrineOut({
           key: vitrineKey,
-          front: URL.createObjectURL(frontBlob),
-          frontBlob,
-          back: backBlob ? URL.createObjectURL(backBlob) : undefined,
-          backBlob,
+          front: URL.createObjectURL(front.blob),
+          frontBlob: front.blob,
+          back: back ? URL.createObjectURL(back.blob) : undefined,
+          backBlob: back?.blob,
+          guessed: [...(front.method === 'guide' ? ['front' as const] : []), ...(back?.method === 'guide' ? ['back' as const] : [])],
         });
       } catch {
         // Composition impossible : la photo originale reste utilisée.
@@ -443,7 +463,7 @@ export function ScanView() {
       let frontBlob = current.blob;
       let backBlob = current.backBlob;
       if (vitrine.enabled) {
-        const opts = { style: vitrine.style, tone: vitrine.tone, signature: vitrine.signature, backdropUrl };
+        const opts = { style: vitrine.style, tone: vitrine.tone, signature: vitrine.signature, backdropUrl, fallback: 'guide' as const };
         try {
           frontBlob = vitrineReady
             ? vitrineOut!.frontBlob
@@ -479,6 +499,42 @@ export function ScanView() {
       setAdding(false);
     }
   }
+
+  // Guidage live : ~7 analyses / s sur une image réduite du cadre. Le contour
+  // devient vert quand la carte reste immobile ; en mode Auto, la photo part
+  // seule après ~0,7 s de stabilité. Réarmement quand la carte sort du cadre
+  // ou change de place (retournement recto → verso).
+  const shootRef = useRef<() => void>(() => {});
+  shootRef.current = () => { void shoot(); };
+  useEffect(() => {
+    if (phase !== 'live' || camera !== 'on') { setGuide(null); return; }
+    const video = videoRef.current;
+    const frame = frameRef.current;
+    if (!video || !frame) return;
+    const small = document.createElement('canvas');
+    const ctx = small.getContext('2d', { willReadFrequently: true })!;
+    const update = createGuideTracker({ stableFrames: 5, auto: autoShoot });
+    let busy = false;
+    const tick = () => {
+      if (busy || document.hidden || !video.videoWidth) return;
+      busy = true;
+      try {
+        const { sx, sy, sw, sh } = sourceRect(video, frame);
+        const k = 240 / Math.max(sw, sh);
+        small.width = Math.max(16, Math.round(sw * k));
+        small.height = Math.max(16, Math.round(sh * k));
+        ctx.drawImage(video, sx, sy, sw, sh, 0, 0, small.width, small.height);
+        const res = detectQuad(toGray(ctx.getImageData(0, 0, small.width, small.height).data, small.width, small.height), small.width, small.height);
+        const state = update(res ? (res.corners.map((p) => ({ x: p.x / small.width, y: p.y / small.height })) as Quad) : null);
+        setGuide(state.corners ? { corners: state.corners, stable: state.stable } : null);
+        if (state.shoot) shootRef.current();
+      } finally {
+        busy = false;
+      }
+    };
+    const id = window.setInterval(tick, 140);
+    return () => window.clearInterval(id);
+  }, [phase, camera, autoShoot, side]);
 
   // Espace / Entrée déclenchent le scan (démo au clavier sur ordinateur).
   useEffect(() => {
@@ -519,6 +575,25 @@ export function ScanView() {
           >
             {phase === 'analyzing' && frozen && (
               <img src={frozen} alt="" className="absolute inset-0 h-full w-full rounded-[18px] object-cover" />
+            )}
+            {phase === 'live' && guide && (
+              <svg
+                className="pointer-events-none absolute overflow-visible"
+                style={{ left: `${-FRAME_PAD * 100}%`, top: `${-FRAME_PAD * 100}%`, width: `${100 + FRAME_PAD * 200}%`, height: `${100 + FRAME_PAD * 200}%` }}
+                viewBox="0 0 1 1"
+                preserveAspectRatio="none"
+                aria-hidden="true"
+              >
+                <polygon
+                  points={guide.corners.map((p) => `${p.x},${p.y}`).join(' ')}
+                  fill={guide.stable >= 1 ? 'rgb(61 214 140 / 0.16)' : 'rgb(255 255 255 / 0.06)'}
+                  stroke={guide.stable >= 1 ? '#3DD68C' : guide.stable > 0 ? 'var(--violet)' : 'rgb(255 255 255 / 0.85)'}
+                  strokeWidth={3}
+                  vectorEffect="non-scaling-stroke"
+                  strokeLinejoin="round"
+                  style={{ transition: 'all 120ms linear' }}
+                />
+              </svg>
             )}
             <AnimatePresence>
               {phase === 'live' && side === 'back' && (
@@ -605,14 +680,29 @@ export function ScanView() {
           <p className="text-center text-[13px] text-[var(--text-secondary)]">
             {phase === 'analyzing'
               ? (side === 'back' || current?.backUrl ? 'Lecture des deux faces…' : 'Ne bouge plus…')
-              : side === 'back'
-                ? <>Retourne la carte : <span className="text-white">tirage et numéro sont souvent au dos</span></>
-                : 'Place la carte dans le cadre, puis touche le bouton'}
+              : guide && guide.stable > 0
+                ? <span className="text-white">{autoShoot ? 'Ne bouge plus… photo automatique' : 'Carte détectée : tu peux déclencher'}</span>
+                : side === 'back'
+                  ? <>Retourne la carte : <span className="text-white">tirage et numéro sont souvent au dos</span></>
+                  : guide
+                    ? 'Carte détectée, stabilise…'
+                    : 'Place la carte dans le cadre, puis touche le bouton'}
           </p>
           {phase === 'live' && side === 'front' && !refineOf && (
-            <div className="ui-segmented" role="radiogroup" aria-label="Faces à scanner">
-              <button role="radio" aria-checked={withBack} data-active={withBack} onClick={() => setWithBack(true)}>Recto + verso</button>
-              <button role="radio" aria-checked={!withBack} data-active={!withBack} onClick={() => setWithBack(false)}>Recto seul</button>
+            <div className="flex flex-wrap items-center justify-center gap-2">
+              <div className="ui-segmented" role="radiogroup" aria-label="Faces à scanner">
+                <button role="radio" aria-checked={withBack} data-active={withBack} onClick={() => setWithBack(true)}>Recto + verso</button>
+                <button role="radio" aria-checked={!withBack} data-active={!withBack} onClick={() => setWithBack(false)}>Recto seul</button>
+              </div>
+              <button
+                className="ui-chip"
+                data-active={autoShoot}
+                aria-pressed={autoShoot}
+                onClick={() => setAutoShoot(!autoShoot)}
+                title="Déclenche seul quand la carte est bien cadrée et immobile"
+              >
+                Auto
+              </button>
             </div>
           )}
           {phase === 'live' && side === 'back' && (
@@ -632,6 +722,13 @@ export function ScanView() {
             >
               <span className="h-[60px] w-[60px] rounded-full bg-white transition-transform group-hover:scale-95" />
               {phase === 'analyzing' && <Loader2 size={24} className="absolute animate-spin text-black" />}
+              {phase === 'live' && autoShoot && guide && guide.stable > 0 && (
+                <svg className="pointer-events-none absolute -inset-[5px] -rotate-90" viewBox="0 0 86 86" aria-hidden="true">
+                  <circle cx="43" cy="43" r="40" fill="none" stroke="#3DD68C" strokeWidth="4" strokeLinecap="round"
+                    strokeDasharray={2 * Math.PI * 40} strokeDashoffset={2 * Math.PI * 40 * (1 - guide.stable)}
+                    style={{ transition: 'stroke-dashoffset 140ms linear' }} />
+                </svg>
+              )}
             </button>
             <div className="h-11 w-11">
               {side === 'back' && (pendingFront || refineOf) ? (
@@ -683,6 +780,11 @@ export function ScanView() {
                     <button className="mt-2 w-full text-center text-[11px] font-medium text-[var(--violet)] hover:underline" onClick={addBack}>
                       + Ajouter le verso
                     </button>
+                  )}
+                  {vitrineReady && vitrineOut!.guessed.length > 0 && !current.addedCardId && (
+                    <p className="mt-1.5 text-center text-[11px] leading-snug text-[var(--orange)]">
+                      Carte mal détectée sur le {vitrineOut!.guessed.map((s) => (s === 'front' ? 'recto' : 'verso')).join(' et le ')}
+                    </p>
                   )}
                   {vitrine.enabled && !current.addedCardId && (
                     <button

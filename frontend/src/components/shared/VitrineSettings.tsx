@@ -29,7 +29,7 @@ export function VitrineSettingsModal() {
     const t = window.setTimeout(async () => {
       try {
         const photo = await (await fetch(cdnImg(sample.image_front_url)!)).blob();
-        const out = await makeVitrine(photo, { style: vitrine.style, tone: vitrine.tone, signature: vitrine.signature, backdropUrl });
+        const out = await makeVitrine(photo, { style: vitrine.style, tone: vitrine.tone, signature: vitrine.signature, backdropUrl, fallback: 'whole' });
         if (alive) setPreview({ key, url: URL.createObjectURL(out) });
       } catch {
         /* aperçu indisponible : les réglages restent utilisables */
