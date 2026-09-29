@@ -14,6 +14,8 @@ import { errorMessage, toast } from '../../lib/feedback';
 import type { AIIdentificationResult, Card } from '../../types';
 import { CardDetail } from '../shared/CardDetail';
 import { HoloCard } from '../ui';
+import { VitrineControls } from '../shared/VitrineControls';
+import { makeVitrine, useVitrine } from '../../lib/vitrine';
 
 /**
  * Scan live : on vise une carte, l'IA l'identifie sur la seule photo du recto,
@@ -168,6 +170,44 @@ export function ScanView() {
   /** Résultat auquel on ajoute un verso après coup (« Ajouter le verso »). */
   const [refineOf, setRefineOf] = useState<ScanResult | null>(null);
   const [shownBack, setShownBack] = useState(false);
+  const vitrine = useVitrine();
+  // Photos vitrine du résultat courant, recalculées quand le style change.
+  const [vitrineOut, setVitrineOut] = useState<{ key: string; front: string; frontBlob: Blob; back?: string; backBlob?: Blob } | null>(null);
+  const vitrineKey = current && vitrine.enabled
+    ? `${current.id}|${current.backBlob ? 'fb' : 'f'}|${vitrine.style}|${vitrine.tone}|${vitrine.signature.trim()}`
+    : null;
+
+  useEffect(() => {
+    if (!vitrineKey || !current) return;
+    let alive = true;
+    // Petit délai : évite de recomposer à chaque lettre du pseudo.
+    const t = window.setTimeout(async () => {
+      try {
+        const opts = { style: vitrine.style, tone: vitrine.tone, signature: vitrine.signature };
+        const [frontBlob, backBlob] = await Promise.all([
+          makeVitrine(current.blob, opts),
+          current.backBlob ? makeVitrine(current.backBlob, opts) : Promise.resolve(undefined),
+        ]);
+        if (!alive) return;
+        setVitrineOut({
+          key: vitrineKey,
+          front: URL.createObjectURL(frontBlob),
+          frontBlob,
+          back: backBlob ? URL.createObjectURL(backBlob) : undefined,
+          backBlob,
+        });
+      } catch {
+        // Composition impossible : la photo originale reste utilisée.
+      }
+    }, 250);
+    return () => { alive = false; window.clearTimeout(t); };
+    // `current` change aussi quand l'estimation arrive : seule la clé compte ici.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vitrineKey]);
+
+  const vitrineReady = !!vitrineKey && vitrineOut?.key === vitrineKey;
+  const shownFrontUrl = current ? (vitrineReady ? vitrineOut!.front : current.imageUrl) : '';
+  const shownBackUrl = current?.backUrl ? (vitrineReady && vitrineOut!.back ? vitrineOut!.back : current.backUrl) : undefined;
 
   function setWithBack(v: boolean) {
     setWithBackState(v);
@@ -380,9 +420,22 @@ export function ScanView() {
         });
         return resp.ok ? (await resp.json()).url : null;
       };
+      // Photos vitrine si le mode est activé (composées à la volée si l'aperçu n'est pas prêt).
+      let frontBlob = current.blob;
+      let backBlob = current.backBlob;
+      if (vitrine.enabled) {
+        const opts = { style: vitrine.style, tone: vitrine.tone, signature: vitrine.signature };
+        try {
+          frontBlob = vitrineReady ? vitrineOut!.frontBlob : await makeVitrine(current.blob, opts);
+          if (current.backBlob) backBlob = vitrineReady && vitrineOut!.backBlob ? vitrineOut!.backBlob : await makeVitrine(current.backBlob, opts);
+        } catch {
+          frontBlob = current.blob;
+          backBlob = current.backBlob;
+        }
+      }
       const [frontUrl, backUrl] = await Promise.all([
-        upload(current.blob, 'front'),
-        current.backBlob ? upload(current.backBlob, 'back') : Promise.resolve(null),
+        upload(frontBlob, 'front'),
+        backBlob ? upload(backBlob, 'back') : Promise.resolve(null),
       ]);
       const images = { ...(frontUrl ? { image_front_url: frontUrl } : {}), ...(backUrl ? { image_back_url: backUrl } : {}) };
       if (Object.keys(images).length) await updateCard.mutateAsync({ id: card.id, ...images });
@@ -593,7 +646,7 @@ export function ScanView() {
                     aria-label={current.backUrl ? (shownBack ? 'Voir le recto' : 'Voir le verso') : undefined}
                   >
                     <HoloCard rarity={holoRarity({ card_type: current.ident.card_type, grading_company: null, numbered: current.ident.numbered, parallel_name: current.ident.parallel, is_rookie: current.ident.is_rookie })} maxTilt={14} gyro>
-                      <img src={shownBack && current.backUrl ? current.backUrl : current.imageUrl} alt="" className="aspect-[63/88] w-full object-cover" />
+                      <img src={shownBack && shownBackUrl ? shownBackUrl : shownFrontUrl} alt="" className={`w-full object-cover ${vitrineReady ? 'aspect-[3/4]' : 'aspect-[63/88]'}`} />
                     </HoloCard>
                   </button>
                   {current.backUrl ? (
@@ -663,6 +716,12 @@ export function ScanView() {
 
               {current.compsStatus === 'ready' && current.comps && (current.comps.sold.length > 0 || current.comps.active.length > 0) && (
                 <CompsPanel comps={current.comps} overrides={current.overrides} onToggle={toggleComp} usedSource={est?.source} />
+              )}
+
+              {!current.addedCardId && (
+                <div className="mt-3">
+                  <VitrineControls compact />
+                </div>
               )}
 
               {/* Dans la collection ? */}

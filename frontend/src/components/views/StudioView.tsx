@@ -17,6 +17,8 @@ import {
   X,
 } from 'lucide-react';
 import { compressImage } from '../../lib/storage';
+import { applyVitrine } from '../../lib/vitrine';
+import { VitrineControls } from '../shared/VitrineControls';
 import { DEFAULT_CROP_RECT, clampNormRect, type NormRect } from '../../lib/guideCrop';
 import { CornerCropEditor } from '../shared/CornerCropEditor';
 import { useCreateCard, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
@@ -749,8 +751,10 @@ export function StudioView() {
   // `compressed` est déjà compressé (cf. compressToFile). Le rognage est fait
   // côté client (cf. cropVideoToGuide) avant compression.
   async function uploadViaBackend(compressed: File, cardId: string, token: string, side: CaptureSide): Promise<string> {
+    // Photo vitrine appliquée à l'enregistrement seulement : l'IA lit les captures d'origine.
+    const staged = await applyVitrine(compressed);
     const form = new FormData();
-    form.append('file', new File([compressed], `${side}.jpg`, { type: 'image/jpeg' }));
+    form.append('file', new File([staged], `${side}.jpg`, { type: 'image/jpeg' }));
     form.append('card_id', cardId);
     form.append('side', side);
     const response = await fetch(`${API_BASE}/api/upload`, {
@@ -1348,6 +1352,7 @@ export function StudioView() {
 
           <Panel title="Lot" icon={Archive}>
             <div className="space-y-4">
+              <VitrineControls compact />
               {currentSession && (
                 <div className="rounded-lg border border-[var(--border-accent)] bg-[var(--accent-dim)] px-3 py-2.5">
                   <div className="flex items-center justify-between gap-2">

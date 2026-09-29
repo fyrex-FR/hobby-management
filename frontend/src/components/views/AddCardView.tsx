@@ -13,6 +13,8 @@ import {
 import { useIdentify } from '../../hooks/useIdentify';
 import { useCreateCard, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { compressImage } from '../../lib/storage';
+import { applyVitrine } from '../../lib/vitrine';
+import { VitrineControls } from '../shared/VitrineControls';
 import { useAppStore } from '../../stores/appStore';
 import { supabase } from '../../lib/supabase';
 import { SPORTS, type CardType, type CardStatus, type Sport } from '../../types';
@@ -194,7 +196,9 @@ export function AddCardView() {
       createdCardId = newCard.id;
 
       async function uploadViaBackend(file: File, side: 'front' | 'back'): Promise<string> {
-        const blob = await compressImage(file);
+        // Photo vitrine appliquée à l'enregistrement seulement : l'IA a lu la photo d'origine.
+        const staged = await applyVitrine(file);
+        const blob = staged === file ? await compressImage(file) : staged;
         const form = new FormData();
         form.append('file', new File([blob], `${side}.jpg`, { type: 'image/jpeg' }));
         form.append('card_id', newCard.id);
@@ -271,6 +275,9 @@ export function AddCardView() {
             <div className="flex gap-3">
               <ImageDropzone label="Recto" file={frontFile} onChange={setFrontFile} />
               <ImageDropzone label="Verso" file={backFile} onChange={setBackFile} />
+            </div>
+            <div className="mt-3">
+              <VitrineControls compact />
             </div>
 
             <div className="mt-4 space-y-2">
