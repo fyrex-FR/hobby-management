@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "type": "module",
   "private": true,
-  "description": "Fetch proxy headless (Playwright) pour contourner le 403 anti-bot d'eBay et fournir le HTML des ventes au backend CardVaults.",
+  "description": "Fetch proxy (Playwright) : charge les pages de ventes eBay dans un vrai navigateur connecté et renvoie le HTML au backend CardVaults.",
   "scripts": {
-    "start": "node server.js"
+    "start": "node server.js",
+    "login": "node login.js"
   },
   "dependencies": {
     "express": "^4.19.2",

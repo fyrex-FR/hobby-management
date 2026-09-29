@@ -165,15 +165,17 @@ async def scrape_ebay_sold(query: str, max_results: int = 20) -> dict:
     status, html, fetch_err, via = await _fetch_html(url)
     if fetch_err:
         return {"error": f"Fetch eBay Sold: {fetch_err}", "results": [], "source": via}
-    if status != 200:
+
+    results, raw_count = _parse_items(html, max_results)
+    # Un code d'erreur n'est bloquant que si la page ne contient aucun résultat :
+    # après une vérification anti-bot résolue, le code amont peut rester 403.
+    if status != 200 and not results:
         return {
-            "error": f"eBay Sold {status}",
+            "error": f"eBay Sold {status}" + (" (bloqué par l'anti-bot eBay)" if status == 403 else ""),
             "detail": html[:200],
             "results": [],
             "source": via,
         }
-
-    results, raw_count = _parse_items(html, max_results)
     prices = [r["price"] for r in results]
 
     if not prices:
@@ -242,6 +244,8 @@ async def _fetch_html(url: str) -> tuple[int, str, Optional[str], str]:
             data = resp.json()
         except Exception as e:
             return 0, "", f"openclaw réponse invalide: {e}", "openclaw"
+        if data.get("login_required"):
+            return 401, "", "session eBay du proxy expirée : reconnecte-la avec `npm run login` sur la machine openclaw", "openclaw"
         return int(data.get("status", 0)), data.get("html", "") or "", None, "openclaw"
 
     # Fallback direct (probablement bloqué par eBay depuis une IP datacenter).
