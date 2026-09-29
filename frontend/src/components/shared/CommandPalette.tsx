@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   ArrowRight,
+  Camera,
   CornerDownLeft,
   FileClock,
   GraduationCap,
@@ -135,6 +136,7 @@ function PaletteBody({ isAdmin, onShare, onOpenCard }: { isAdmin: boolean; onSha
       ['ebay', 'eBay', ShoppingBag, 'annonces reglages'],
     ];
     return [
+      { id: 'a-scan', group: 'Actions' as const, label: 'Scanner une carte (live)', hint: 'Identification + valeur estimée', icon: Camera, keywords: 'scan camera photo prix estimation', run: go('scan') },
       { id: 'a-add', group: 'Actions' as const, label: 'Ajouter une carte', hint: 'Identification IA', icon: Plus, keywords: 'nouvelle ajout rapide photo', run: go('add_card') },
       { id: 'a-studio', group: 'Actions' as const, label: 'Ouvrir le studio photo', icon: ScanLine, keywords: 'camera session', run: go('studio') },
       { id: 'a-batch', group: 'Actions' as const, label: 'Importer un lot de photos', icon: Upload, keywords: 'import batch glisser', run: go('batch') },

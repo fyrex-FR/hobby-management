@@ -21,6 +21,7 @@ import {
   ChevronsUpDown,
   ShoppingBag,
   FileClock,
+  Camera,
   Menu,
   Puzzle,
   CheckCircle2,
@@ -37,6 +38,7 @@ import { LoginView } from './components/views/LoginView';
 import { DashboardView } from './components/views/DashboardView';
 import { CollectionView } from './components/views/CollectionView';
 import { AddCardView } from './components/views/AddCardView';
+import { ScanView } from './components/views/ScanView';
 import { StudioView } from './components/views/StudioView';
 import { BatchView } from './components/views/BatchView';
 import { ImportReviewView } from './components/views/ImportReviewView';
@@ -116,6 +118,7 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
 type NavItem = { id: ActiveView; label: string; icon: typeof LayoutDashboard; badge?: number };
 
 const ADD_OPTIONS = [
+  { id: 'scan', label: 'Scan live', desc: 'Vise, l\'IA reconnaît et estime', icon: Camera },
   { id: 'add_card', label: 'Ajout rapide', desc: 'Une carte, identifiée par l\'IA', icon: Plus },
   { id: 'studio', label: 'Studio photo', desc: 'Session multi-cartes', icon: ScanLine },
   { id: 'batch', label: 'Import en lot', desc: 'Glisser-déposer des photos', icon: Upload },
@@ -134,6 +137,7 @@ const VIEW_TITLES: Partial<Record<ActiveView, string>> = {
   batch: 'Import en lot',
   import_review: 'Revue d\'import',
   add_card: 'Ajout rapide',
+  scan: 'Scan live',
   compare: 'Comparer IA',
   migration: 'Migration R2',
 };
@@ -153,6 +157,7 @@ function useNavItems(isAdmin: boolean) {
     ...(draftCount > 0 ? [{ id: 'review' as const, label: 'Brouillons', icon: FileClock, badge: draftCount }] : []),
   ];
   const tools: NavItem[] = [
+    { id: 'scan', label: 'Scan live', icon: Camera },
     { id: 'players', label: 'Joueurs', icon: Users },
     { id: 'grading', label: 'Grading', icon: GraduationCap },
     { id: 'ebay', label: 'eBay', icon: ShoppingBag },
@@ -608,6 +613,7 @@ function AuthedShell({ email, showShare, setShowShare }: { email: string; showSh
               {activeView === 'dashboard' && <DashboardView />}
               {activeView === 'collection' && <CollectionView />}
               {activeView === 'add_card' && <AddCardView />}
+              {activeView === 'scan' && <ScanView />}
               {activeView === 'studio' && <StudioView />}
               {activeView === 'batch' && <BatchView />}
               {activeView === 'import_review' && <ImportReviewView />}

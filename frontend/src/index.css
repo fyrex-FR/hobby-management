@@ -376,3 +376,34 @@ body {
 @media (prefers-reduced-motion: reduce) {
   .holo-inner { transform: none !important; }
 }
+
+/* ------------------------------------------------------------------ */
+/* Scan live                                                            */
+/* ------------------------------------------------------------------ */
+.scan-corner {
+  position: absolute; width: 34px; height: 34px;
+  border-color: #fff; border-style: solid; border-width: 0;
+  filter: drop-shadow(0 0 6px rgb(0 0 0 / 0.5));
+  transition: border-color 200ms;
+}
+.scan-corner-tl { top: -3px; left: -3px; border-top-width: 3px; border-left-width: 3px; border-top-left-radius: 18px; }
+.scan-corner-tr { top: -3px; right: -3px; border-top-width: 3px; border-right-width: 3px; border-top-right-radius: 18px; }
+.scan-corner-bl { bottom: -3px; left: -3px; border-bottom-width: 3px; border-left-width: 3px; border-bottom-left-radius: 18px; }
+.scan-corner-br { bottom: -3px; right: -3px; border-bottom-width: 3px; border-right-width: 3px; border-bottom-right-radius: 18px; }
+.scan-corner-busy { border-color: var(--violet); animation: scan-pulse 900ms ease-in-out infinite; }
+@keyframes scan-pulse { 50% { transform: scale(1.06); opacity: 0.7; } }
+.scan-line {
+  position: absolute; left: 4%; right: 4%; height: 2px; top: 0;
+  background: linear-gradient(90deg, transparent, var(--violet), #fff, var(--violet), transparent);
+  box-shadow: 0 0 18px 4px color-mix(in srgb, var(--violet) 60%, transparent);
+  animation: scan-sweep 1.4s cubic-bezier(0.45, 0, 0.55, 1) infinite alternate;
+}
+@keyframes scan-sweep { from { top: 3%; } to { top: 97%; } }
+.scan-chip {
+  display: inline-flex; align-items: center; height: 1.6rem; padding: 0 0.6rem; border-radius: 999px;
+  font-size: 12px; font-weight: 500; color: var(--text-secondary);
+  background: var(--bg-elevated); border: 1px solid var(--border);
+}
+@media (prefers-reduced-motion: reduce) {
+  .scan-line, .scan-corner-busy { animation: none; }
+}
