@@ -124,3 +124,11 @@ export function trimOutliers(results: EbayResult[]): EbayResult[] {
   const fence = (q3 - q1) * 1.5;
   return results.filter((r) => r.price >= q1 - fence && r.price <= q3 + fence);
 }
+
+/** Retire le libellé d'accessibilité qu'eBay colle en fin de titre (FR et EN). */
+export function cleanTitle(title: string): string {
+  return title
+    .replace(/\s*(Opens in a new window or tab|La page s['’]ouvre dans une nouvelle fen[êe]tre ou un nouvel onglet)\s*$/i, '')
+    .replace(/^(New Listing|Nouvelle annonce)\s*/i, '')
+    .trim();
+}

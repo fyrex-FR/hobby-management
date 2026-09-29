@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Camera, CameraOff, Check, ImageUp, Library, Loader2, Plus, RotateCcw, ScanLine, Sparkles, TrendingUp, X } from 'lucide-react';
+import { Camera, CameraOff, Check, ChevronDown, ExternalLink, ImageUp, ListChecks, Library, Loader2, Plus, RotateCcw, ScanLine, Sparkles, TrendingUp, X } from 'lucide-react';
 import { apiFetch } from '../../api/client';
 import { useCards, useCreateCard, useUpdateCard } from '../../hooks/useCards';
 import { useAppStore } from '../../stores/appStore';
 import { supabase } from '../../lib/supabase';
-import { computeStats, filterRelevant, toEurPrice, trimOutliers, withoutGraded, type EbayData, type EbayResult } from '../../lib/ebayComps';
+import type { EbayData } from '../../lib/ebayComps';
+import { REASON_LABELS, classifyComps, estimateFrom, isKept, type CompOverrides, type CompSource, type Comps, type Estimate, type ScanIdent } from '../../lib/scanEstimate';
 import { holoRarity } from '../../lib/holo';
-import { playerLastName, playerNameKey } from '../../lib/playerName';
+import { playerNameKey } from '../../lib/playerName';
 import { formatCardNumber } from '../../lib/cardQuality';
 import { errorMessage, toast } from '../../lib/feedback';
 import type { AIIdentificationResult, Card } from '../../types';
@@ -28,18 +29,6 @@ const CARD_RATIO = 63 / 88;
 
 type Phase = 'live' | 'analyzing' | 'result';
 
-interface Estimate {
-  status: 'loading' | 'ready' | 'none' | 'error';
-  source?: 'sold' | 'active';
-  /** Obtenue avec la recherche élargie (joueur + set) : moins précise. */
-  broad?: boolean;
-  value?: number;
-  min?: number;
-  max?: number;
-  count?: number;
-  thumbs?: string[];
-}
-
 interface ScanResult {
   id: string;
   imageUrl: string;
@@ -48,8 +37,17 @@ interface ScanResult {
   backUrl?: string;
   backBlob?: Blob;
   ident: AIIdentificationResult;
-  estimate: Estimate;
+  comps: Comps | null;
+  compsStatus: 'loading' | 'ready' | 'error';
+  /** Choix manuels dans le panneau des ventes (retenue / écartée). */
+  overrides: CompOverrides;
   addedCardId?: string;
+}
+
+function estimateOf(r: ScanResult): Estimate {
+  if (r.compsStatus === 'loading') return { status: 'loading' };
+  if (r.compsStatus === 'error' || !r.comps) return { status: 'error' };
+  return estimateFrom(r.comps, r.overrides);
 }
 
 function buildQuery(r: AIIdentificationResult): string {
@@ -112,65 +110,40 @@ async function downscaleFile(file: File): Promise<Blob> {
   );
 }
 
-/** Ventes (ou annonces) vraiment comparables : bon joueur, bonne carte, brute, sans prix aberrant. */
-function comparable(results: EbayResult[], ident: AIIdentificationResult): EbayResult[] {
-  let pool = results;
-  const last = playerLastName(ident.player).toLowerCase();
-  if (last) {
-    const byPlayer = pool.filter((r) => r.title.toLowerCase().includes(last));
-    if (byPlayer.length >= 2) pool = byPlayer;
-  }
-  const relevant = filterRelevant(pool, { year: ident.year, cardNumber: ident.card_number, numbered: ident.numbered, setName: ident.set });
-  if (relevant.length >= 2) pool = relevant;
-  // La carte scannée est brute : les slabs gradés faussent l'estimation.
-  const raw = withoutGraded(pool);
-  if (raw.length >= 2) pool = raw;
-  return trimOutliers(pool);
-}
-
 /** Requête large : joueur + set + insert, sans année ni parallel (souvent mal lus sur photo). */
 function broadQuery(r: AIIdentificationResult): string {
   return [r.player, r.set || r.brand, r.insert].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
 }
 
-async function fetchEstimate(ident: AIIdentificationResult): Promise<Estimate> {
-  const precise = await estimateFor(buildQuery(ident), ident);
-  if (precise.status === 'ready') return precise;
-  const broad = broadQuery(ident);
-  if (!broad || broad === buildQuery(ident)) return precise;
-  // Sans année ni parallel, on filtre seulement sur le joueur et la carte brute.
-  const loose = { ...ident, year: '', numbered: '', card_number: '' };
-  const wide = await estimateFor(broad, loose);
-  return wide.status === 'ready' ? { ...wide, broad: true } : precise;
-}
-
-async function estimateFor(query: string, ident: AIIdentificationResult): Promise<Estimate> {
+async function compsFor(query: string, ident: ScanIdent, broad: boolean): Promise<Comps> {
   const body = JSON.stringify({ query });
-  // Ventes réelles d'abord ; si eBay bloque la recherche des ventes (anti-bot),
-  // on retombe sur les annonces en cours, via l'API officielle.
+  // Ventes réelles et annonces en cours en parallèle : si eBay bloque la
+  // recherche des ventes, l'estimation retombe sur les annonces.
   const [sold, active] = await Promise.allSettled([
     apiFetch<EbayData>('/ebay/sold-items', { method: 'POST', body }, 45000),
     apiFetch<EbayData>('/ebay/active-items', { method: 'POST', body }, 30000),
   ]);
-  const pick = (res: PromiseSettledResult<EbayData>, source: 'sold' | 'active'): Estimate | null => {
-    if (res.status !== 'fulfilled') return null;
-    const pool = comparable(res.value.results ?? [], ident);
-    const stats = computeStats(pool);
-    if (!stats || stats.count < 2) return null;
-    return {
-      status: 'ready',
-      source,
-      value: toEurPrice(stats.median),
-      min: toEurPrice(stats.min),
-      max: toEurPrice(stats.max),
-      count: stats.count,
-      thumbs: pool.map((r) => r.image).filter(Boolean).slice(0, 4),
-    };
+  const results = (res: PromiseSettledResult<EbayData>) => (res.status === 'fulfilled' ? res.value.results ?? [] : []);
+  const unavailable = (res: PromiseSettledResult<EbayData>) =>
+    res.status === 'rejected' || (!!res.value.error && !(res.value.results ?? []).length);
+  return {
+    query,
+    broad,
+    sold: classifyComps(results(sold), ident),
+    active: classifyComps(results(active), ident),
+    soldUnavailable: unavailable(sold),
+    activeUnavailable: unavailable(active),
   };
-  const estimate = pick(sold, 'sold') ?? pick(active, 'active');
-  if (estimate) return estimate;
-  const blocked = sold.status === 'fulfilled' && !!sold.value.error && !(sold.value.results ?? []).length;
-  return { status: blocked && active.status === 'rejected' ? 'error' : 'none' };
+}
+
+async function fetchComps(ident: AIIdentificationResult): Promise<Comps> {
+  const precise = await compsFor(buildQuery(ident), ident, false);
+  if (estimateFrom(precise).status === 'ready') return precise;
+  const broad = broadQuery(ident);
+  if (!broad || broad === buildQuery(ident)) return precise;
+  // Sans année ni tirage, on ne filtre que sur le joueur et la carte brute.
+  const wide = await compsFor(broad, { player: ident.player, set: ident.set }, true);
+  return estimateFrom(wide).status === 'ready' ? wide : precise;
 }
 
 export function ScanView() {
@@ -263,19 +236,20 @@ export function ScanView() {
       }, 60000);
       const result: ScanResult = {
         id: opts.replaceId ?? crypto.randomUUID(),
-        imageUrl, blob: front, backUrl, backBlob: back, ident, estimate: { status: 'loading' },
+        imageUrl, blob: front, backUrl, backBlob: back, ident, comps: null, compsStatus: 'loading', overrides: {},
       };
       setCurrent(result);
       setShownBack(false);
       setPhase('result');
       navigator.vibrate?.(18);
       // Le nom s'affiche tout de suite ; la valeur arrive quand eBay répond.
-      fetchEstimate(ident)
-        .catch(() => ({ status: 'error' }) as Estimate)
-        .then((estimate) => {
-          setCurrent((c) => (c?.id === result.id ? { ...c, estimate } : c));
+      fetchComps(ident)
+        .then((comps) => ({ comps, compsStatus: 'ready' as const }))
+        .catch(() => ({ comps: null, compsStatus: 'error' as const }))
+        .then((patch) => {
+          setCurrent((c) => (c?.id === result.id ? { ...c, ...patch } : c));
           setHistory((h) => {
-            const done = { ...result, estimate };
+            const done = { ...result, ...patch };
             return opts.replaceId ? h.map((x) => (x.id === opts.replaceId ? done : x)) : [done, ...h].slice(0, 12);
           });
         });
@@ -352,6 +326,14 @@ export function ScanView() {
     } catch (e) {
       toast.error('Image illisible', { description: errorMessage(e) });
     }
+  }
+
+  /** Retient / écarte un résultat eBay : l'estimation se recalcule aussitôt. */
+  function toggleComp(key: string, kept: boolean) {
+    if (!current) return;
+    const next = { ...current, overrides: { ...current.overrides, [key]: kept } };
+    setCurrent(next);
+    setHistory((h) => h.map((x) => (x.id === next.id ? next : x)));
   }
 
   function again() {
@@ -435,7 +417,8 @@ export function ScanView() {
 
   const owned = useMemo(() => (current ? ownedMatches(current.ident) : []), [current, ownedMatches]);
   const openCard = openCardId ? cards.find((c) => c.id === openCardId) : undefined;
-  const sessionTotal = history.reduce((s, h) => s + (h.estimate.value ?? 0), 0);
+  const sessionTotal = history.reduce((s, h) => s + (estimateOf(h).value ?? 0), 0);
+  const est = current ? estimateOf(current) : null;
 
   return (
     <div className="dark-scope relative flex h-full flex-col overflow-hidden bg-black text-[var(--text-primary)]">
@@ -646,37 +629,41 @@ export function ScanView() {
               {/* Valeur */}
               <div className="mt-5 rounded-2xl border border-[var(--border)] bg-[var(--bg-secondary)] p-4">
                 <div className="flex items-center gap-2 text-xs font-medium text-[var(--text-muted)]">
-                  <TrendingUp size={14} /> Valeur estimée {current.estimate.source === 'active' ? '(annonces eBay en cours)' : '(ventes eBay)'}
+                  <TrendingUp size={14} /> Valeur estimée {est!.source === 'active' ? '(annonces eBay en cours)' : '(ventes eBay)'}
                 </div>
-                {current.estimate.status === 'loading' && (
+                {est!.status === 'loading' && (
                   <div className="mt-2 flex items-center gap-3">
                     <div className="h-10 w-28 animate-pulse rounded-lg bg-[var(--bg-elevated)]" />
                     <span className="text-[13px] text-[var(--text-muted)]">Recherche des ventes…</span>
                   </div>
                 )}
-                {current.estimate.status === 'ready' && (
+                {est!.status === 'ready' && (
                   <div className="mt-1 flex flex-wrap items-end justify-between gap-3">
                     <div>
                       <motion.p initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="tabular text-4xl font-semibold tracking-tight">
-                        ≈ {euro.format(current.estimate.value!)}
+                        ≈ {euro.format(est!.value!)}
                       </motion.p>
                       <p className="mt-1 text-[13px] text-[var(--text-secondary)]">
-                        {current.estimate.count} {current.estimate.source === 'active' ? 'annonce' : 'vente'}{current.estimate.count! > 1 ? 's' : ''} comparable{current.estimate.count! > 1 ? 's' : ''} · de {euro.format(current.estimate.min!)} à {euro.format(current.estimate.max!)}
-                        {current.estimate.broad && <span className="text-[var(--orange)]"> · toutes variantes confondues</span>}
+                        {est!.count} {est!.source === 'active' ? 'annonce' : 'vente'}{est!.count! > 1 ? 's' : ''} comparable{est!.count! > 1 ? 's' : ''} · de {euro.format(est!.min!)} à {euro.format(est!.max!)}
+                        {est!.broad && <span className="text-[var(--orange)]"> · toutes variantes confondues</span>}
                       </p>
                     </div>
-                    {!!current.estimate.thumbs?.length && (
+                    {!!est!.thumbs?.length && (
                       <div className="flex -space-x-3">
-                        {current.estimate.thumbs.map((t, i) => (
+                        {est!.thumbs.map((t, i) => (
                           <img key={i} src={t} alt="" className="h-12 w-9 rounded-md border-2 border-[var(--bg-secondary)] object-cover" />
                         ))}
                       </div>
                     )}
                   </div>
                 )}
-                {current.estimate.status === 'none' && <p className="mt-2 text-[13px] text-[var(--text-secondary)]">Pas assez de ventes récentes pour estimer cette carte.</p>}
-                {current.estimate.status === 'error' && <p className="mt-2 text-[13px] text-[var(--text-secondary)]">Les ventes eBay sont indisponibles pour le moment.</p>}
+                {est!.status === 'none' && <p className="mt-2 text-[13px] text-[var(--text-secondary)]">Pas assez de ventes récentes pour estimer cette carte.</p>}
+                {est!.status === 'error' && <p className="mt-2 text-[13px] text-[var(--text-secondary)]">Les ventes eBay sont indisponibles pour le moment.</p>}
               </div>
+
+              {current.compsStatus === 'ready' && current.comps && (current.comps.sold.length > 0 || current.comps.active.length > 0) && (
+                <CompsPanel comps={current.comps} overrides={current.overrides} onToggle={toggleComp} usedSource={est?.source} />
+              )}
 
               {/* Dans la collection ? */}
               <div className="mt-3 flex items-center gap-3 rounded-2xl border border-[var(--border)] px-4 py-3">
@@ -723,5 +710,132 @@ export function ScanView() {
         <span className="sr-only"><Camera /> Caméra prête</span>
       )}
     </div>
+  );
+}
+
+const money = (v: number, currency?: string) =>
+  new Intl.NumberFormat('fr-FR', { style: 'currency', currency: currency || 'EUR', maximumFractionDigits: 2, minimumFractionDigits: 0 }).format(v);
+
+function ebaySearchUrl(query: string, source: CompSource): string {
+  const params = new URLSearchParams({ _nkw: query, ...(source === 'sold' ? { LH_Sold: '1', LH_Complete: '1' } : {}) });
+  return `https://www.ebay.fr/sch/i.html?${params}`;
+}
+
+/**
+ * Détail des ventes / annonces eBay derrière l'estimation : chaque résultat
+ * est marqué retenu ou écarté (avec la raison), et l'utilisateur peut
+ * inverser le choix pour recalculer l'estimation.
+ */
+function CompsPanel({
+  comps,
+  overrides,
+  onToggle,
+  usedSource,
+}: {
+  comps: Comps;
+  overrides: CompOverrides;
+  onToggle: (key: string, kept: boolean) => void;
+  usedSource?: CompSource;
+}) {
+  const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<CompSource>(usedSource ?? (comps.sold.length ? 'sold' : 'active'));
+  const kept = (src: CompSource) => comps[src].filter((c) => isKept(c, overrides)).length;
+  const list = [...comps[tab]].sort((a, b) => Number(isKept(b, overrides)) - Number(isKept(a, overrides)) || a.price - b.price);
+  const total = comps.sold.length + comps.active.length;
+
+  return (
+    <section className="mt-3 overflow-hidden rounded-2xl border border-[var(--border)]">
+      <button
+        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--bg-elevated)]"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <ListChecks size={16} className="shrink-0 text-[var(--text-muted)]" />
+        <span className="flex-1 text-[13px]">
+          Vérifier les annonces
+          <span className="text-[var(--text-muted)]"> · {total} trouvée{total > 1 ? 's' : ''}</span>
+        </span>
+        <ChevronDown size={16} className={`shrink-0 text-[var(--text-muted)] transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+
+      {open && (
+        <div className="border-t border-[var(--border)]">
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+            <div className="ui-segmented" role="tablist">
+              {(['sold', 'active'] as const).map((src) => (
+                <button key={src} role="tab" aria-selected={tab === src} data-active={tab === src} onClick={() => setTab(src)}>
+                  {src === 'sold' ? 'Vendues' : 'En cours'}
+                  <span className="count">{kept(src)}/{comps[src].length}</span>
+                </button>
+              ))}
+            </div>
+            <a
+              href={ebaySearchUrl(comps.query, tab)}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-xs font-medium text-[var(--accent)] hover:underline"
+            >
+              Voir la recherche sur eBay <ExternalLink size={12} />
+            </a>
+          </div>
+
+          {tab === 'sold' && comps.soldUnavailable && (
+            <p className="mx-4 mb-3 rounded-lg bg-[var(--bg-elevated)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+              eBay bloque temporairement la recherche des ventes : l'estimation s'appuie sur les annonces en cours.
+            </p>
+          )}
+          {comps.broad && (
+            <p className="mx-4 mb-3 text-xs text-[var(--orange)]">Recherche élargie (« {comps.query} ») : vérifie bien la variante.</p>
+          )}
+
+          {list.length === 0 ? (
+            <p className="px-4 pb-4 text-[13px] text-[var(--text-muted)]">Aucune {tab === 'sold' ? 'vente' : 'annonce'} trouvée.</p>
+          ) : (
+            <ul className="max-h-[46vh] divide-y divide-[var(--border)] overflow-y-auto">
+              {list.map((c) => {
+                const on = isKept(c, overrides);
+                const manual = overrides[c.key] !== undefined && overrides[c.key] !== (c.auto === 'kept');
+                return (
+                  <li key={c.key} className={`flex items-center gap-3 px-4 py-2.5 transition-opacity ${on ? '' : 'opacity-55'}`}>
+                    <button
+                      onClick={() => onToggle(c.key, !on)}
+                      aria-pressed={on}
+                      aria-label={on ? 'Écarter de l’estimation' : 'Retenir dans l’estimation'}
+                      title={on ? 'Écarter de l’estimation' : 'Retenir dans l’estimation'}
+                      className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors ${
+                        on ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--on-accent)]' : 'border-[var(--border-strong)] hover:border-[var(--text-muted)]'
+                      }`}
+                    >
+                      {on && <Check size={13} strokeWidth={3} />}
+                    </button>
+                    <a href={c.url} target="_blank" rel="noreferrer" className="shrink-0" title="Ouvrir l’annonce sur eBay">
+                      {c.image
+                        ? <img src={c.image} alt="" loading="lazy" className="h-14 w-10 rounded-md bg-[var(--bg-elevated)] object-cover" />
+                        : <span className="block h-14 w-10 rounded-md bg-[var(--bg-elevated)]" />}
+                    </a>
+                    <div className="min-w-0 flex-1">
+                      <a href={c.url} target="_blank" rel="noreferrer" className="line-clamp-2 text-[13px] leading-snug text-[var(--text-primary)] hover:underline">
+                        {c.title}
+                      </a>
+                      <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-[11px] text-[var(--text-muted)]">
+                        {tab === 'sold' && c.end_date && <span>Vendue {c.end_date.replace(/\s+/g, ' ').trim()}</span>}
+                        {tab === 'active' && <span>En vente</span>}
+                        {c.condition && <span>{c.condition}</span>}
+                        {!on && c.auto !== 'kept' && !manual && <span className="font-medium text-[var(--orange)]">Écartée · {REASON_LABELS[c.auto]}</span>}
+                        {manual && <span className="font-medium text-[var(--violet)]">{on ? 'Ajoutée par toi' : 'Écartée par toi'}</span>}
+                      </p>
+                    </div>
+                    <span className="tabular shrink-0 text-[13px] font-semibold text-[var(--price)]">{money(c.price, c.currency)}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          <p className="border-t border-[var(--border)] px-4 py-2.5 text-[11px] text-[var(--text-muted)]">
+            Coche ou décoche une annonce pour recalculer l'estimation.
+          </p>
+        </div>
+      )}
+    </section>
   );
 }
