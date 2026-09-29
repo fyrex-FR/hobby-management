@@ -40,11 +40,33 @@ Une seule variable obligatoire :
   la session eBay entre les redémarrages.
 - `CHROMIUM_EXECUTABLE` : binaire Chromium utilisé pour créer puis relire le
   profil, afin d'éviter les incompatibilités avec le shell headless Playwright.
+- `HEADLESS` : mettre `false` (recommandé). Depuis septembre 2026, eBay renvoie
+  un 403 « Error Page » à tout Chromium headless, même avec un user-agent et
+  des Client Hints corrigés. En `false`, le proxy ouvre une vraie fenêtre
+  (placée hors écran sur un Mac ; sur un serveur Linux sans écran, lancer via
+  `xvfb-run -a npm start`).
 - `FETCH_PROXY_URL` (optionnel mais souvent nécessaire pour eBay) : fait sortir
   le navigateur via un proxy externe résidentiel/mobile. Format complet avec
   identifiants : `http://utilisateur:motdepasse@hote:port`. À utiliser quand
   l'IP de sortie locale d'openclaw est blacklistée par eBay (403 même en
   résidentiel). Sans cette variable, le navigateur sort par l'IP de la machine.
+
+## Session eBay (obligatoire pour les ventes terminées)
+
+eBay redirige désormais les recherches « Vendus » vers la page de connexion
+pour un visiteur anonyme : le profil du proxy doit être connecté à un compte
+eBay. Sans session, `/fetch` répond `{ "status": 401, "login_required": true }`
+et CardVaults affiche « session eBay du proxy expirée ».
+
+Pour connecter (ou reconnecter) le profil, serveur arrêté :
+
+```
+USER_DATA_DIR=<même dossier que le serveur> CHROMIUM_EXECUTABLE=<binaire> npm run login
+```
+
+Une fenêtre s'ouvre sur la connexion eBay : tu te connectes toi-même, puis tu
+fermes la fenêtre. La session est gardée dans `USER_DATA_DIR`. `GET /session`
+indique ensuite le nombre de cookies eBay du profil.
 
 ## Lancement
 
