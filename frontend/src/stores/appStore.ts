@@ -24,8 +24,16 @@ interface AppStore {
   setImportBatchId: (batchId: string | null) => void;
 }
 
+const VIEWS: ActiveView[] = ['dashboard', 'collection', 'add_card', 'studio', 'batch', 'import_review', 'review', 'sales', 'compare', 'players', 'grading', 'requests', 'migration', 'ebay'];
+
+/** Vue lue dans l'URL (#/collection) : un rafraîchissement ne renvoie plus au dashboard. */
+export function viewFromHash(hash = window.location.hash): ActiveView | null {
+  const m = hash.match(/^#\/([a-z_]+)/);
+  return m && (VIEWS as string[]).includes(m[1]) ? (m[1] as ActiveView) : null;
+}
+
 export const useAppStore = create<AppStore>((set) => ({
-  activeView: 'dashboard',
+  activeView: viewFromHash() ?? 'dashboard',
   viewMode: 'grid',
   drillFilter: {},
   reviewSessionId: null,

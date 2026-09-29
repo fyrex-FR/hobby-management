@@ -18,10 +18,14 @@ import {
   Share2,
   Inbox,
   ChevronDown,
-  ShoppingBag
+  ChevronsUpDown,
+  ShoppingBag,
+  FileClock,
+  Menu,
+  Puzzle,
 } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
-import { useAppStore } from './stores/appStore';
+import { useAppStore, viewFromHash } from './stores/appStore';
 import type { ActiveView } from './stores/appStore';
 import { useCards } from './hooks/useCards';
 import { useRequests } from './hooks/useRequests';
@@ -47,6 +51,7 @@ import { ResetPasswordView } from './components/views/ResetPasswordView';
 import MigrationView from './components/views/MigrationView';
 import { ExtensionPairView } from './components/views/ExtensionPairView';
 import { supabase } from './lib/supabase';
+import { Popover } from './components/shared/Popover';
 
 const queryClient = new QueryClient();
 
@@ -101,341 +106,293 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function UserMenu() {
+type NavItem = { id: ActiveView; label: string; icon: typeof LayoutDashboard; badge?: number };
+
+const ADD_OPTIONS = [
+  { id: 'add_card', label: 'Ajout rapide', desc: 'Une carte, identifiée par l\'IA', icon: Plus },
+  { id: 'studio', label: 'Studio photo', desc: 'Session multi-cartes', icon: ScanLine },
+  { id: 'batch', label: 'Import en lot', desc: 'Glisser-déposer des photos', icon: Upload },
+] as const;
+
+const VIEW_TITLES: Partial<Record<ActiveView, string>> = {
+  dashboard: 'Vue d\'ensemble',
+  collection: 'Collection',
+  sales: 'Ventes',
+  requests: 'Demandes',
+  review: 'Brouillons',
+  players: 'Joueurs',
+  grading: 'Grading',
+  ebay: 'eBay',
+  studio: 'Studio photo',
+  batch: 'Import en lot',
+  import_review: 'Revue d\'import',
+  add_card: 'Ajout rapide',
+  compare: 'Comparer IA',
+  migration: 'Migration R2',
+};
+
+/** Items de navigation, partagés entre la sidebar desktop et le menu mobile. */
+function useNavItems(isAdmin: boolean) {
+  const { data: cards = [] } = useCards();
+  const { data: shareRequests = [] } = useRequests();
+  const draftCount = cards.filter((c) => c.status === 'draft').length;
+  const newRequests = shareRequests.filter((r) => r.status === 'new').length;
+
+  const main: NavItem[] = [
+    { id: 'dashboard', label: 'Vue d\'ensemble', icon: LayoutDashboard },
+    { id: 'collection', label: 'Collection', icon: Library },
+    { id: 'sales', label: 'Ventes', icon: TrendingUp },
+    { id: 'requests', label: 'Demandes', icon: Inbox, badge: newRequests },
+    ...(draftCount > 0 ? [{ id: 'review' as const, label: 'Brouillons', icon: FileClock, badge: draftCount }] : []),
+  ];
+  const tools: NavItem[] = [
+    { id: 'players', label: 'Joueurs', icon: Users },
+    { id: 'grading', label: 'Grading', icon: GraduationCap },
+    { id: 'ebay', label: 'eBay', icon: ShoppingBag },
+    { id: 'studio', label: 'Studio photo', icon: ScanLine },
+    { id: 'batch', label: 'Import en lot', icon: Upload },
+    ...(isAdmin ? [{ id: 'compare' as const, label: 'Comparer IA', icon: Database }] : []),
+    ...(isAdmin ? [{ id: 'migration' as const, label: 'Migration R2', icon: HardDrive }] : []),
+  ];
+  return { main, tools, cardCount: cards.filter((c) => c.status !== 'draft').length, draftCount };
+}
+
+function NavButton({ item, active, onClick }: { item: NavItem; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      aria-current={active ? 'page' : undefined}
+      className={`group flex h-9 w-full items-center gap-3 rounded-lg px-2.5 text-[13px] font-medium transition-colors ${
+        active
+          ? 'bg-[var(--bg-hover)] text-[var(--text-primary)]'
+          : 'text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]'
+      }`}
+    >
+      <item.icon size={17} className={active ? 'text-[var(--accent)]' : 'text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]'} />
+      <span className="flex-1 truncate text-left">{item.label}</span>
+      {!!item.badge && (
+        <span className="tabular flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--accent)] px-1.5 text-[11px] font-semibold text-[var(--on-accent)]">
+          {item.badge}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function Logo({ subtitle }: { subtitle?: string }) {
+  return (
+    <div className="flex items-center gap-2.5">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-sm font-extrabold text-[var(--on-accent)]">
+        C
+      </div>
+      <div className="min-w-0 text-left">
+        <div className="text-sm font-semibold leading-tight tracking-tight text-[var(--text-primary)]">CardVaults</div>
+        {subtitle && <div className="tabular truncate text-xs text-[var(--text-muted)]">{subtitle}</div>}
+      </div>
+    </div>
+  );
+}
+
+function AddMenu({ onSelect, variant }: { onSelect: (view: ActiveView) => void; variant: 'sidebar' | 'icon' }) {
+  const [open, setOpen] = useState(false);
+  const anchor = useRef<HTMLButtonElement>(null);
+  return (
+    <>
+      <button
+        ref={anchor}
+        onClick={() => setOpen((v) => !v)}
+        className={variant === 'sidebar' ? 'ui-btn ui-btn-primary h-9 w-full' : 'ui-btn ui-btn-primary ui-btn-icon'}
+        aria-expanded={open}
+        aria-label="Ajouter des cartes"
+      >
+        <Plus size={17} strokeWidth={2.5} />
+        {variant === 'sidebar' && <><span className="flex-1 text-left">Ajouter des cartes</span><ChevronDown size={15} /></>}
+      </button>
+      <Popover anchorRef={anchor} open={open} onClose={() => setOpen(false)} width={260} align={variant === 'icon' ? 'end' : 'start'}>
+        <div className="p-1">
+          {ADD_OPTIONS.map((opt) => (
+            <button key={opt.id} className="ui-menu-item" onClick={() => { onSelect(opt.id); setOpen(false); }}>
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--bg-elevated)] text-[var(--text-secondary)]">
+                <opt.icon size={16} />
+              </span>
+              <span>
+                <span className="block text-[13px] font-medium">{opt.label}</span>
+                <span className="block text-xs text-[var(--text-muted)]">{opt.desc}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </Popover>
+    </>
+  );
+}
+
+function AccountMenu({ email, onShare, compact = false }: { email: string; onShare: () => void; compact?: boolean }) {
   const [open, setOpen] = useState(false);
   const [showChangePassword, setShowChangePassword] = useState(false);
-  const setActiveView = useAppStore((s) => s.setActiveView);
-
-  // Retour du flux OAuth eBay (?ebay=connected | ?ebay=error&reason=...) :
-  // navigue vers la vue eBay, qui lit et nettoie ces paramètres elle-même.
-  useEffect(() => {
-    if (new URLSearchParams(window.location.search).has('ebay')) {
-      setActiveView('ebay');
-    }
-  }, [setActiveView]);
+  const anchor = useRef<HTMLButtonElement>(null);
+  const initial = email.charAt(0).toUpperCase();
 
   return (
     <>
-      <div className="relative ml-2">
-        <button
-          onClick={() => setOpen((v) => !v)}
-          className="w-9 h-9 rounded-xl flex items-center justify-center transition-all hover:bg-white/5 active:scale-95"
-          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}
-          title="Mon compte"
-        >
-          <User size={18} className="text-[var(--text-secondary)]" />
-        </button>
-
-        <AnimatePresence>
-          {open && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="absolute right-0 top-full mt-2 rounded-2xl overflow-hidden z-20 w-52 glass border-strong shadow-xl p-1"
-            >
-              <button
-                onClick={() => { setShowChangePassword(true); setOpen(false); }}
-                className="w-full px-4 py-2.5 text-left text-sm transition-colors hover:bg-white/5 rounded-xl flex items-center gap-3"
-                style={{ color: 'var(--text-primary)' }}
-              >
-                <Key size={15} className="text-[var(--text-secondary)]" />
-                Changer le mot de passe
-              </button>
-              <button
-                onClick={() => { window.location.href = '/extension/pair'; }}
-                className="w-full px-4 py-2.5 text-left text-sm transition-colors hover:bg-white/5 rounded-xl flex items-center gap-3"
-                style={{ color: 'var(--text-primary)' }}
-              >
-                <ScanLine size={15} className="text-[var(--text-secondary)]" />
-                Extensions Chrome
-              </button>
-              <div className="h-px bg-[var(--border)] my-1 mx-2" />
-              <button
-                onClick={() => supabase.auth.signOut()}
-                className="w-full px-4 py-2.5 text-left text-sm transition-colors hover:bg-red-500/10 rounded-xl flex items-center gap-3"
-                style={{ color: 'var(--red, #ef4444)' }}
-              >
-                <LogOut size={15} />
-                Déconnexion
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+      <button
+        ref={anchor}
+        onClick={() => setOpen((v) => !v)}
+        className={compact
+          ? 'flex h-9 w-9 items-center justify-center rounded-full bg-[var(--bg-elevated)] text-[13px] font-semibold text-[var(--text-primary)] ring-1 ring-[var(--border)]'
+          : 'flex w-full items-center gap-2.5 rounded-lg p-2 text-left transition-colors hover:bg-[var(--bg-elevated)]'}
+        aria-label="Mon compte"
+        aria-expanded={open}
+      >
+        {compact ? initial : (
+          <>
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--bg-hover)] text-[13px] font-semibold text-[var(--text-primary)]">{initial}</span>
+            <span className="min-w-0 flex-1 truncate text-[13px] text-[var(--text-secondary)]">{email}</span>
+            <ChevronsUpDown size={15} className="shrink-0 text-[var(--text-muted)]" />
+          </>
+        )}
+      </button>
+      <Popover anchorRef={anchor} open={open} onClose={() => setOpen(false)} width={240} align={compact ? 'end' : 'start'}>
+        <div className="p-1">
+          {compact && <div className="truncate px-2.5 pb-1.5 pt-2 text-xs text-[var(--text-muted)]">{email}</div>}
+          <button className="ui-menu-item" onClick={() => { setOpen(false); onShare(); }}>
+            <Share2 size={15} className="text-[var(--text-secondary)]" /> Partager ma collection
+          </button>
+          <button className="ui-menu-item" onClick={() => { window.location.href = '/extension/pair'; }}>
+            <Puzzle size={15} className="text-[var(--text-secondary)]" /> Extension Chrome
+          </button>
+          <button className="ui-menu-item" onClick={() => { setShowChangePassword(true); setOpen(false); }}>
+            <Key size={15} className="text-[var(--text-secondary)]" /> Changer le mot de passe
+          </button>
+          <div className="mx-1 my-1 h-px bg-[var(--border)]" />
+          <button className="ui-menu-item !text-[var(--red)]" onClick={() => supabase.auth.signOut()}>
+            <LogOut size={15} /> Déconnexion
+          </button>
+        </div>
+      </Popover>
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
     </>
   );
 }
 
-function AddDropdown({ activeView, onSelect }: { activeView: string; onSelect: (view: ActiveView) => void }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const isActive = activeView === 'add_card' || activeView === 'studio' || activeView === 'batch';
-
-  useEffect(() => {
-    if (!open) return;
-    function handle(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', handle);
-    return () => document.removeEventListener('mousedown', handle);
-  }, [open]);
-
-  const options = [
-    { id: 'add_card', label: 'Ajout rapide', desc: 'Une carte avec IA', icon: Plus },
-    { id: 'studio', label: 'Studio photo', desc: 'Session multi-cartes', icon: ScanLine },
-    { id: 'batch', label: 'Import en lot', desc: 'Glisser-déposer', icon: Upload },
-  ] as const;
+function Sidebar({ isAdmin, email, onShare }: { isAdmin: boolean; email: string; onShare: () => void }) {
+  const { activeView, setActiveView } = useAppStore();
+  const { main, tools, cardCount } = useNavItems(isAdmin);
 
   return (
-    <div ref={ref} className="relative">
-      <button
-        onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 px-4 sm:px-5 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 shadow-lg"
-        style={
-          isActive
-            ? { background: 'var(--accent)', color: '#09090B' }
-            : { background: 'var(--bg-elevated)', color: 'var(--text-primary)', border: '1px solid var(--border-strong)' }
-        }
-      >
-        <Plus size={18} strokeWidth={3} />
-        <span className="hidden sm:inline">Ajouter</span>
-        <ChevronDown size={13} className={`hidden sm:block transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
-      </button>
-
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: 8, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.95 }}
-            className="absolute right-0 top-full mt-2 w-52 glass border-strong rounded-2xl shadow-2xl p-1.5 z-50"
-          >
-            {options.map((opt) => (
-              <button
-                key={opt.id}
-                onClick={() => { onSelect(opt.id); setOpen(false); }}
-                className="flex items-center gap-3 w-full px-3.5 py-2.5 text-left rounded-xl transition-all hover:bg-white/5"
-                style={{ color: activeView === opt.id ? 'var(--accent)' : 'var(--text-primary)' }}
-              >
-                <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${activeView === opt.id ? 'bg-[var(--accent-dim)]' : 'bg-white/5'}`}>
-                  <opt.icon size={14} className={activeView === opt.id ? 'text-[var(--accent)]' : 'text-white/40'} />
-                </div>
-                <div>
-                  <div className="text-sm font-bold leading-none mb-0.5">{opt.label}</div>
-                  <div className="text-[10px] text-white/30">{opt.desc}</div>
-                </div>
-              </button>
-            ))}
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+    <aside className="desktop-only flex h-full w-60 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-secondary)]">
+      <div className="flex h-14 items-center px-4">
+        <button onClick={() => setActiveView('dashboard')} className="rounded-lg focus-visible:outline-2 focus-visible:outline-[var(--accent)]">
+          <Logo subtitle={`${cardCount} cartes`} />
+        </button>
+      </div>
+      <div className="px-3 pb-3">
+        <AddMenu onSelect={setActiveView} variant="sidebar" />
+      </div>
+      <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-1" aria-label="Navigation principale">
+        <div className="space-y-0.5">
+          {main.map((item) => (
+            <NavButton key={item.id} item={item} active={activeView === item.id} onClick={() => setActiveView(item.id)} />
+          ))}
+        </div>
+        <div className="space-y-0.5">
+          <div className="px-2.5 pb-1 text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">Outils</div>
+          {tools.map((item) => (
+            <NavButton key={item.id} item={item} active={activeView === item.id} onClick={() => setActiveView(item.id)} />
+          ))}
+        </div>
+      </nav>
+      <div className="space-y-2 border-t border-[var(--border)] p-3">
+        {isAdmin && <ImpersonateSelector />}
+        <AccountMenu email={email} onShare={onShare} />
+      </div>
+    </aside>
   );
 }
 
-function Header({ onShare, isAdmin }: { onShare: () => void; isAdmin: boolean }) {
+function MobileTopBar({ isAdmin, email, onShare }: { isAdmin: boolean; email: string; onShare: () => void }) {
   const { activeView, setActiveView } = useAppStore();
-  const { data: cards = [] } = useCards();
-  const draftCount = cards.filter((c) => c.status === 'draft').length;
-  const { data: shareRequests = [] } = useRequests();
-  const newRequests = shareRequests.filter((r) => r.status === 'new').length;
-  const [toolsOpen, setToolsOpen] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  return (
+    <header className="mobile-only sticky top-0 z-40 flex h-14 shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--bg-primary)]/90 px-4 pt-[env(safe-area-inset-top)] backdrop-blur-xl">
+      <button onClick={() => setActiveView('dashboard')} className="flex min-w-0 items-center gap-2.5">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-sm font-extrabold text-[var(--on-accent)]">C</div>
+        <span className="truncate text-[15px] font-semibold text-[var(--text-primary)]">{VIEW_TITLES[activeView] ?? 'CardVaults'}</span>
+      </button>
+      <div className="flex items-center gap-2">
+        {isAdmin && <ImpersonateSelector compact />}
+        <AddMenu onSelect={setActiveView} variant="icon" />
+        <AccountMenu email={email} onShare={onShare} compact />
+      </div>
+    </header>
+  );
+}
 
-  const mainNav = [
-    { id: 'dashboard', label: 'Vue d\'ensemble', icon: LayoutDashboard },
-    { id: 'collection', label: 'Collection', icon: Library },
-    { id: 'sales', label: 'Ventes', icon: TrendingUp },
-    { id: 'requests', label: 'Demandes', icon: Inbox },
-  ] as const;
+function MobileTabBar({ isAdmin }: { isAdmin: boolean }) {
+  const { activeView, setActiveView } = useAppStore();
+  const { main, tools } = useNavItems(isAdmin);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const primaryIds: ActiveView[] = ['dashboard', 'collection', 'sales', 'requests'];
+  const primary = primaryIds.map((id) => main.find((m) => m.id === id)!).filter(Boolean);
+  const overflow = [...main.filter((m) => !primaryIds.includes(m.id)), ...tools];
+  const overflowActive = overflow.some((o) => o.id === activeView);
+  const overflowBadge = overflow.reduce((n, o) => n + (o.badge ?? 0), 0);
 
-  const toolNav = [
-    { id: 'players', label: 'Joueurs', icon: Users },
-    { id: 'grading', label: 'Grading', icon: GraduationCap },
-    { id: 'ebay', label: 'eBay', icon: ShoppingBag },
-    { id: 'studio', label: 'Studio photo', icon: ScanLine },
-    { id: 'batch', label: 'Import lot', icon: Upload },
-    ...(isAdmin ? [{ id: 'compare' as const, label: 'Comparer IA', icon: Database }] : []),
-    ...(isAdmin ? [{ id: 'migration' as const, label: 'Migration R2', icon: HardDrive }] : []),
-  ] as const;
+  function go(id: ActiveView) {
+    setActiveView(id);
+    setMoreOpen(false);
+  }
 
-  // Auto-close tools when switching views
-  const handleViewChange = (view: typeof activeView) => {
-    setActiveView(view);
-    setToolsOpen(false);
-    setMobileMenuOpen(false);
-  };
+  const tab = (active: boolean) =>
+    `relative flex flex-1 flex-col items-center justify-center gap-0.5 pt-1.5 text-[10px] font-medium transition-colors ${
+      active ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'
+    }`;
 
   return (
-    <header className="px-4 sm:px-6 py-3 sticky top-0 z-50 glass border-strong rounded-b-[2rem] mx-2 mt-2 overflow-visible">
-      <div className="max-w-7xl mx-auto flex items-center justify-between">
-        <button
-          onClick={() => handleViewChange('dashboard')}
-          className="flex items-center gap-3 group transition-transform active:scale-95 shrink-0"
-        >
-          <div
-            className="w-9 h-9 rounded-xl flex items-center justify-center text-base font-black transition-all group-hover:scale-105"
-            style={{
-              background: 'linear-gradient(135deg, var(--accent) 0%, var(--accent-light) 100%)',
-              color: '#09090B',
-              boxShadow: '0 0 25px var(--accent-glow)',
-            }}
-          >
-            C
-          </div>
-          <div className="hidden sm:block text-left">
-            <div className="text-sm font-bold leading-none text-white tracking-tight">
-              Card<span className="text-[var(--accent)]">Vaults</span>
-            </div>
-            <div className="text-[10px] mt-1 font-medium text-[var(--text-muted)]">
-              {cards.length} carte{cards.length !== 1 ? 's' : ''}
-            </div>
-          </div>
-        </button>
-
-        {/* Desktop Nav */}
-        <nav className="desktop-only flex items-center gap-1.5">
-          {mainNav.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => handleViewChange(item.id)}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium transition-all hover:bg-white/5 relative group"
-              style={{ color: activeView === item.id ? 'var(--text-primary)' : 'var(--text-secondary)' }}
-            >
-              <item.icon size={16} className={activeView === item.id ? 'text-[var(--accent)]' : 'text-current'} />
-              <span>{item.label}</span>
-              {item.id === 'requests' && newRequests > 0 && (
-                <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[10px] font-black text-black">
-                  {newRequests}
-                </span>
-              )}
-              {activeView === item.id && (
-                <motion.div
-                  layoutId="nav-active"
-                  className="absolute inset-0 bg-white/5 border border-white/10 rounded-xl -z-10 shadow-sm"
-                />
-              )}
-            </button>
-          ))}
-
-          <div className="relative">
-            <button
-              onClick={() => { setToolsOpen(!toolsOpen); setMobileMenuOpen(false); }}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-sm font-medium transition-all hover:bg-white/5"
-              style={{
-                color: toolNav.some(t => t.id === activeView) ? 'var(--text-primary)' : 'var(--text-secondary)',
-                background: toolsOpen || toolNav.some(t => t.id === activeView) ? 'var(--bg-elevated)' : 'transparent'
-              }}
-            >
-              <Plus size={16} />
-              <span>Outils</span>
-              <ChevronDown size={14} className={`transition-transform duration-200 ${toolsOpen ? 'rotate-180' : ''}`} />
-            </button>
-
-            <AnimatePresence>
-              {toolsOpen && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                  className="absolute top-full left-0 mt-2 w-48 glass border-strong rounded-2xl shadow-2xl p-1.5 z-50 overflow-hidden"
-                >
-                  {toolNav.map((tool) => (
-                    <button
-                      key={tool.id}
-                      onClick={() => handleViewChange(tool.id)}
-                      className="flex items-center gap-3 w-full px-3.5 py-2.5 text-left text-sm font-medium rounded-xl transition-all hover:bg-white/5"
-                      style={{ color: activeView === tool.id ? 'var(--accent)' : 'var(--text-primary)' }}
-                    >
-                      <tool.icon size={16} />
-                      {tool.label}
-                    </button>
-                  ))}
-                  <div className="h-px bg-white/5 my-1 mx-2" />
-                  <button
-                    onClick={() => { onShare(); setToolsOpen(false); }}
-                    className="flex items-center gap-3 w-full px-3.5 py-2.5 text-left text-sm font-medium rounded-xl transition-all hover:bg-white/5"
-                    style={{ color: 'var(--text-primary)' }}
-                  >
-                    <Share2 size={16} className="text-[var(--text-secondary)]" />
-                    Partager ma collection
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-        </nav>
-
-        <div className="flex items-center gap-2">
-          {draftCount > 0 && (
-            <button
-              onClick={() => handleViewChange('review')}
-              className="relative px-3 sm:px-4 py-2 rounded-xl text-sm font-bold transition-all flex items-center gap-2 bg-[var(--accent-dim)] border border-[var(--border-accent)] text-[var(--accent)] active:scale-95"
-            >
-              <span className="hidden sm:inline">Brouillons</span>
-              <span className="bg-[var(--accent)] text-black text-[10px] h-4 min-w-[16px] px-1 flex items-center justify-center rounded-full">
-                {draftCount}
+    <>
+      <nav
+        className="mobile-only fixed inset-x-0 bottom-0 z-40 flex border-t border-[var(--border)] bg-[var(--bg-secondary)]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl"
+        aria-label="Navigation"
+      >
+        {primary.map((item) => (
+          <button key={item.id} onClick={() => go(item.id)} className={`${tab(activeView === item.id)} h-14`}>
+            <item.icon size={21} />
+            {item.label === 'Vue d\'ensemble' ? 'Accueil' : item.label}
+            {!!item.badge && (
+              <span className="absolute left-1/2 top-1 ml-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[10px] font-semibold text-[var(--on-accent)]">
+                {item.badge}
               </span>
-            </button>
-          )}
-
-          <AddDropdown activeView={activeView} onSelect={handleViewChange} />
-
-          {isAdmin && <ImpersonateSelector />}
-
-          <UserMenu />
-
-          {/* Mobile Menu Toggle */}
-          <button
-            onClick={() => { setMobileMenuOpen(!mobileMenuOpen); setToolsOpen(false); }}
-            className="mobile-only w-10 h-10 flex flex-col items-center justify-center gap-1 rounded-xl bg-white/5 border border-white/5"
-          >
-            <div className={`w-5 h-0.5 bg-white transition-all ${mobileMenuOpen ? 'rotate-45 translate-y-1.5' : ''}`} />
-            <div className={`w-5 h-0.5 bg-white transition-all ${mobileMenuOpen ? 'opacity-0' : ''}`} />
-            <div className={`w-5 h-0.5 bg-white transition-all ${mobileMenuOpen ? '-rotate-45 -translate-y-1.5' : ''}`} />
+            )}
           </button>
-        </div>
-      </div>
+        ))}
+        <button onClick={() => setMoreOpen(true)} className={`${tab(overflowActive || moreOpen)} h-14`}>
+          <Menu size={21} />
+          Plus
+          {overflowBadge > 0 && <span className="absolute left-1/2 top-1.5 ml-2 h-2 w-2 rounded-full bg-[var(--accent)]" />}
+        </button>
+      </nav>
 
-      {/* Mobile Nav Overlay */}
       <AnimatePresence>
-        {mobileMenuOpen && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="lg:hidden mt-4 pt-4 border-t border-white/5 overflow-hidden"
-          >
-            <div className="grid grid-cols-2 gap-2 pb-2">
-              {[...mainNav, ...toolNav].map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => handleViewChange(item.id)}
-                  className="flex items-center gap-3 p-3 rounded-2xl text-sm font-semibold transition-all"
-                  style={{
-                    background: activeView === item.id ? 'var(--accent-dim)' : 'bg-white/5',
-                    color: activeView === item.id ? 'var(--accent)' : 'var(--text-secondary)',
-                    border: activeView === item.id ? '1px solid var(--border-accent)' : '1px solid transparent'
-                  }}
-                >
-                  <item.icon size={18} />
-                  {item.label}
-                </button>
-              ))}
-              <button
-                onClick={() => { onShare(); setMobileMenuOpen(false); }}
-                className="col-span-2 flex items-center gap-3 rounded-2xl border border-white/5 bg-white/5 p-3 text-sm font-semibold text-[var(--text-secondary)] transition-all active:scale-[0.98]"
-              >
-                <Share2 size={18} />
-                Partager ma collection
-              </button>
-            </div>
+        {moreOpen && (
+          <motion.div className="mobile-only fixed inset-0 z-[60]" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            <div className="absolute inset-0 bg-black/60" onClick={() => setMoreOpen(false)} />
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 32, stiffness: 380 }}
+              className="absolute inset-x-0 bottom-0 rounded-t-2xl border-t border-[var(--border-strong)] bg-[var(--bg-card)] p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]"
+            >
+              <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--border-strong)]" />
+              <div className="grid grid-cols-2 gap-1">
+                {overflow.map((item) => (
+                  <NavButton key={item.id} item={item} active={activeView === item.id} onClick={() => go(item.id)} />
+                ))}
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
-    </header>
+    </>
   );
 }
 
@@ -458,7 +415,7 @@ function ImpersonateBanner() {
   );
 }
 
-function ImpersonateSelector() {
+function ImpersonateSelector({ compact = false }: { compact?: boolean }) {
   const [users, setUsers] = useState<{ id: string; email: string }[]>([]);
   const [open, setOpen] = useState(false);
   const { impersonatedUserId, setImpersonate, clearImpersonate } = useImpersonateStore();
@@ -493,10 +450,10 @@ function ImpersonateSelector() {
   }
 
   return (
-    <div ref={ref} className="relative ml-2">
+    <div ref={ref} className={compact ? 'relative' : 'relative w-full'}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold transition-all hover:bg-white/10"
+        className={`flex items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors hover:bg-white/10 ${compact ? 'h-9' : 'h-8 w-full'}`}
         style={{
           background: impersonatedUserId ? 'var(--red, #ef4444)' : 'var(--bg-elevated)',
           color: impersonatedUserId ? '#fff' : 'var(--text-secondary)',
@@ -505,8 +462,8 @@ function ImpersonateSelector() {
         title="Impersonnifier un utilisateur"
       >
         <User size={13} />
-        <span className="hidden sm:inline">{impersonatedUserId ? '⚠ Admin' : 'Switch user'}</span>
-        <ChevronDown size={11} className={`transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+        {!compact && <span className="flex-1 truncate text-left">{impersonatedUserId ? '⚠ Mode admin' : 'Changer d\'utilisateur'}</span>}
+        <ChevronDown size={12} className={`transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
       </button>
 
       <AnimatePresence>
@@ -515,7 +472,7 @@ function ImpersonateSelector() {
             initial={{ opacity: 0, y: 8, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.95 }}
-            className="absolute right-0 top-full mt-2 w-64 glass border-strong rounded-2xl shadow-2xl p-1.5 z-50 max-h-72 overflow-y-auto"
+            className={`popover-surface absolute z-50 max-h-72 w-64 overflow-y-auto p-1 ${compact ? 'right-0 top-full mt-2' : 'bottom-full left-0 mb-2'}`}
           >
             {impersonatedUserId && (
               <>
@@ -546,7 +503,6 @@ function ImpersonateSelector() {
 
 function AppShell() {
   const { session, loading } = useAuth();
-  const { activeView } = useAppStore();
   const [showShare, setShowShare] = useState(false);
 
   // Détecter le token de reset dans le hash de l'URL
@@ -579,38 +535,75 @@ function AppShell() {
 
   if (window.location.pathname === '/extension/pair') return <ExtensionPairView />;
 
-  const isAdmin = session.user.email === 'xavier.andrieux@gmail.com';
+  return <AuthedShell email={session.user.email ?? ''} showShare={showShare} setShowShare={setShowShare} />;
+}
+
+function AuthedShell({ email, showShare, setShowShare }: { email: string; showShare: boolean; setShowShare: (v: boolean) => void }) {
+  const { activeView, setActiveView } = useAppStore();
+  const isAdmin = email === 'xavier.andrieux@gmail.com';
+
+  // Retour du flux OAuth eBay (?ebay=connected | ?ebay=error&reason=...) :
+  // navigue vers la vue eBay, qui lit et nettoie ces paramètres elle-même.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has('ebay')) setActiveView('ebay');
+  }, [setActiveView]);
+
+  // Vue courante ⇄ URL (#/collection) : le bouton retour du navigateur et le
+  // rafraîchissement fonctionnent enfin.
+  useEffect(() => {
+    if (viewFromHash() === activeView) return;
+    const url = `${window.location.pathname}${window.location.search}#/${activeView}`;
+    if (window.location.hash) window.history.pushState(null, '', url);
+    else window.history.replaceState(null, '', url);
+  }, [activeView]);
+  useEffect(() => {
+    const onPop = () => {
+      const v = viewFromHash();
+      if (v) setActiveView(v);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [setActiveView]);
+
+  // Scroll remis en haut à chaque changement de vue.
+  const mainRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { mainRef.current?.scrollTo(0, 0); }, [activeView]);
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
-      <Header onShare={() => setShowShare(true)} isAdmin={isAdmin} />
-      <main className="flex-1 overflow-hidden relative">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeView}
-            initial={{ opacity: 0, x: 10 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -10 }}
-            transition={{ duration: 0.2, ease: "easeOut" }}
-            className="absolute inset-0 overflow-auto"
-          >
-            {activeView === 'dashboard' && <DashboardView />}
-            {activeView === 'collection' && <CollectionView />}
-            {activeView === 'add_card' && <AddCardView />}
-            {activeView === 'studio' && <StudioView />}
-            {activeView === 'batch' && <BatchView />}
-            {activeView === 'import_review' && <ImportReviewView />}
-            {activeView === 'review' && <ReviewView />}
-            {activeView === 'sales' && <SalesView />}
-            {activeView === 'compare' && isAdmin && <CompareView />}
-            {activeView === 'players' && <PlayersView />}
-            {activeView === 'grading' && <GradingView />}
-            {activeView === 'ebay' && <EbayView />}
-            {activeView === 'requests' && <RequestsView />}
-            {activeView === 'migration' && isAdmin && <MigrationView />}
-          </motion.div>
-        </AnimatePresence>
-      </main>
+    <div className="flex h-[100dvh] overflow-hidden bg-[var(--bg-primary)]">
+      <Sidebar isAdmin={isAdmin} email={email} onShare={() => setShowShare(true)} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <MobileTopBar isAdmin={isAdmin} email={email} onShare={() => setShowShare(true)} />
+        <main className="relative min-h-0 flex-1 overflow-hidden">
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={activeView}
+              ref={mainRef}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.12 }}
+              className="absolute inset-0 overflow-auto pb-[calc(env(safe-area-inset-bottom)+3.5rem)] lg:pb-0"
+            >
+              {activeView === 'dashboard' && <DashboardView />}
+              {activeView === 'collection' && <CollectionView />}
+              {activeView === 'add_card' && <AddCardView />}
+              {activeView === 'studio' && <StudioView />}
+              {activeView === 'batch' && <BatchView />}
+              {activeView === 'import_review' && <ImportReviewView />}
+              {activeView === 'review' && <ReviewView />}
+              {activeView === 'sales' && <SalesView />}
+              {activeView === 'compare' && isAdmin && <CompareView />}
+              {activeView === 'players' && <PlayersView />}
+              {activeView === 'grading' && <GradingView />}
+              {activeView === 'ebay' && <EbayView />}
+              {activeView === 'requests' && <RequestsView />}
+              {activeView === 'migration' && isAdmin && <MigrationView />}
+            </motion.div>
+          </AnimatePresence>
+        </main>
+        <MobileTabBar isAdmin={isAdmin} />
+      </div>
       {showShare && <ShareModal onClose={() => setShowShare(false)} />}
       {isAdmin && <ImpersonateBanner />}
     </div>
