@@ -1,19 +1,31 @@
+import type { ReactNode } from 'react';
 import { getCardAlerts, getCardConfidence } from '../../lib/cardQuality';
 import type { Card } from '../../types';
 
+function Pill({ color, children }: { color: string; children: ReactNode }) {
+  return (
+    <span
+      className="inline-flex h-5 shrink-0 items-center whitespace-nowrap rounded-md px-1.5 text-[11px] font-semibold ring-1 ring-inset"
+      style={{
+        color,
+        background: `color-mix(in srgb, ${color} 12%, transparent)`,
+        ['--tw-ring-color' as string]: `color-mix(in srgb, ${color} 22%, transparent)`,
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
 export function ConfidenceBadge({ card }: { card: Partial<Card> }) {
   const confidence = getCardConfidence(card);
-  const tone =
-    confidence.tier === 'high'
-      ? 'bg-emerald-500/15 border-emerald-500/25 text-emerald-300'
-      : confidence.tier === 'medium'
-        ? 'bg-amber-500/15 border-amber-500/25 text-amber-300'
-        : 'bg-red-500/15 border-red-500/25 text-red-300';
+  const color =
+    confidence.tier === 'high' ? 'var(--green)' : confidence.tier === 'medium' ? 'var(--accent)' : 'var(--red)';
 
   return (
-    <div className={`inline-flex items-center rounded-lg border px-2 py-0.5 text-[10px] font-black uppercase tracking-widest ${tone}`}>
-      IA {confidence.value}
-    </div>
+    <Pill color={color}>
+      <span className="tabular">IA {confidence.value}</span>
+    </Pill>
   );
 }
 
@@ -24,18 +36,12 @@ export function AlertChips({ card, limit = 3 }: { card: Partial<Card>; limit?: n
   return (
     <div className="flex flex-wrap gap-1.5">
       {alerts.map((alert) => (
-        <div
+        <Pill
           key={alert.id}
-          className={`rounded-lg border px-2 py-0.5 text-[10px] font-bold ${
-            alert.severity === 'high'
-              ? 'border-red-500/25 bg-red-500/10 text-red-300'
-              : alert.severity === 'medium'
-                ? 'border-amber-500/25 bg-amber-500/10 text-amber-300'
-                : 'border-white/10 bg-white/5 text-white/55'
-          }`}
+          color={alert.severity === 'high' ? 'var(--red)' : alert.severity === 'medium' ? 'var(--accent)' : 'var(--text-secondary)'}
         >
           {alert.label}
-        </div>
+        </Pill>
       ))}
     </div>
   );

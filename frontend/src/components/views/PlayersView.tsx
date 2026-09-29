@@ -1,5 +1,4 @@
 import { useMemo, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
   Users,
   Search,
@@ -10,8 +9,8 @@ import {
   X,
   User as UserIcon,
   Library,
-  RefreshCw,
   ChevronRight,
+  SearchX,
 } from 'lucide-react';
 import { useCards } from '../../hooks/useCards';
 import { useAppStore } from '../../stores/appStore';
@@ -19,6 +18,9 @@ import type { Card } from '../../types';
 import { CardDetail } from '../shared/CardDetail';
 import { cdnImg } from '../../lib/cdn';
 import { buildPlayerCanonical, playerNameKey } from '../../lib/playerName';
+import { Badge, EmptyState, Modal, Page, PageHeader, Spinner, StatTile } from '../ui';
+
+const euro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
 
 interface PlayerStats {
   player: string;
@@ -85,60 +87,56 @@ function buildStats(cards: Card[]): PlayerStats[] {
     .sort((a, b) => b.total - a.total);
 }
 
-function StatCard({ label, value, icon: Icon, accent }: { label: string; value: string | number; icon: any; accent?: boolean }) {
+/** Tirage affiché « /25 » quelle que soit la saisie (« 25 » ou « /25 »). */
+function printRun(n: string): string {
+  return n.includes('/') ? n : `/${n}`;
+}
+
+function Thumb({ card, className = 'h-12 w-9' }: { card: Card | null; className?: string }) {
   return (
-    <div className="p-4 rounded-2xl bg-white/[0.03] border border-white/5 flex flex-col items-center justify-center text-center gap-1.5">
-      <div className={`p-1.5 rounded-lg ${accent ? 'bg-[var(--accent-dim)] text-[var(--accent)]' : 'bg-white/5 text-white/30'}`}>
-        <Icon size={14} />
-      </div>
-      <div className={`text-xl font-black tracking-tight ${accent ? 'text-[var(--accent)]' : 'text-white'}`}>{value}</div>
-      <div className="text-[9px] font-black uppercase tracking-widest text-white/25">{label}</div>
+    <div className={`${className} shrink-0 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--bg-elevated)]`}>
+      {card?.image_front_url ? (
+        <img src={cdnImg(card.image_front_url)} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-[var(--text-muted)]"><UserIcon size={16} /></div>
+      )}
     </div>
   );
 }
 
 function PlayerRow({ stats, onClick }: { stats: PlayerStats; onClick: () => void }) {
+  const mobileMeta = [
+    stats.autos > 0 ? `${stats.autos} auto${stats.autos > 1 ? 's' : ''}` : null,
+    stats.numbered > 0 ? `${stats.numbered} num.` : null,
+  ].filter(Boolean);
+
   return (
-    <motion.button
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
+    <button
       onClick={onClick}
-      className="w-full p-4 rounded-2xl bg-white/[0.03] border border-white/5 hover:bg-white/[0.06] hover:border-white/10 transition-all flex items-center gap-4 group active:scale-[0.99] text-left"
+      className="group flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-[var(--bg-elevated)] sm:px-4"
     >
-      {/* Photo */}
-      <div className="w-12 h-16 rounded-xl bg-white/5 border border-white/5 overflow-hidden shrink-0">
-        {stats.topCard?.image_front_url ? (
-          <img src={cdnImg(stats.topCard.image_front_url)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center opacity-20"><UserIcon size={18} /></div>
-        )}
+      <Thumb card={stats.topCard} />
+
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-[var(--text-primary)]">{stats.player}</p>
+        <p className="tabular mt-0.5 truncate text-xs text-[var(--text-muted)]">
+          {stats.total} carte{stats.total > 1 ? 's' : ''}
+          <span className="sm:hidden">{mobileMeta.length > 0 && ` · ${mobileMeta.join(' · ')}`}</span>
+        </p>
       </div>
 
-      {/* Infos */}
-      <div className="flex-1 min-w-0 flex items-center gap-6">
-        <span className="text-sm font-black text-white w-40 shrink-0 truncate">{stats.player}</span>
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-bold text-white/70 tabular-nums w-16">{stats.total} cartes</span>
-          {stats.autos > 0 && (
-            <span className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400 text-xs font-bold">
-              <Star size={10} />{stats.autos} Auto
-            </span>
-          )}
-          {stats.patches > 0 && (
-            <span className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-bold">
-              <Layers size={10} />{stats.patches} Mémo
-            </span>
-          )}
-          {stats.numbered > 0 && (
-            <span className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[var(--accent-dim)] border border-[var(--border-accent)] text-[var(--accent)] text-xs font-bold">
-              <Hash size={10} />{stats.numbered} #
-            </span>
-          )}
-        </div>
+      <div className="hidden shrink-0 items-center gap-1.5 sm:flex">
+        {stats.autos > 0 && <Badge tone="green"><Star size={11} />{stats.autos} auto{stats.autos > 1 ? 's' : ''}</Badge>}
+        {stats.patches > 0 && <Badge tone="red"><Layers size={11} />{stats.patches} patch{stats.patches > 1 ? 's' : ''}</Badge>}
+        {stats.numbered > 0 && <Badge tone="accent"><Hash size={11} />{stats.numbered} num.</Badge>}
       </div>
 
-      <ChevronRight size={16} className="text-white/10 group-hover:text-white/40 transition-colors shrink-0" />
-    </motion.button>
+      <span className={`tabular w-16 shrink-0 text-right text-[13px] font-medium sm:w-20 ${stats.totalSaleEstimate > 0 ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
+        {stats.totalSaleEstimate > 0 ? euro.format(stats.totalSaleEstimate) : '—'}
+      </span>
+
+      <ChevronRight size={16} className="shrink-0 text-[var(--text-muted)] group-hover:text-[var(--text-primary)]" />
+    </button>
   );
 }
 
@@ -154,78 +152,72 @@ function PlayerModal({ stats, onClose }: { stats: PlayerStats; onClose: () => vo
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xl" onClick={onClose}>
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="panel w-full max-w-2xl rounded-[32px] overflow-hidden flex flex-col max-h-[88vh]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="p-6 border-b border-white/5 shrink-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-[var(--accent-dim)] border border-[var(--border-accent)] flex items-center justify-center text-[var(--accent)]">
-                <UserIcon size={20} />
-              </div>
-              <div>
-                <h3 className="text-xl font-black text-white leading-none">{stats.player}</h3>
-                <p className="text-xs text-white/30 font-medium mt-0.5">{stats.total} cartes dans la collection</p>
-              </div>
-            </div>
-            <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-xl bg-white/5 text-white/40 hover:text-white transition-colors">
-              <X size={18} />
+    <>
+      <Modal
+        onClose={onClose}
+        // Sous CardDetail (z-50) qui s'ouvre par-dessus, au-dessus de la barre d'onglets (z-40).
+        zIndex={45}
+        dismissible={!selectedCard}
+        size="lg"
+        title={stats.player}
+        subtitle={<span className="tabular">{stats.total} carte{stats.total > 1 ? 's' : ''} dans la collection</span>}
+        icon={
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--accent-dim)] text-[var(--accent)]">
+            <UserIcon size={18} />
+          </div>
+        }
+        footer={
+          <>
+            <button onClick={onClose} className="ui-btn">Fermer</button>
+            <button onClick={openInCollection} className="ui-btn ui-btn-primary">
+              <Library size={15} />
+              Voir dans la collection
             </button>
+          </>
+        }
+      >
+        <div className="space-y-5">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <StatTile label="Autos" value={stats.autos} icon={Star} />
+            <StatTile label="Patchs" value={stats.patches} icon={Layers} />
+            <StatTile label="Numérotées" value={stats.numbered} icon={Hash} />
+            <StatTile
+              label="Estimation"
+              value={stats.totalSaleEstimate > 0 ? euro.format(stats.totalSaleEstimate) : '—'}
+              hint={stats.totalPurchase > 0 ? `Achat ${euro.format(stats.totalPurchase)}` : undefined}
+              icon={Euro}
+              accent={stats.totalSaleEstimate > 0}
+            />
           </div>
-          <button
-            onClick={openInCollection}
-            className="mt-4 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-white/60 text-xs font-bold uppercase tracking-widest hover:bg-white/10 hover:text-white transition-all flex items-center gap-2"
-          >
-            <Library size={12} />
-            Voir dans la collection
-          </button>
-        </div>
 
-        {/* Stats */}
-        <div className="px-6 py-5 border-b border-white/5 shrink-0">
-          <div className="grid grid-cols-4 gap-3">
-            <StatCard label="Autos" value={stats.autos} icon={Star} />
-            <StatCard label="Memorabilia" value={stats.patches} icon={Layers} />
-            <StatCard label="Numérotés" value={stats.numbered} icon={Hash} />
-            <StatCard label="Estimation" value={`${stats.totalSaleEstimate.toFixed(0)}€`} icon={Euro} accent />
-          </div>
+          <section>
+            <h3 className="mb-2 text-sm font-semibold text-[var(--text-primary)]">Cartes</h3>
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
+              {stats.cards.map((card) => (
+                <button
+                  key={card.id}
+                  onClick={() => setSelectedCard(card)}
+                  className="relative aspect-[3/4] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] transition-colors hover:border-[var(--border-strong)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+                  title={[card.year, card.set_name, card.parallel_name !== 'Base' ? card.parallel_name : null].filter(Boolean).join(' · ')}
+                >
+                  {card.image_front_url ? (
+                    <img src={cdnImg(card.image_front_url)} alt={card.player ?? ''} loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center text-[var(--text-muted)]"><Library size={18} /></div>
+                  )}
+                  {card.numbered && (
+                    <span className="tabular absolute right-1 top-1 rounded-md bg-black/75 px-1.5 py-0.5 text-[11px] font-medium text-[var(--accent)]">
+                      {printRun(card.numbered)}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </section>
         </div>
-
-        {/* Cards grid */}
-        <div className="p-6 overflow-y-auto flex-1">
-          <p className="text-[9px] font-black uppercase tracking-[0.2em] text-white/25 mb-4">Toute la collection</p>
-          <div className="grid grid-cols-4 sm:grid-cols-5 gap-2.5">
-            {stats.cards.map((card) => (
-              <button
-                key={card.id}
-                onClick={() => setSelectedCard(card)}
-                className="group relative aspect-[3/4] rounded-xl overflow-hidden bg-white/5 border border-white/5 hover:border-white/20 transition-all"
-              >
-                {card.image_front_url ? (
-                  <img src={cdnImg(card.image_front_url)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center opacity-10"><Library size={18} /></div>
-                )}
-                {card.numbered && (
-                  <div className="absolute top-1.5 right-1.5 px-1 py-0.5 rounded bg-black/60 backdrop-blur-md border border-white/10 text-[8px] font-black text-[var(--accent)]">
-                    /{card.numbered}
-                  </div>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      </motion.div>
-      <AnimatePresence>
-        {selectedCard && <CardDetail card={selectedCard} onClose={() => setSelectedCard(null)} />}
-      </AnimatePresence>
-    </div>
+      </Modal>
+      {selectedCard && <CardDetail card={selectedCard} onClose={() => setSelectedCard(null)} />}
+    </>
   );
 }
 
@@ -255,74 +247,85 @@ export function PlayersView() {
 
   if (isLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <RefreshCw size={32} className="text-[var(--accent)] animate-spin opacity-20" />
-      </div>
+      <Page>
+        <PageHeader title="Joueurs" />
+        <Spinner label="Chargement…" className="py-24" />
+      </Page>
     );
   }
 
   return (
-    <div className="flex-1 overflow-auto">
-      <div className="max-w-5xl mx-auto px-6 py-10">
+    <Page>
+      <PageHeader
+        title="Joueurs"
+        subtitle={<span className="tabular">{totals.players} joueurs · {totals.cards} cartes</span>}
+      />
 
-        {/* Header */}
-        <div className="flex items-end justify-between mb-8">
-          <div>
-            <h2 className="text-2xl font-black text-white tracking-tight">Joueurs</h2>
-            <p className="text-sm text-white/30 font-medium mt-0.5">
-              {totals.players} joueurs · {totals.cards} cartes
-            </p>
-          </div>
+      {allStats.length === 0 ? (
+        <div className="ui-card">
+          <EmptyState
+            icon={Users}
+            title="Aucun joueur pour l'instant"
+            description="Les joueurs apparaissent ici dès que tu ajoutes des cartes à ta collection."
+          />
         </div>
+      ) : (
+        <>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="relative min-w-0 flex-1">
+              <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+              <input
+                type="search"
+                placeholder="Rechercher un joueur…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="ui-input pl-9 pr-9 [&::-webkit-search-cancel-button]:hidden"
+                aria-label="Rechercher un joueur"
+              />
+              {search && (
+                <button
+                  onClick={() => setSearch('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                  aria-label="Effacer la recherche"
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[var(--text-muted)]">Trier par</span>
+              <div className="ui-segmented" role="tablist" aria-label="Trier par">
+                {([['count', 'Cartes'], ['value', 'Valeur'], ['autos', 'Autos']] as const).map(([key, label]) => (
+                  <button key={key} role="tab" aria-selected={sortBy === key} data-active={sortBy === key} onClick={() => setSortBy(key)}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
 
-        {/* Search + Sort */}
-        <div className="flex items-center gap-3 mb-6">
-          <div className="relative flex-1">
-            <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-white/20" />
-            <input
-              type="text"
-              placeholder="Rechercher un joueur…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="w-full rounded-xl pl-10 pr-4 py-2.5 bg-white/5 border border-white/10 text-sm font-medium outline-none focus:bg-white/8 focus:border-white/20 transition-all placeholder:text-white/20"
-            />
-          </div>
-          <div className="flex p-1 rounded-xl bg-white/5 border border-white/10">
-            {([['count', 'Cartes'], ['value', 'Valeur'], ['autos', 'Autos']] as const).map(([key, label]) => (
-              <button
-                key={key}
-                onClick={() => setSortBy(key)}
-                className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${sortBy === key ? 'bg-white/10 text-white' : 'text-white/30 hover:text-white/60'}`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* List */}
-        {filtered.length === 0 ? (
-          <div className="p-16 rounded-2xl bg-white/[0.02] border border-white/5 flex flex-col items-center text-center">
-            <Users size={28} className="text-white/10 mb-4" />
-            <h3 className="text-base font-black text-white">Aucun résultat</h3>
-            <p className="text-sm text-white/30 mt-1">Modifiez votre recherche.</p>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <AnimatePresence mode="popLayout">
+          {filtered.length === 0 ? (
+            <div className="ui-card">
+              <EmptyState
+                icon={SearchX}
+                title="Aucun joueur ne correspond"
+                description={`Aucun résultat pour « ${search} ».`}
+                action={<button onClick={() => setSearch('')} className="ui-btn"><X size={14} /> Effacer la recherche</button>}
+              />
+            </div>
+          ) : (
+            <div className="ui-card divide-y divide-[var(--border)] overflow-hidden">
               {filtered.map((stats) => (
                 <PlayerRow key={stats.player} stats={stats} onClick={() => setSelectedPlayer(stats)} />
               ))}
-            </AnimatePresence>
-          </div>
-        )}
-      </div>
+            </div>
+          )}
+        </>
+      )}
 
-      <AnimatePresence>
-        {selectedPlayer && (
-          <PlayerModal stats={selectedPlayer} onClose={() => setSelectedPlayer(null)} />
-        )}
-      </AnimatePresence>
-    </div>
+      {selectedPlayer && (
+        <PlayerModal stats={selectedPlayer} onClose={() => setSelectedPlayer(null)} />
+      )}
+    </Page>
   );
 }

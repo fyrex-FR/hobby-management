@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Users,
   Search,
@@ -8,7 +8,6 @@ import {
   Building,
   Target,
   Globe,
-  Settings2,
   ExternalLink,
   LayoutGrid,
   Maximize2,
@@ -18,10 +17,18 @@ import {
   RefreshCw,
   Heart,
   Send,
-  Copy
+  Copy,
+  Check,
+  ChevronDown,
+  ArrowUpDown,
+  SearchX,
+  ImageOff,
+  Link2Off,
 } from 'lucide-react';
 import type { Card } from '../../types';
 import { RookieBadge } from '../shared/RookieBadge';
+import { Popover } from '../shared/Popover';
+import { Badge, EmptyState, Field, Modal, Spinner } from '../ui';
 import { playerLastName, stripDiacritics } from '../../lib/playerName';
 import { cdnImg } from '../../lib/cdn';
 
@@ -61,14 +68,6 @@ const FILTER_LABELS: Record<string, string> = {
   all: 'Collection complète',
   collection: 'Collection',
   a_vendre: 'À vendre',
-};
-const GRADE_COLOR: Record<string, string> = {
-  '10': '#10b981',
-  '9.5': '#10b981',
-  '9': '#6366f1',
-  '8.5': '#8b5cf6',
-  '8': 'var(--accent)',
-  '7.5': 'var(--accent)',
 };
 const GROUP_LABELS: Record<GroupBy, string> = {
   none: 'Aucun',
@@ -138,6 +137,68 @@ function sortCards(list: Card[], sortBy: SortBy): Card[] {
   });
 }
 
+const euro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2, minimumFractionDigits: 0 });
+function formatEuro(v: number): string {
+  return euro.format(v);
+}
+
+/* ── Primitives locales (page publique, hors shell) ───────── */
+
+/** Marque CardVaults : carré accent + « C ». */
+function LogoMark({ size = 'sm' }: { size?: 'sm' | 'md' }) {
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] font-extrabold text-[var(--on-accent)] ${
+        size === 'md' ? 'h-10 w-10 text-lg' : 'h-7 w-7 text-sm'
+      }`}
+      aria-hidden="true"
+    >
+      C
+    </span>
+  );
+}
+
+function ShareHeader() {
+  return (
+    <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--bg-primary)]">
+      <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between gap-3 px-4 sm:px-6">
+        <div className="flex items-center gap-2.5">
+          <LogoMark />
+          <span className="text-sm font-bold tracking-tight text-[var(--text-primary)]">CardVaults</span>
+        </div>
+        <span className="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+          <Globe size={13} />
+          Collection partagée
+        </span>
+      </div>
+    </header>
+  );
+}
+
+/** Pastille posée sur la photo : fond sombre translucide, texte coloré. */
+function PhotoTag({ children, color = 'var(--text-primary)', background }: { children: ReactNode; color?: string; background?: string }) {
+  return (
+    <span
+      className={`tabular inline-flex h-5 items-center rounded-md px-1.5 text-[10px] font-semibold ring-1 ring-white/10 ${background ? '' : 'bg-black/70'}`}
+      style={{ color, background }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function SectionHeading({ title, count }: { title: ReactNode; count: number }) {
+  return (
+    <div className="flex items-center gap-2">
+      <h2 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h2>
+      <Badge>
+        <span className="tabular">{count}</span>
+      </Badge>
+      <span className="h-px flex-1 bg-[var(--border)]" />
+    </div>
+  );
+}
+
 function FilterDropdown({
   label,
   items,
@@ -150,62 +211,77 @@ function FilterDropdown({
   onSelect: (v: string | null) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+  const [query, setQuery] = useState('');
+  const anchor = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const handle = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false); };
-    document.addEventListener('mousedown', handle);
-    return () => document.removeEventListener('mousedown', handle);
-  }, [open]);
+  const visible = useMemo(() => {
+    const q = stripDiacritics(query.trim()).toLowerCase();
+    if (!q) return items;
+    return items.filter((v) => stripDiacritics(v).toLowerCase().includes(q));
+  }, [items, query]);
 
   if (items.length === 0) return null;
 
+  function close() {
+    setOpen(false);
+    setQuery('');
+  }
+
   return (
-    <div ref={ref} className="relative">
+    <>
       <button
-        onClick={() => setOpen(!open)}
-        className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all ${selected
-          ? 'bg-[var(--accent)] text-black shadow-lg shadow-[var(--accent-glow)]'
-          : 'bg-white/5 border border-white/5 text-white/40 hover:text-white/60'
-          }`}
+        ref={anchor}
+        className="ui-chip max-w-[220px] shrink-0"
+        data-active={!!selected}
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
       >
-        {selected ?? label}
-        <span className="opacity-40">{open ? '▲' : '▼'}</span>
+        <span className="truncate">{selected ?? label}</span>
+        <ChevronDown size={14} className={`shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={{ opacity: 0, y: 5, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 5, scale: 0.95 }}
-            className="absolute top-full left-0 mt-2 z-50 rounded-2xl bg-[#1c1c1f]/95 backdrop-blur-xl border border-white/10 shadow-2xl py-2 min-w-[180px] max-h-64 overflow-y-auto custom-scrollbar"
-          >
-            {selected && (
-              <button
-                onClick={() => { onSelect(null); setOpen(false); }}
-                className="flex items-center justify-between w-full px-4 py-2 text-[10px] font-black uppercase tracking-widest transition-colors border-b border-white/5 mb-1"
-                style={{ color: 'var(--accent)', background: 'var(--accent-dim)' }}
-              >
-                Effacer ✕
-              </button>
-            )}
-            {items.map((v) => (
-              <button
-                key={v}
-                onClick={() => { onSelect(v); setOpen(false); }}
-                className={`w-full px-4 py-2.5 text-xs text-left transition-colors font-medium border-l-2 ${selected === v
-                  ? 'bg-white/5 border-[var(--accent)] text-white'
-                  : 'border-transparent text-white/60 hover:bg-white/5 hover:text-white'
-                  }`}
-              >
-                {v}
-              </button>
-            ))}
-          </motion.div>
+      <Popover anchorRef={anchor} open={open} onClose={close}>
+        {items.length > 8 && (
+          <div className="border-b border-[var(--border)] p-2">
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={`Chercher : ${label.toLowerCase()}…`}
+              className="ui-input h-8"
+            />
+          </div>
         )}
-      </AnimatePresence>
-    </div>
+        <div className="min-h-0 flex-1 overflow-y-auto p-1">
+          {visible.length === 0 && <p className="px-3 py-6 text-center text-[13px] text-[var(--text-muted)]">Aucun résultat</p>}
+          {visible.map((v) => {
+            const active = selected === v;
+            return (
+              <button key={v} className="ui-menu-item" onClick={() => { onSelect(v); close(); }}>
+                <span className="min-w-0 flex-1 truncate">{v}</span>
+                {active && <Check size={14} className="shrink-0 text-[var(--accent)]" />}
+              </button>
+            );
+          })}
+        </div>
+        {selected && (
+          <div className="border-t border-[var(--border)] p-2 text-right">
+            <button className="text-[13px] font-medium text-[var(--accent)]" onClick={() => { onSelect(null); close(); }}>
+              Effacer
+            </button>
+          </div>
+        )}
+      </Popover>
+    </>
+  );
+}
+
+function CardTags({ card }: { card: Card }) {
+  return (
+    <>
+      {card.is_rookie && <RookieBadge compact />}
+      {card.grading_grade && <PhotoTag>{`${card.grading_company ?? ''} ${card.grading_grade}`.trim()}</PhotoTag>}
+      {card.numbered && <PhotoTag color="var(--accent)">{card.numbered}</PhotoTag>}
+    </>
   );
 }
 
@@ -225,181 +301,160 @@ function CardModal({ card, showPrice, onClose }: { card: Card; showPrice: boolea
     { label: 'Grading', value: card.grading_grade ? `${card.grading_company ?? ''} ${card.grading_grade}` : null, icon: Building },
   ].filter(d => d.value);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6" onClick={onClose}>
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/90 backdrop-blur-xl" />
+  const subtitle = [card.year, card.brand, card.set_name].filter(Boolean).join(' · ');
 
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="panel relative w-full max-w-4xl max-h-[90vh] flex flex-col md:flex-row rounded-[40px] overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="md:w-1/2 bg-black/40 flex flex-col p-8 relative">
-          <div className="flex-1 flex flex-col items-center justify-center gap-6">
-            <div className="relative group perspective">
-              {card.image_front_url ? (
+  return (
+    <Modal onClose={onClose} size="lg" zIndex={90} title={card.player || 'Joueur inconnu'} subtitle={subtitle || undefined}>
+      <div className="flex flex-col gap-5 sm:flex-row">
+        <div className="w-full shrink-0 space-y-2 sm:w-[44%]">
+          <div className="relative overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)]">
+            {card.image_front_url ? (
+              <button
+                type="button"
+                className="block w-full cursor-zoom-in"
+                onClick={() => setLightboxUrl(cdnImg(card.image_front_url)!)}
+                aria-label="Agrandir le recto"
+              >
                 <img
                   src={cdnImg(card.image_front_url)}
-                  alt=""
+                  alt={card.player ?? ''}
                   loading="lazy"
                   decoding="async"
-                  className="max-h-[350px] w-auto rounded-3xl object-contain shadow-2xl cursor-zoom-in transition-transform duration-700 hover:scale-105"
-                  onClick={() => setLightboxUrl(cdnImg(card.image_front_url)!)}
+                  className="mx-auto max-h-[360px] w-full object-contain"
                 />
-              ) : (
-                <div className="w-48 h-64 rounded-3xl bg-white/5 border border-white/5 flex flex-col items-center justify-center gap-4 opacity-20">
-                  <Globe size={40} />
-                  <span className="text-[10px] font-black uppercase tracking-widest">No Image</span>
-                </div>
-              )}
-            </div>
-            {card.image_back_url && (
-              <button
-                onClick={() => setLightboxUrl(cdnImg(card.image_back_url)!)}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-[10px] font-black uppercase tracking-widest text-white/40 hover:text-white transition-all"
-              >
-                <Maximize2 size={12} /> Voir le Verso
               </button>
-            )}
-          </div>
-
-          <div className="flex gap-2 absolute top-6 left-6">
-            {card.is_rookie && <RookieBadge compact />}
-            {card.numbered && <div className="px-2 py-0.5 rounded-lg bg-[var(--accent-dim)] border border-[var(--border-accent)] text-[var(--accent)] text-[10px] font-black">{card.numbered}</div>}
-          </div>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-10 space-y-10 custom-scrollbar">
-          <div className="flex items-center justify-between">
-            <button onClick={onClose} className="md:hidden w-10 h-10 flex items-center justify-center rounded-xl bg-white/5 text-white/40"><X size={20} /></button>
-            {showPrice && card.price != null && (
-              <div className="px-4 py-2 rounded-2xl bg-[var(--accent-dim)] border border-[var(--border-accent)] text-[var(--accent)] text-lg font-black tracking-tight">
-                {card.price}€
+            ) : (
+              <div className="flex aspect-[3/4] w-full flex-col items-center justify-center gap-2 text-[var(--text-muted)]">
+                <ImageOff size={28} />
+                <span className="text-xs">Pas de photo</span>
               </div>
             )}
+            <div className="pointer-events-none absolute left-2 top-2 flex flex-wrap gap-1">
+              <CardTags card={card} />
+            </div>
           </div>
-
-          <div>
-            <h2 className="text-3xl font-black text-white tracking-tight leading-tight mb-2">{card.player || 'Joueur inconnu'}</h2>
-            <p className="text-sm font-bold text-[var(--text-muted)] uppercase tracking-wide">
-              {card.year} · {card.brand} · {card.set_name}
-            </p>
-          </div>
-
-          <div className="grid grid-cols-2 gap-x-8 gap-y-6">
-            {details.map((d, i) => (
-              <div key={i} className="space-y-1.5">
-                <div className="flex items-center gap-1.5 opacity-20">
-                  <d.icon size={10} />
-                  <span className="text-[9px] font-black uppercase tracking-[0.2em]">{d.label}</span>
-                </div>
-                <div className="text-sm font-bold text-white/80">{d.value}</div>
-              </div>
-            ))}
-          </div>
-
-          {card.vinted_url && (
-            <a
-              href={card.vinted_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full py-4 rounded-2xl bg-[#00BDD3] hover:bg-[#00BDD3]/90 text-white text-xs font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 transition-all shadow-xl shadow-[#00BDD3]/20"
-            >
-              Voir sur Vinted <ExternalLink size={16} />
-            </a>
+          {card.image_back_url && (
+            <button onClick={() => setLightboxUrl(cdnImg(card.image_back_url)!)} className="ui-btn ui-btn-sm w-full">
+              <Maximize2 size={13} /> Voir le verso
+            </button>
           )}
         </div>
 
-        <button onClick={onClose} className="hidden md:absolute top-8 right-8 w-10 h-10 md:flex items-center justify-center rounded-xl bg-white/5 text-white/40 hover:bg-white/10 transition-all"><X size={20} /></button>
-      </motion.div>
+        <div className="min-w-0 flex-1 space-y-5">
+          {showPrice && card.price != null && (
+            <div>
+              <p className="text-xs text-[var(--text-muted)]">Prix</p>
+              <p className="tabular text-2xl font-semibold tracking-tight text-[var(--accent)]">{formatEuro(card.price)}</p>
+            </div>
+          )}
 
-      <AnimatePresence>
-        {lightboxUrl && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/98 p-8"
-            onClick={(e) => { e.stopPropagation(); setLightboxUrl(null); }}
-          >
-            <motion.img
-              initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }}
-              src={lightboxUrl} alt="" className="max-h-full max-w-full rounded-2xl object-contain shadow-2xl"
-            />
-            <button className="absolute top-8 right-8 w-12 h-12 flex items-center justify-center rounded-full bg-white/10 text-white"><X size={24} /></button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-3">
+            {details.map((d, i) => (
+              <div key={i} className="min-w-0">
+                <dt className="flex items-center gap-1.5 text-xs text-[var(--text-muted)]">
+                  <d.icon size={12} className="shrink-0" />
+                  {d.label}
+                </dt>
+                <dd className="mt-0.5 break-words text-[13px] font-medium text-[var(--text-primary)]">{d.value}</dd>
+              </div>
+            ))}
+          </dl>
+
+          {card.vinted_url && (
+            <a href={card.vinted_url} target="_blank" rel="noopener noreferrer" className="ui-btn ui-btn-lg w-full">
+              Voir sur Vinted <ExternalLink size={15} />
+            </a>
+          )}
+        </div>
+      </div>
+
+      {lightboxUrl && createPortal(
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/90 p-4 sm:p-8"
+          onClick={(e) => { e.stopPropagation(); setLightboxUrl(null); }}
+        >
+          <img src={lightboxUrl} alt="" className="max-h-full max-w-full rounded-xl object-contain" />
+          <button className="ui-btn ui-btn-icon absolute right-4 top-4" aria-label="Fermer">
+            <X size={18} />
+          </button>
+        </div>,
+        document.body,
+      )}
+    </Modal>
   );
 }
 
 function SharedCard({ card, showPrice, onClick, interested, onToggleInterest }: { card: Card; showPrice: boolean; onClick: () => void; interested?: boolean; onToggleInterest?: () => void }) {
+  const variant = card.insert_name || (card.parallel_name && card.parallel_name !== 'Base' ? card.parallel_name : null);
+  const meta = [card.year, card.brand, card.set_name].filter(Boolean).join(' · ');
+
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="group relative h-full flex flex-col rounded-[2.5rem] bg-white/[0.02] border border-white/5 hover:bg-white/[0.06] hover:border-white/10 transition-all duration-300 cursor-pointer overflow-hidden p-2"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onClick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
+      className={`group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-xl border bg-[var(--bg-card)] text-left transition-[border-color,box-shadow] duration-200 hover:shadow-[var(--shadow-md)] focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${
+        interested ? 'border-[var(--accent)] ring-1 ring-[var(--accent)]' : 'border-[var(--border)] hover:border-[var(--border-strong)]'
+      }`}
     >
-      <div className="relative aspect-[3/4] rounded-[2rem] overflow-hidden bg-black/20">
+      <div className="relative aspect-[3/4] overflow-hidden bg-[var(--bg-secondary)]">
+        {card.image_front_url ? (
+          <img
+            src={cdnImg(card.image_front_url)}
+            alt={card.player ?? ''}
+            loading="lazy"
+            decoding="async"
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+          />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-[var(--text-muted)]">
+            <ImageOff size={26} />
+          </div>
+        )}
+
+        <div className="absolute left-2 top-2 z-10 flex max-w-[70%] flex-wrap gap-1">
+          <CardTags card={card} />
+        </div>
+
         {onToggleInterest && (
           <button
             onClick={(e) => { e.stopPropagation(); onToggleInterest(); }}
-            className="absolute top-3 right-3 z-20 flex h-9 w-9 items-center justify-center rounded-full border backdrop-blur-md transition-all active:scale-90"
-            style={interested
-              ? { background: 'rgba(244,63,94,0.9)', borderColor: 'transparent', color: '#fff' }
-              : { background: 'rgba(0,0,0,0.5)', borderColor: 'rgba(255,255,255,0.15)', color: '#fff' }}
-            title={interested ? 'Retirer de ma sélection' : 'Ça m\u2019intéresse'}
+            className={`absolute right-2 top-2 z-20 flex h-9 w-9 items-center justify-center rounded-full ring-1 transition-colors ${
+              interested
+                ? 'bg-[var(--accent)] text-[var(--on-accent)] ring-transparent'
+                : 'bg-black/60 text-[var(--text-primary)] ring-white/15 hover:bg-black/80'
+            }`}
+            title={interested ? 'Retirer de ma sélection' : 'Ça m’intéresse'}
             aria-label="Ça m'intéresse"
+            aria-pressed={!!interested}
           >
             <Heart size={16} fill={interested ? 'currentColor' : 'none'} />
           </button>
         )}
-        {card.image_front_url ? (
-          <img src={cdnImg(card.image_front_url)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center opacity-10"><Globe size={32} /></div>
-        )}
 
-        <div className="absolute top-3 left-3 flex flex-col gap-1.5">
-          {card.is_rookie && <RookieBadge compact />}
-          {card.numbered && (
-            <div className="px-2 py-0.5 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 text-[9px] font-black text-[var(--accent)]">
-              {card.numbered}
-            </div>
-          )}
-          {card.vinted_url && (
-            <div className="px-2 py-0.5 rounded-lg bg-[#00BDD3]/20 backdrop-blur-md border border-[#00BDD3]/30 text-[9px] font-black text-[#00BDD3]">
-              Vinted
-            </div>
-          )}
-          {card.grading_grade && (
-            <div
-              className="px-2 py-0.5 rounded-lg bg-black text-white text-[9px] font-black"
-              style={{ color: GRADE_COLOR[card.grading_grade] }}
-            >
-              {card.grading_company} {card.grading_grade}
-            </div>
-          )}
-        </div>
-
-        {showPrice && card.price != null && (
-          <div className="absolute bottom-3 right-3 px-3 py-1.5 rounded-2xl bg-black/60 backdrop-blur-md border border-white/10 text-xs font-black text-white shadow-xl shadow-black/40">
-            {card.price}€
+        {card.vinted_url && (
+          <div className="absolute bottom-2 left-2 z-10">
+            <PhotoTag background="#007782" color="#fff">Vinted</PhotoTag>
           </div>
         )}
       </div>
 
-      <div className="p-4 pt-5 pb-6 text-center">
-        <h3 className="text-sm font-black text-white tracking-tight truncate leading-none mb-1.5 group-hover:text-[var(--accent)] transition-colors">{card.player || '—'}</h3>
-        <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest truncate opacity-60">
-          {card.year} · {card.brand}
-        </p>
+      <div className="flex flex-1 flex-col gap-0.5 p-3">
+        <div className="flex items-baseline justify-between gap-2">
+          <p className="truncate text-[13px] font-semibold text-[var(--text-primary)]">{card.player || '—'}</p>
+          {showPrice && card.price != null && (
+            <span className="tabular shrink-0 text-[13px] font-semibold text-[var(--accent)]">{formatEuro(card.price)}</span>
+          )}
+        </div>
+        <p className="truncate text-xs text-[var(--text-muted)]">{meta || '—'}</p>
+        {variant && <p className="truncate text-xs text-[var(--text-secondary)]">{variant}</p>}
       </div>
-    </motion.div>
+    </div>
   );
 }
+
+const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3 sm:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] sm:gap-4';
 
 export function ShareView({ token }: { token: string }) {
   const [data, setData] = useState<ShareData | null>(null);
@@ -597,362 +652,337 @@ export function ShareView({ token }: { token: string }) {
     return sections.filter((section) => section.cards.length > 0);
   }, [filtered]);
 
+  function resetFilters() {
+    setPlayerFilter(null); setTeamFilter(null); setBrandFilter(null); setSetFilter(null);
+    setYearFilter(null); setTypeFilter(null); setParallelFilter(null);
+    setRookieOnly(false); setGradedOnly(false); setVintedOnly(false); setSearch('');
+  }
+
+  const noFilter = search === '' && !playerFilter && !teamFilter && !brandFilter && !setFilter && !yearFilter && !typeFilter && !parallelFilter && !rookieOnly && !gradedOnly && !vintedOnly;
+  const showShowcase = groupBy === 'none' && noFilter;
+
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center p-8">
-      <div className="flex flex-col items-center gap-6">
-        <div className="w-16 h-16 rounded-[2rem] bg-[var(--accent-dim)] border border-[var(--border-accent)] flex items-center justify-center text-[var(--accent)] animate-pulse">
-          <Globe size={32} />
-        </div>
-        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white/20">Initialising Gallery…</p>
+    <div className="flex min-h-[100dvh] flex-col bg-[var(--bg-primary)]">
+      <ShareHeader />
+      <div className="flex flex-1 items-center justify-center">
+        <Spinner label="Chargement de la collection…" />
       </div>
     </div>
   );
 
   if (error || !data) return (
-    <div className="min-h-screen flex items-center justify-center p-8">
-      <div className="text-center space-y-6">
-        <div className="w-20 h-20 rounded-[32px] bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto text-red-500">
-          <X size={40} />
-        </div>
-        <div className="space-y-2">
-          <h2 className="text-2xl font-black text-white tracking-tight">Portail Introuvable</h2>
-          <p className="text-sm font-medium text-[var(--text-muted)]">Ce lien n'existe plus ou a expiré.</p>
-        </div>
+    <div className="flex min-h-[100dvh] flex-col bg-[var(--bg-primary)]">
+      <ShareHeader />
+      <div className="flex flex-1 items-center justify-center px-4">
+        <EmptyState
+          icon={Link2Off}
+          title="Lien introuvable"
+          description="Ce lien de partage n'existe plus ou a expiré. Demande un nouveau lien à la personne qui te l'a envoyé."
+        />
       </div>
     </div>
   );
 
-  return (
-    <div className="min-h-screen flex flex-col overflow-x-hidden">
-      {/* Background decoration */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] rounded-full bg-[var(--accent-glow)] blur-[120px] opacity-10" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] rounded-full bg-[#6366f1] blur-[120px] opacity-10" />
-      </div>
+  const selectionCount = interest.size;
+  const plural = selectionCount > 1 ? 's' : '';
 
-      <header className="sticky top-0 z-40 bg-[var(--bg-primary)]/80 backdrop-blur-xl border-b border-white/5 px-6 py-8">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-8">
+  return (
+    <div className="flex min-h-[100dvh] flex-col overflow-x-clip bg-[var(--bg-primary)]">
+      <ShareHeader />
+
+      <main className={`mx-auto w-full max-w-7xl flex-1 space-y-6 px-4 py-5 sm:px-6 sm:py-8 ${selectionCount > 0 ? 'pb-32' : ''}`}>
+        {/* En-tête de la vitrine */}
+        <section className="space-y-3">
           <div>
-            <div className="flex items-center gap-3 mb-6 opacity-40 hover:opacity-100 transition-opacity">
-              <div className="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center text-[var(--accent)] font-black text-xs">C</div>
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white">CardVaults</span>
-            </div>
-            <h1 className="text-3xl font-black text-white tracking-tight mb-3">
+            <h1 className="text-xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-2xl">
               {data.title || FILTER_LABELS[data.filter] || 'Ma collection'}
             </h1>
-            <div className="flex flex-wrap gap-2">
-              <div className="px-3 py-1 rounded-xl bg-white/5 border border-white/5 text-[10px] font-black uppercase tracking-widest text-white/40">
-                {data.card_count} Cartes
+            <p className="mt-1 text-[13px] text-[var(--text-muted)]">
+              <span className="tabular">{data.card_count}</span> carte{data.card_count > 1 ? 's' : ''}
+              {data.show_prices ? ' · prix indiqués' : ''}
+            </p>
+          </div>
+          {(stats.rookieCount > 0 || stats.autos > 0 || stats.numbered > 0 || stats.graded > 0) && (
+            <div className="flex flex-wrap gap-1.5">
+              {stats.rookieCount > 0 && <Badge tone="blue"><span className="tabular">{stats.rookieCount}</span> RC</Badge>}
+              {stats.autos > 0 && <Badge tone="green"><span className="tabular">{stats.autos}</span> Auto</Badge>}
+              {stats.numbered > 0 && <Badge tone="accent"><span className="tabular">{stats.numbered}</span> Tirages</Badge>}
+              {stats.graded > 0 && <Badge><span className="tabular">{stats.graded}</span> Gradées</Badge>}
+            </div>
+          )}
+          <p className="flex items-start gap-2 text-[13px] text-[var(--text-secondary)]">
+            <Heart size={15} className="mt-0.5 shrink-0 text-[var(--accent)]" />
+            <span>Touche le cœur des cartes qui t'intéressent, puis envoie ta sélection : le collectionneur te recontactera.</span>
+          </p>
+        </section>
+
+        {/* Recherche, regroupement, tri */}
+        <div className="space-y-3">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <div className="relative min-w-0 flex-1">
+                <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                <input
+                  type="text"
+                  placeholder="Joueur, équipe, set, année…"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="ui-input pl-9 pr-9"
+                  aria-label="Rechercher une carte"
+                />
+                {search && (
+                  <button
+                    onClick={() => setSearch('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-[var(--text-muted)] hover:text-[var(--text-primary)]"
+                    aria-label="Effacer la recherche"
+                  >
+                    <X size={14} />
+                  </button>
+                )}
               </div>
-              {stats.rookieCount > 0 && <span className="px-3 py-1 rounded-xl bg-blue-500/10 text-blue-400 text-[10px] font-black uppercase tracking-widest border border-blue-500/20">{stats.rookieCount} RC</span>}
-              {stats.autos > 0 && <span className="px-3 py-1 rounded-xl bg-green-500/10 text-green-400 text-[10px] font-black uppercase tracking-widest border border-green-500/20">{stats.autos} Auto</span>}
-              {stats.numbered > 0 && <span className="px-3 py-1 rounded-xl bg-[var(--accent-dim)] text-[var(--accent)] text-[10px] font-black uppercase tracking-widest border border-[var(--border-accent)]">{stats.numbered} Tirages</span>}
-              {stats.graded > 0 && <span className="px-3 py-1 rounded-xl bg-indigo-500/10 text-indigo-400 text-[10px] font-black uppercase tracking-widest border border-indigo-500/20">{stats.graded} Gradées</span>}
+              <button onClick={resetFilters} className="ui-btn ui-btn-icon shrink-0" title="Réinitialiser" aria-label="Réinitialiser les filtres">
+                <RefreshCw size={15} />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:flex">
+              <div className="relative">
+                <LayoutGrid size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                <select
+                  className="ui-select pl-8 sm:w-40"
+                  value={groupBy}
+                  onChange={(e) => setGroupBy(e.target.value as GroupBy)}
+                  aria-label="Regrouper par"
+                >
+                  {Object.entries(GROUP_LABELS).map(([v, l]) => <option key={v} value={v}>{v === 'none' ? 'Sans groupe' : l}</option>)}
+                </select>
+              </div>
+              <div className="relative">
+                <ArrowUpDown size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+                <select
+                  className="ui-select pl-8 sm:w-48"
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as SortBy)}
+                  aria-label="Trier par"
+                >
+                  {Object.entries(SORT_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                </select>
+              </div>
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="relative">
-              <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/20" />
-              <input
-                type="text"
-                placeholder="Rechercher…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="rounded-2xl pl-10 pr-4 py-3 text-xs font-bold outline-none w-full sm:w-48 bg-white/5 border border-white/10 focus:bg-white/10 focus:border-[var(--accent)]/30 transition-all placeholder:text-white/20 text-white"
-              />
-            </div>
-            <button
-              onClick={() => {
-                setPlayerFilter(null); setTeamFilter(null); setBrandFilter(null); setSetFilter(null);
-                setYearFilter(null); setTypeFilter(null); setParallelFilter(null);
-                setRookieOnly(false); setGradedOnly(false); setVintedOnly(false); setSearch('');
-              }}
-              className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white/5 border border-white/5 text-white/40 hover:text-[var(--accent)] transition-all active:scale-90"
-              title="Réinitialiser"
-            >
-              <RefreshCw size={18} />
-            </button>
+          {/* Filtres */}
+          <div className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-0.5 no-scrollbar sm:-mx-6 sm:flex-wrap sm:px-6">
+            <FilterDropdown label="Joueur" items={players} selected={playerFilter} onSelect={setPlayerFilter} />
+            <FilterDropdown label="Équipe" items={teams} selected={teamFilter} onSelect={setTeamFilter} />
+            <FilterDropdown label="Année" items={years} selected={yearFilter} onSelect={setYearFilter} />
+            <FilterDropdown label="Marque" items={brands} selected={brandFilter} onSelect={setBrandFilter} />
+            <FilterDropdown label="Set" items={sets} selected={setFilter} onSelect={setSetFilter} />
+            <FilterDropdown label="Parallel" items={parallels} selected={parallelFilter} onSelect={setParallelFilter} />
+            <span className="mx-1 h-5 w-px shrink-0 bg-[var(--border-strong)]" />
+            <button className="ui-chip shrink-0" data-active={rookieOnly} aria-pressed={rookieOnly} onClick={() => setRookieOnly(!rookieOnly)}>RC</button>
+            <button className="ui-chip shrink-0" data-active={gradedOnly} aria-pressed={gradedOnly} onClick={() => setGradedOnly(!gradedOnly)}>Gradées</button>
+            <button className="ui-chip shrink-0" data-active={vintedOnly} aria-pressed={vintedOnly} onClick={() => setVintedOnly(!vintedOnly)}>Vinted</button>
           </div>
-        </div>
-      </header>
 
-      <main className="flex-1 max-w-7xl mx-auto w-full px-6 py-10">
-        <div className="flex flex-wrap items-center gap-2 mb-12 relative z-30">
-          <FilterDropdown label="Joueur" items={players} selected={playerFilter} onSelect={setPlayerFilter} />
-          <FilterDropdown label="Équipe" items={teams} selected={teamFilter} onSelect={setTeamFilter} />
-          <FilterDropdown label="Année" items={years} selected={yearFilter} onSelect={setYearFilter} />
-          <FilterDropdown label="Marque" items={brands} selected={brandFilter} onSelect={setBrandFilter} />
-          <FilterDropdown label="Set" items={sets} selected={setFilter} onSelect={setSetFilter} />
-          <FilterDropdown label="Parallel" items={parallels} selected={parallelFilter} onSelect={setParallelFilter} />
-
-          <div className="h-4 w-px bg-white/10 mx-2 hidden sm:block" />
-
-          <button
-            onClick={() => setRookieOnly(!rookieOnly)}
-            className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${rookieOnly ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-white/5 border border-white/5 text-white/40'
-              }`}
-          >
-            RC
-          </button>
-          <button
-            onClick={() => setGradedOnly(!gradedOnly)}
-            className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${gradedOnly ? 'bg-indigo-500/20 text-indigo-400 border border-indigo-500/30' : 'bg-white/5 border border-white/5 text-white/40'
-              }`}
-          >
-            Gradées
-          </button>
-          <button
-            onClick={() => setVintedOnly(!vintedOnly)}
-            className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${vintedOnly ? 'bg-[#00BDD3]/20 text-[#00BDD3] border border-[#00BDD3]/30' : 'bg-white/5 border border-white/5 text-white/40'
-              }`}
-          >
-            Vinted
-          </button>
-
-          <div className="ml-auto flex items-center gap-2 bg-white/5 border border-white/5 p-1 rounded-2xl">
-            <div className="flex items-center gap-1 px-3 py-1.5 rounded-xl transition-colors hover:bg-white/5">
-              <LayoutGrid size={12} className="text-white/20" />
-              <select
-                className="bg-transparent text-[10px] font-black uppercase tracking-[0.2em] text-white/40 outline-none cursor-pointer hover:text-white appearance-none"
-                value={groupBy}
-                onChange={(e) => setGroupBy(e.target.value as GroupBy)}
-              >
-                {Object.entries(GROUP_LABELS).map(([v, l]) => <option key={v} value={v} className="bg-[#18181b]">{l.toUpperCase()}</option>)}
-              </select>
+          {!noFilter && (
+            <div className="flex items-center gap-3 text-[13px] text-[var(--text-secondary)]">
+              <span>
+                <span className="tabular font-semibold text-[var(--text-primary)]">{filtered.length}</span> carte{filtered.length !== 1 ? 's' : ''}
+              </span>
+              <button onClick={resetFilters} className="text-xs font-medium text-[var(--accent)] hover:underline">Tout effacer</button>
             </div>
-            <div className="h-4 w-px bg-white/10" />
-            <div className="flex items-center gap-1 px-3 py-1.5 rounded-xl transition-colors hover:bg-white/5">
-              <Settings2 size={12} className="text-white/20" />
-              <select
-                className="bg-transparent text-[10px] font-black uppercase tracking-[0.2em] text-white/40 outline-none cursor-pointer hover:text-white appearance-none"
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as SortBy)}
-              >
-                {Object.entries(SORT_LABELS).map(([v, l]) => <option key={v} value={v} className="bg-[#18181b]">{l.toUpperCase()}</option>)}
-              </select>
-            </div>
-          </div>
+          )}
         </div>
 
         {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-32 text-center">
-            <div className="w-16 h-16 rounded-[2rem] bg-white/5 border border-white/5 flex items-center justify-center text-white/10 mb-6 font-black italic">!</div>
-            <h3 className="text-xl font-black text-white/40 uppercase tracking-widest">Aucun résultat</h3>
-            <p className="text-sm text-white/20 mt-2">Ajustez les filtres pour explorer plus de cartes.</p>
-          </div>
+          <EmptyState
+            icon={SearchX}
+            title="Aucun résultat"
+            description="Ajuste les filtres pour explorer plus de cartes."
+            action={<button onClick={resetFilters} className="ui-btn">Réinitialiser les filtres</button>}
+          />
         ) : (
-          <div className="space-y-16">
-            {groupBy === 'none' && search === '' && !playerFilter && !teamFilter && !brandFilter && !setFilter && !yearFilter && !typeFilter && !parallelFilter && !rookieOnly && !gradedOnly && !vintedOnly && (
-              <div className="space-y-10">
-                {showcaseSections.map((section) => (
-                  <div key={section.key}>
-                    <div className="flex items-center gap-4 mb-6">
-                      <h3 className="text-lg font-black text-white tracking-tight">{section.title}</h3>
-                      <div className="px-2 py-0.5 rounded-lg bg-white/5 border border-white/5 text-[10px] font-black text-white/20">
-                        {section.cards.length}
-                      </div>
-                      <div className="flex-1 h-px bg-gradient-to-r from-white/10 to-transparent" />
+          <div className="space-y-8">
+            {showShowcase && showcaseSections.map((section) => (
+              <section key={section.key} className="space-y-3">
+                <SectionHeading title={section.title} count={section.cards.length} />
+                <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-1 no-scrollbar sm:-mx-6 sm:gap-4 sm:px-6">
+                  {section.cards.map((card) => (
+                    <div key={`${section.key}-${card.id}`} className="w-[150px] shrink-0 snap-start sm:w-[180px]">
+                      <SharedCard card={card} showPrice={data.show_prices} onClick={() => setSelected(card)} interested={interest.has(card.id)} onToggleInterest={() => toggleInterest(card.id)} />
                     </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-6">
-                      {section.cards.map((card) => (
-                        <SharedCard key={`${section.key}-${card.id}`} card={card} showPrice={data.show_prices} onClick={() => setSelected(card)} interested={interest.has(card.id)} onToggleInterest={() => toggleInterest(card.id)} />
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
+                  ))}
+                </div>
+              </section>
+            ))}
             {grouped.map((group) => (
-              <div key={group.key || 'all'}>
-                {groupBy !== 'none' && (
-                  <div className="flex items-center gap-4 mb-8">
-                    <h3 className="text-lg font-black text-white tracking-tight">{group.label}</h3>
-                    <div className="px-2 py-0.5 rounded-lg bg-white/5 border border-white/5 text-[10px] font-black text-white/20">
-                      {group.cards.length}
-                    </div>
-                    <div className="flex-1 h-px bg-gradient-to-r from-white/10 to-transparent" />
-                  </div>
-                )}
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-6 sm:gap-8">
+              <section key={group.key || 'all'} className="space-y-3">
+                {groupBy !== 'none' ? (
+                  <SectionHeading title={group.label} count={group.cards.length} />
+                ) : showShowcase && showcaseSections.length > 0 ? (
+                  <SectionHeading title="Toutes les cartes" count={group.cards.length} />
+                ) : null}
+                <div className={GRID}>
                   {group.cards.map((card) => (
                     <SharedCard key={card.id} card={card} showPrice={data.show_prices} onClick={() => setSelected(card)} interested={interest.has(card.id)} onToggleInterest={() => toggleInterest(card.id)} />
                   ))}
                 </div>
-              </div>
+              </section>
             ))}
           </div>
         )}
       </main>
 
-      <footer className="mt-auto border-t border-white/5 py-12 px-6">
-        <div className="max-w-7xl mx-auto flex flex-col items-center gap-4 text-center">
-          <div className="flex items-center gap-2 opacity-30">
-            <Globe size={14} />
-            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-white">Public Showcase</span>
-          </div>
-          <p className="text-[10px] font-bold text-white/20 uppercase tracking-widest">
-            Powered by <span className="text-white/40">CardVaults</span>
-          </p>
+      <footer className="border-t border-[var(--border)] px-4 py-6">
+        <div className="mx-auto flex max-w-7xl items-center justify-center gap-2 text-xs text-[var(--text-muted)]">
+          <LogoMark />
+          <span>Collection partagée avec <span className="font-medium text-[var(--text-secondary)]">CardVaults</span></span>
         </div>
       </footer>
 
-      <AnimatePresence>
-        {selected && <CardModal card={selected} showPrice={data.show_prices} onClose={() => setSelected(null)} />}
-      </AnimatePresence>
+      {selected && <CardModal card={selected} showPrice={data.show_prices} onClose={() => setSelected(null)} />}
 
       {/* Barre de sélection « Ça m'intéresse » */}
-      {interest.size > 0 && !submitOpen && (
-        <div className="fixed inset-x-0 bottom-0 z-40 flex justify-center px-4 pb-4">
-          <button
-            onClick={() => setSubmitOpen(true)}
-            className="flex items-center gap-3 rounded-full bg-[#f43f5e] px-6 py-3.5 text-sm font-black text-white shadow-2xl shadow-rose-900/40 transition-all hover:brightness-110 active:scale-95"
-          >
-            <Heart size={18} fill="currentColor" />
-            {interest.size} carte{interest.size > 1 ? 's' : ''}
-            {data.show_prices && interestTotal > 0 && (
-              <span className="rounded-full bg-black/20 px-2.5 py-0.5 text-xs font-black">{interestTotal.toFixed(0)}€</span>
-            )}
-            <span className="opacity-80">— Envoyer ma sélection</span>
-          </button>
+      {selectionCount > 0 && !submitOpen && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--border-strong)] bg-[var(--bg-card)] px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 shadow-[var(--shadow-lg)] sm:inset-x-auto sm:bottom-4 sm:left-1/2 sm:w-[460px] sm:-translate-x-1/2 sm:rounded-xl sm:border sm:pb-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--accent-dim)] text-[var(--accent)]">
+              <Heart size={16} fill="currentColor" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-[var(--text-primary)]">
+                <span className="tabular">{selectionCount}</span> carte{plural} sélectionnée{plural}
+              </p>
+              {data.show_prices && interestTotal > 0 && (
+                <p className="tabular text-xs text-[var(--text-muted)]">Total {formatEuro(interestTotal)}</p>
+              )}
+            </div>
+            <button onClick={() => setSubmitOpen(true)} className="ui-btn ui-btn-primary shrink-0">
+              <Send size={15} /> Envoyer
+            </button>
+          </div>
         </div>
       )}
 
       {/* Modale d'envoi */}
-      <AnimatePresence>
-        {submitOpen && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
-            onClick={() => setSubmitOpen(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0 }}
-              className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-3xl border border-white/10 bg-[#18181b] p-6 shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h3 className="mb-1 text-lg font-black text-white">Envoyer ma sélection</h3>
-              <p className="mb-4 text-xs text-white/50">{interest.size} carte{interest.size > 1 ? 's' : ''} sélectionnée{interest.size > 1 ? 's' : ''}{data.show_prices && interestTotal > 0 ? ` · total ${interestTotal.toFixed(0)}€` : ''}. Touche une carte pour la voir en détail, ou la croix pour la retirer.</p>
-
-              {/* Aperçu des cartes sélectionnées */}
-              <div className="mb-4 -mx-1 max-h-[46vh] overflow-y-auto px-1">
-                <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
+      {submitOpen && (
+        <Modal
+          onClose={() => setSubmitOpen(false)}
+          size="lg"
+          title="Envoyer ma sélection"
+          subtitle={`${selectionCount} carte${plural} sélectionnée${plural}${data.show_prices && interestTotal > 0 ? ` · total ${formatEuro(interestTotal)}` : ''}`}
+          footer={
+            <>
+              <button onClick={() => setSubmitOpen(false)} className="ui-btn">Annuler</button>
+              <button
+                onClick={submitInterest}
+                disabled={submitting || !handle.trim() || interest.size === 0}
+                className="ui-btn ui-btn-primary"
+              >
+                <Send size={15} /> {submitting ? 'Envoi…' : 'Envoyer'}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-5">
+            <div className="space-y-2">
+              <p className="text-xs text-[var(--text-muted)]">Touche une carte pour la voir en détail, ou la croix pour la retirer.</p>
+              {interestCards.length === 0 ? (
+                <p className="rounded-lg border border-dashed border-[var(--border-strong)] px-3 py-6 text-center text-[13px] text-[var(--text-muted)]">
+                  Aucune carte sélectionnée.
+                </p>
+              ) : (
+                <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
                   {interestCards.map((c) => (
-                    <div key={c.id} className="relative">
+                    <div key={c.id} className="relative min-w-0">
                       <button
                         onClick={() => setSelected(c)}
-                        className="block w-full overflow-hidden rounded-xl border border-white/10 bg-black/30 transition-all hover:border-white/30"
+                        className="block w-full overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] transition-colors hover:border-[var(--border-strong)]"
                       >
                         <div className="aspect-[3/4]">
                           {c.image_front_url
                             ? <img src={cdnImg(c.image_front_url)} alt="" loading="lazy" className="h-full w-full object-cover" />
-                            : <div className="flex h-full items-center justify-center text-white/20"><Globe size={20} /></div>}
+                            : <div className="flex h-full items-center justify-center text-[var(--text-muted)]"><ImageOff size={18} /></div>}
                         </div>
                       </button>
                       <button
                         onClick={() => toggleInterest(c.id)}
-                        className="absolute -right-1.5 -top-1.5 flex h-7 w-7 items-center justify-center rounded-full border border-black/40 bg-[#f43f5e] text-white shadow-lg hover:brightness-110"
+                        className="absolute right-1 top-1 flex h-7 w-7 items-center justify-center rounded-full bg-black/70 text-[var(--text-primary)] ring-1 ring-white/15 transition-colors hover:bg-[var(--red)]"
                         title="Retirer"
                         aria-label="Retirer"
                       >
                         <X size={14} />
                       </button>
-                      <div className="mt-1 truncate text-[11px] font-semibold text-white/80" title={c.player ?? ''}>{c.player ?? '—'}</div>
+                      <div className="mt-1 truncate text-xs font-medium text-[var(--text-primary)]" title={c.player ?? ''}>{c.player ?? '—'}</div>
                       {data.show_prices && c.price != null && (
-                        <div className="text-[11px] font-black text-[var(--accent)]">{c.price}€</div>
+                        <div className="tabular text-xs font-semibold text-[var(--accent)]">{formatEuro(c.price)}</div>
                       )}
                     </div>
                   ))}
                 </div>
-              </div>
+              )}
+            </div>
 
-              <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-white/50">Pseudo Insta / Discord *</label>
+            <Field label="Pseudo Insta / Discord *" hint="Pour que le collectionneur puisse te recontacter.">
               <input
                 value={handle}
                 onChange={(e) => setHandle(e.target.value)}
                 placeholder="@ton_pseudo"
-                className="mb-4 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-[var(--accent)]/50"
+                className="ui-input"
               />
-              <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-white/50">Message (optionnel)</label>
+            </Field>
+            <Field label="Message (optionnel)">
               <textarea
                 value={reqMessage}
                 onChange={(e) => setReqMessage(e.target.value)}
                 rows={3}
                 placeholder="Une offre, une question…"
-                className="mb-5 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-[var(--accent)]/50"
+                className="ui-textarea"
               />
-              <div className="mt-auto flex gap-3">
-                <button
-                  onClick={() => setSubmitOpen(false)}
-                  className="flex-1 rounded-xl border border-white/10 bg-white/5 py-3 text-sm font-bold text-white/70 hover:bg-white/10"
-                >
-                  Annuler
-                </button>
-                <button
-                  onClick={submitInterest}
-                  disabled={submitting || !handle.trim() || interest.size === 0}
-                  className="flex-[2] inline-flex items-center justify-center gap-2 rounded-xl bg-[#f43f5e] py-3 text-sm font-black text-white hover:brightness-110 disabled:opacity-40"
-                >
-                  <Send size={15} /> {submitting ? 'Envoi…' : 'Envoyer'}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </Field>
+          </div>
+        </Modal>
+      )}
 
       {/* Récap après envoi (copiable) */}
-      <AnimatePresence>
-        {submitted && (
-          <motion.div
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
-            onClick={() => setSubmitted(false)}
-          >
-            <motion.div
-              initial={{ scale: 0.95, y: 10 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0 }}
-              className="flex max-h-[90vh] w-full max-w-lg flex-col rounded-3xl border border-white/10 bg-[#18181b] p-6 shadow-2xl"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="mb-3 flex items-center gap-2 text-emerald-300">
-                <Heart size={18} fill="currentColor" />
-                <h3 className="text-lg font-black text-white">Sélection envoyée, merci !</h3>
-              </div>
-              <p className="mb-4 text-xs text-white/50">Le vendeur va te recontacter. Tu peux aussi copier ta liste et la lui envoyer en message.</p>
-
-              <textarea
-                readOnly
-                value={recapText}
-                className="mb-3 h-64 w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs leading-relaxed text-white/80 outline-none"
-                onFocus={(e) => e.currentTarget.select()}
-              />
-
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setSubmitted(false)}
-                  className="flex-1 rounded-xl border border-white/10 bg-white/5 py-3 text-sm font-bold text-white/70 hover:bg-white/10"
-                >
-                  Fermer
-                </button>
-                <button
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(recapText);
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 2000);
-                    } catch {
-                      /* clipboard indispo : le textarea reste sélectionnable */
-                    }
-                  }}
-                  className="flex-[2] inline-flex items-center justify-center gap-2 rounded-xl bg-[var(--accent)] py-3 text-sm font-black text-black hover:brightness-110"
-                >
-                  <Copy size={15} /> {copied ? 'Copié !' : 'Copier la liste'}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {submitted && (
+        <Modal
+          onClose={() => setSubmitted(false)}
+          title="Sélection envoyée, merci !"
+          subtitle="Le vendeur va te recontacter. Tu peux aussi copier ta liste et la lui envoyer en message."
+          icon={
+            <span className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--green)]" style={{ background: 'color-mix(in srgb, var(--green) 14%, transparent)' }}>
+              <Check size={18} />
+            </span>
+          }
+          footer={
+            <>
+              <button onClick={() => setSubmitted(false)} className="ui-btn">Fermer</button>
+              <button
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(recapText);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  } catch {
+                    /* clipboard indispo : le textarea reste sélectionnable */
+                  }
+                }}
+                className="ui-btn ui-btn-primary"
+              >
+                {copied ? <Check size={15} /> : <Copy size={15} />} {copied ? 'Copié !' : 'Copier la liste'}
+              </button>
+            </>
+          }
+        >
+          <textarea
+            readOnly
+            value={recapText}
+            className="ui-textarea h-64 resize-none text-xs leading-relaxed text-[var(--text-secondary)]"
+            onFocus={(e) => e.currentTarget.select()}
+          />
+        </Modal>
+      )}
     </div>
   );
 }

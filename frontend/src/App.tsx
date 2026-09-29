@@ -23,6 +23,7 @@ import {
   FileClock,
   Menu,
   Puzzle,
+  CheckCircle2,
 } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
 import { useAppStore, viewFromHash } from './stores/appStore';
@@ -52,6 +53,7 @@ import MigrationView from './components/views/MigrationView';
 import { ExtensionPairView } from './components/views/ExtensionPairView';
 import { supabase } from './lib/supabase';
 import { Popover } from './components/shared/Popover';
+import { Field, Modal, Notice } from './components/ui';
 
 const queryClient = new QueryClient();
 
@@ -74,35 +76,39 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
     setLoading(false);
   }
 
-  const inputClass = 'w-full rounded-xl px-3 py-2.5 text-sm outline-none transition-all';
-  const inputStyle = { background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={onClose}>
-      <div className="rounded-2xl w-full max-w-sm p-6" style={{ background: 'var(--bg-card)', border: '1px solid var(--border)' }} onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-5">
-          <h2 className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Changer le mot de passe</h2>
-          <button onClick={onClose} style={{ color: 'var(--text-muted)' }}>✕</button>
-        </div>
-        {done ? (
-          <div className="text-center py-4 space-y-2">
-            <p className="text-lg">✓</p>
-            <p className="text-sm" style={{ color: 'var(--text-primary)' }}>Mot de passe mis à jour !</p>
-            <button onClick={onClose} className="mt-2 px-4 py-2 rounded-xl text-sm font-semibold" style={{ background: 'var(--accent)', color: '#0d0c0b' }}>Fermer</button>
-          </div>
+    <Modal
+      onClose={onClose}
+      size="sm"
+      title="Changer le mot de passe"
+      subtitle={done ? undefined : '8 caractères minimum.'}
+      footer={
+        done ? (
+          <button onClick={onClose} className="ui-btn ui-btn-primary">Fermer</button>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-3">
-            <input type="password" placeholder="Nouveau mot de passe" value={password} onChange={(e) => setPassword(e.target.value)} required className={inputClass} style={inputStyle} />
-            <input type="password" placeholder="Confirmer" value={confirm} onChange={(e) => setConfirm(e.target.value)} required className={inputClass} style={inputStyle} />
-            {error && <p className="text-xs px-1" style={{ color: 'var(--red)' }}>{error}</p>}
-            <button type="submit" disabled={loading} className="w-full py-2.5 rounded-xl text-sm font-semibold transition-all"
-              style={{ background: loading ? 'var(--bg-elevated)' : 'var(--accent)', color: loading ? 'var(--text-muted)' : '#0d0c0b' }}>
+          <>
+            <button type="button" onClick={onClose} className="ui-btn">Annuler</button>
+            <button type="submit" form="change-password-form" disabled={loading} className="ui-btn ui-btn-primary">
               {loading ? 'Enregistrement…' : 'Mettre à jour'}
             </button>
-          </form>
-        )}
-      </div>
-    </div>
+          </>
+        )
+      }
+    >
+      {done ? (
+        <Notice tone="success" icon={CheckCircle2}>Mot de passe mis à jour !</Notice>
+      ) : (
+        <form id="change-password-form" onSubmit={handleSubmit} className="space-y-4">
+          <Field label="Nouveau mot de passe">
+            <input type="password" placeholder="Nouveau mot de passe" value={password} onChange={(e) => setPassword(e.target.value)} required autoComplete="new-password" className="ui-input" />
+          </Field>
+          <Field label="Confirmation">
+            <input type="password" placeholder="Confirmer" value={confirm} onChange={(e) => setConfirm(e.target.value)} required autoComplete="new-password" className="ui-input" />
+          </Field>
+          {error && <Notice tone="error">{error}</Notice>}
+        </form>
+      )}
+    </Modal>
   );
 }
 
@@ -407,10 +413,16 @@ function ImpersonateBanner() {
   }
 
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 px-4 py-2.5 rounded-2xl shadow-2xl text-sm font-semibold"
-      style={{ background: 'var(--red, #ef4444)', color: '#fff' }}>
-      <span>Mode admin · {impersonatedEmail}</span>
-      <button onClick={stop} className="underline opacity-80 hover:opacity-100">Quitter</button>
+    <div
+      className="fixed bottom-[calc(env(safe-area-inset-bottom)+4.25rem)] left-1/2 z-50 flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-xl border bg-[var(--bg-card)] py-1.5 pl-3 pr-1.5 text-[13px] shadow-[var(--shadow-lg)] lg:bottom-4"
+      style={{ borderColor: 'color-mix(in srgb, var(--red) 45%, transparent)' }}
+      role="status"
+    >
+      <span className="h-2 w-2 shrink-0 rounded-full bg-[var(--red)]" />
+      <span className="min-w-0 truncate text-[var(--text-secondary)]">
+        <span className="font-medium text-[var(--red)]">Mode admin</span> · {impersonatedEmail}
+      </span>
+      <button onClick={stop} className="ui-btn ui-btn-sm ui-btn-danger shrink-0">Quitter</button>
     </div>
   );
 }

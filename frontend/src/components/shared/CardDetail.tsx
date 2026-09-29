@@ -1,31 +1,34 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   X,
   Trash2,
-  Edit2,
+  Pencil,
   Save,
   Camera,
   Download,
   RefreshCw,
-  Search,
+  Sparkles,
   ChevronDown,
   ChevronUp,
   ChevronLeft,
   ChevronRight,
   Image as ImageIcon,
+  ImagePlus,
   AlertCircle,
-  Euro,
   Hash,
-  Tag,
-  Star,
-  Layers,
-  Trophy
+  Maximize2,
+  ZoomIn,
+  ZoomOut,
+  ExternalLink,
+  Loader2,
 } from 'lucide-react';
 import { SPORTS, type Card, type CardType, type GradingCompany, type GradingStatus, type Sport } from '../../types';
 import { GradingBadge } from './GradingBadge';
 import { StatusBadge } from './StatusBadge';
+import { CardBadge } from './CardBadge';
 import { useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { useFolders } from '../../hooks/useFolders';
 import { useIdentify } from '../../hooks/useIdentify';
@@ -42,9 +45,9 @@ import { downloadImage } from '../../lib/downloadImage';
 import { formatVintedNumberedBadge } from '../../lib/vintedPhotoBadge';
 import { calculateEbayPrice } from '../../lib/marketplacePricing';
 import { buildVintedDraft, openVintedDraft, type VintedDraft } from '../../lib/vintedDraft';
+import { Badge, Field, Modal, Notice } from '../ui';
 
 
-const inputCls = 'w-full rounded-xl px-3 py-2 text-sm outline-none transition-all bg-white/5 border border-white/10 focus:border-[var(--accent)]/50 focus:bg-white/10';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
@@ -97,6 +100,188 @@ function buildPhotoFilename(card: Card, side: 'front' | 'back'): string {
     .join(' ');
   const slug = slugify(base) || 'carte';
   return `${slug}_${side === 'front' ? 'recto' : 'verso'}.jpg`;
+}
+
+type Side = 'front' | 'back';
+const SIDES: Side[] = ['front', 'back'];
+const SIDE_LABEL: Record<Side, string> = { front: 'Recto', back: 'Verso' };
+
+const euro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2, minimumFractionDigits: 0 });
+function formatEuro(v: number): string {
+  return euro.format(v);
+}
+
+function formatDay(iso: string): string {
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? iso : d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+/** Libellé de section court (seul usage toléré des majuscules espacées). */
+function SectionTitle({ children, action }: { children: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="mb-2 flex min-h-8 items-center justify-between gap-2">
+      <h3 className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">{children}</h3>
+      {action}
+    </div>
+  );
+}
+
+/** Ligne marketplace : logo, prix, état en ligne, actions. */
+function MarketRow({ logo, label, price, live, children }: { logo: ReactNode; label: string; price: number | null; live: boolean; children: ReactNode }) {
+  return (
+    <div className="flex items-center gap-3 px-3 py-2.5">
+      <span className="flex w-14 shrink-0 items-center" title={label}>{logo}</span>
+      <div className="min-w-0 flex-1">
+        <div className={`tabular text-sm font-semibold ${price != null ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
+          {price != null ? formatEuro(price) : '—'}
+        </div>
+        {live && (
+          <div className="flex items-center gap-1 text-[11px] text-[var(--green)]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--green)]" />
+            En ligne
+          </div>
+        )}
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5">{children}</div>
+    </div>
+  );
+}
+
+/**
+ * Visionneuse plein écran : bascule recto/verso (boutons, flèches du clavier),
+ * zoom au clic (le point zoomé suit le pointeur), téléchargement.
+ */
+function Lightbox({ card, side, onSide, onClose }: { card: Card; side: Side; onSide: (s: Side) => void; onClose: () => void }) {
+  const [zoom, setZoom] = useState<{ side: Side; x: number; y: number } | null>(null);
+  const zoomed = zoom?.side === side;
+  const currentUrl = side === 'front' ? card.image_front_url : card.image_back_url;
+  const canPrev = side === 'back' && !!card.image_front_url;
+  const canNext = side === 'front' && !!card.image_back_url;
+  const hasBoth = !!card.image_front_url && !!card.image_back_url;
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        if (zoomed) setZoom(null);
+        else onClose();
+      }
+      if (e.key === 'ArrowLeft' && canPrev) onSide('front');
+      if (e.key === 'ArrowRight' && canNext) onSide('back');
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [zoomed, canPrev, canNext, onClose, onSide]);
+
+  function pointAt(e: ReactMouseEvent<HTMLElement> | ReactPointerEvent<HTMLElement>) {
+    const r = e.currentTarget.getBoundingClientRect();
+    return {
+      side,
+      x: Math.min(100, Math.max(0, ((e.clientX - r.left) / r.width) * 100)),
+      y: Math.min(100, Math.max(0, ((e.clientY - r.top) / r.height) * 100)),
+    };
+  }
+
+  return createPortal(
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.15 }}
+      className="fixed inset-0 z-[100] flex flex-col bg-black/90"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Photo en plein écran"
+    >
+      <div
+        className="flex shrink-0 items-center gap-2 px-4 pb-2 pt-[calc(env(safe-area-inset-top)+0.75rem)]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {hasBoth ? (
+          <div className="ui-segmented">
+            {SIDES.map((s) => (
+              <button key={s} data-active={side === s} onClick={() => onSide(s)}>
+                {SIDE_LABEL[s]}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <span className="text-[13px] font-medium text-[var(--text-secondary)]">{SIDE_LABEL[side]}</span>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            onClick={() => setZoom(zoomed ? null : { side, x: 50, y: 50 })}
+            title={zoomed ? 'Dézoomer' : 'Zoomer'}
+            aria-label={zoomed ? 'Dézoomer' : 'Zoomer'}
+            data-active={zoomed}
+            className="ui-btn ui-btn-icon"
+          >
+            {zoomed ? <ZoomOut size={16} /> : <ZoomIn size={16} />}
+          </button>
+          <button
+            onClick={() => {
+              if (currentUrl && side) {
+                downloadImage(currentUrl, buildPhotoFilename(card, side));
+              }
+            }}
+            title="Télécharger cette photo"
+            aria-label="Télécharger cette photo"
+            className="ui-btn ui-btn-icon"
+          >
+            <Download size={16} />
+          </button>
+          <button onClick={onClose} title="Fermer" aria-label="Fermer" className="ui-btn ui-btn-icon">
+            <X size={18} />
+          </button>
+        </div>
+      </div>
+
+      <div className="relative flex min-h-0 flex-1 items-center justify-center px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:px-20">
+        <div
+          className={`overflow-hidden rounded-lg ${zoomed ? 'cursor-zoom-out touch-none' : 'cursor-zoom-in'}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            setZoom(zoomed ? null : pointAt(e));
+          }}
+          onPointerMove={(e) => {
+            if (zoomed) setZoom(pointAt(e));
+          }}
+        >
+          <img
+            key={side}
+            src={cdnImg(currentUrl) ?? ''}
+            alt={`${card.player ?? 'Carte'} (${SIDE_LABEL[side].toLowerCase()})`}
+            decoding="async"
+            draggable={false}
+            className="block max-h-[calc(100dvh-7rem)] max-w-[calc(100vw-2rem)] select-none object-contain transition-transform duration-150 ease-out sm:max-w-[calc(100vw-10rem)]"
+            style={{
+              transform: zoomed ? 'scale(2.5)' : 'none',
+              transformOrigin: zoomed && zoom ? `${zoom.x}% ${zoom.y}%` : 'center',
+            }}
+          />
+        </div>
+
+        {canPrev && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onSide('front'); }}
+            aria-label="Voir le recto"
+            className="ui-btn ui-btn-icon absolute left-4 top-1/2 hidden h-11 w-11 -translate-y-1/2 sm:inline-flex"
+          >
+            <ChevronLeft size={20} />
+          </button>
+        )}
+        {canNext && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onSide('back'); }}
+            aria-label="Voir le verso"
+            className="ui-btn ui-btn-icon absolute right-4 top-1/2 hidden h-11 w-11 -translate-y-1/2 sm:inline-flex"
+          >
+            <ChevronRight size={20} />
+          </button>
+        )}
+      </div>
+    </motion.div>,
+    document.body,
+  );
 }
 
 interface Props {
@@ -321,710 +506,647 @@ export function CardDetail({ card, onClose }: Props) {
     }
   }
 
-  return (
-    <>
-    <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-4 sm:p-6"
-        onClick={onClose}
+  /* ── Présentation ─────────────────────────────────────────── */
+
+  const [side, setSide] = useState<Side>(card.image_front_url || !card.image_back_url ? 'front' : 'back');
+  const panelRef = useRef<HTMLDivElement>(null);
+  const overlayOpen = lightboxSide != null || vintedPreview != null || showEbayPublish;
+
+  // Verrouille le défilement de la page tant que la fiche est ouverte.
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    panelRef.current?.focus();
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, []);
+
+  // Échap ferme la fiche, sauf si une surcouche (plein écran, aperçu, eBay) est ouverte.
+  useEffect(() => {
+    if (overlayOpen || saving) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose();
+    }
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [overlayOpen, saving, onClose]);
+
+  const urlOf = (s: Side) => (s === 'front' ? card.image_front_url : card.image_back_url);
+  const inputRefOf = (s: Side) => (s === 'front' ? frontInputRef : backInputRef);
+  const dropProps = (s: Side) => ({
+    onDragOver: (e: DragEvent<HTMLElement>) => { if (!editing) return; e.preventDefault(); setDragOver(s); },
+    onDragLeave: () => { if (editing) setDragOver(null); },
+    onDrop: (e: DragEvent<HTMLElement>) => { if (!editing) return; e.preventDefault(); setDragOver(null); const f = e.dataTransfer.files[0]; if (f) handleImageUpload(f, s); },
+  });
+  const shownUrl = urlOf(side);
+  const hasAnyPhoto = !!(card.image_front_url || card.image_back_url);
+  const subtitle = [card.team, card.year].filter(Boolean).join(' · ');
+  const vintedPrice = card.vinted_price ?? card.price;
+
+  const details: { label: string; value: string | null | undefined; num?: boolean }[] = [
+    { label: 'Sport', value: card.sport },
+    { label: 'Marque', value: card.brand },
+    { label: 'Set', value: card.set_name },
+    { label: 'Insert', value: card.insert_name },
+    { label: 'Parallel', value: normalizeParallelName(card.parallel_name) },
+    { label: 'N° carte', value: card.card_number, num: true },
+    { label: 'Tirage', value: card.numbered, num: true },
+    { label: 'Rookie', value: card.is_rookie ? 'Oui' : null },
+    { label: 'Quantité', value: (card.quantity ?? 1) > 1 ? String(card.quantity) : null, num: true },
+    { label: 'État', value: card.condition_notes || 'Mint / Near Mint' },
+  ];
+
+  const textFields = (keys: [
+    'player' | 'team' | 'year' | 'brand' | 'set_name' | 'insert_name' | 'parallel_name' | 'card_number' | 'numbered' | 'purchase_price' | 'vinted_price' | 'vinted_url' | 'ebay_url',
+    string,
+    string?,
+  ][]) =>
+    keys.map(([key, label, span]) => (
+      <Field key={key} label={label} className={span}>
+        <input
+          className="ui-input"
+          inputMode={key.endsWith('_price') ? 'decimal' : undefined}
+          value={fields[key]}
+          onChange={(e) => set(key, e.target.value)}
+        />
+      </Field>
+    ));
+
+  const photoStage = (
+    <div className="flex flex-col items-center gap-3">
+      <div
+        {...dropProps(side)}
+        role={shownUrl ? 'button' : undefined}
+        tabIndex={shownUrl ? 0 : undefined}
+        aria-label={shownUrl ? (editing ? `Remplacer la photo (${SIDE_LABEL[side].toLowerCase()})` : 'Afficher en plein écran') : undefined}
+        onClick={() => handleImageClick(side)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleImageClick(side); } }}
+        className={`group relative aspect-[5/7] w-full max-w-[min(18rem,calc((94dvh_-_18rem)*0.714))] overflow-hidden rounded-xl border transition-colors focus-visible:outline-2 focus-visible:outline-[var(--accent)] md:max-w-[min(100%,calc((92dvh_-_16rem)*0.714))] ${
+          dragOver === side ? 'border-[var(--accent)] bg-[var(--accent-dim)]' : 'border-[var(--border)] bg-[var(--bg-secondary)]'
+        } ${shownUrl ? (editing ? 'cursor-pointer' : 'cursor-zoom-in') : ''}`}
       >
-        <motion.div
-          initial={{ scale: 0.95, y: 20, opacity: 0 }}
-          animate={{ scale: 1, y: 0, opacity: 1 }}
-          exit={{ scale: 0.95, y: 20, opacity: 0 }}
-          className="rounded-3xl w-full sm:max-w-3xl overflow-hidden max-h-[95vh] flex flex-col min-h-0 glass border border-white/10 shadow-2xl shadow-black/60"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* Header images */}
-          <div className="flex flex-col gap-5 p-6 border-b border-white/5 bg-white/5">
-            {/* Barre d'actions */}
-            <div className="flex items-center justify-end gap-2">
-              {!editing && (card.image_front_url || card.image_back_url) && (
+        {shownUrl ? (
+          <img
+            key={side}
+            src={cdnImg(shownUrl)}
+            alt={`${card.player ?? 'Carte'} (${SIDE_LABEL[side].toLowerCase()})`}
+            decoding="async"
+            draggable={false}
+            className={`h-full w-full object-contain transition-opacity ${editing ? 'opacity-80' : ''}`}
+          />
+        ) : (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-6 text-center text-[var(--text-muted)]">
+            <ImageIcon size={28} strokeWidth={1.5} />
+            <span className="text-[13px]">Pas de photo du {side === 'front' ? 'recto' : 'verso'}</span>
+            {editing && <span className="text-xs">Glisse une image ici ou utilise « Ajouter »</span>}
+          </div>
+        )}
+
+        {!editing && shownUrl && (
+          <span className="pointer-events-none absolute bottom-2 right-2 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-black/70 text-[var(--text-primary)] ring-1 ring-white/10 opacity-0 transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+            <Maximize2 size={14} />
+          </span>
+        )}
+        {editing && shownUrl && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-black/55 text-[13px] font-medium text-[var(--text-primary)] opacity-0 transition-opacity group-hover:opacity-100">
+            <Camera size={18} />
+            Remplacer la photo
+          </div>
+        )}
+        {uploadingImage === side && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+            <Loader2 size={22} className="animate-spin text-[var(--accent)]" />
+          </div>
+        )}
+      </div>
+
+      <div className="flex w-full max-w-[min(18rem,calc((94dvh_-_18rem)*0.714))] items-center gap-2 md:max-w-none">
+        {SIDES.map((s) => {
+          const url = urlOf(s);
+          const isActive = side === s;
+          return (
+            <button
+              key={s}
+              type="button"
+              {...dropProps(s)}
+              onClick={() => setSide(s)}
+              disabled={!url && !editing}
+              aria-pressed={isActive}
+              className={`flex items-center gap-2 rounded-lg border p-1 pr-2.5 text-[13px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                dragOver === s
+                  ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
+                  : isActive
+                    ? 'border-[var(--border-accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
+                    : 'border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
+              }`}
+            >
+              <span className="relative flex h-10 w-7 shrink-0 items-center justify-center overflow-hidden rounded-md bg-[var(--bg-secondary)]">
+                {url ? (
+                  <img src={cdnImg(url)} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+                ) : (
+                  <ImageIcon size={12} className="text-[var(--text-muted)]" />
+                )}
+                {uploadingImage === s && (
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/60">
+                    <Loader2 size={12} className="animate-spin text-[var(--accent)]" />
+                  </span>
+                )}
+              </span>
+              {SIDE_LABEL[s]}
+            </button>
+          );
+        })}
+
+        <div className="ml-auto flex items-center gap-1.5">
+          {editing ? (
+            <button
+              type="button"
+              onClick={() => inputRefOf(side).current?.click()}
+              disabled={uploadingImage != null}
+              className="ui-btn"
+            >
+              <ImagePlus size={15} />
+              {shownUrl ? 'Remplacer' : 'Ajouter'}
+            </button>
+          ) : (
+            <>
+              {hasAnyPhoto && (
                 <button
                   onClick={handleDownloadPhotos}
                   disabled={downloadingPhotos}
                   title="Télécharger les photos"
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border border-white/10 bg-white/5 text-white hover:bg-white/10 active:scale-95 disabled:opacity-50"
+                  aria-label="Télécharger les photos"
+                  className="ui-btn ui-btn-icon"
                 >
-                  {downloadingPhotos ? <RefreshCw size={14} className="animate-spin" /> : <Download size={14} />}
-                  Photos
+                  {downloadingPhotos ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
                 </button>
               )}
-              <button
-                onClick={() => setEditing((v) => !v)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all border group active:scale-95 ${editing
-                  ? 'bg-white/10 border-white/20 text-white hover:bg-white/20'
-                  : 'bg-[var(--accent)] border-[var(--border-accent)] text-[#09090B] shadow-lg shadow-[var(--accent-glow)]'
-                  }`}
-              >
-                {editing ? <X size={14} /> : <Edit2 size={14} className="group-hover:rotate-12 transition-transform" />}
-                {editing ? 'Annuler' : 'Modifier'}
-              </button>
-              <button
-                onClick={onClose}
-                className="w-9 h-9 flex items-center justify-center rounded-xl bg-white/5 border border-white/10 text-[var(--text-muted)] hover:text-white hover:bg-white/10 transition-all active:scale-90"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Images + identité */}
-            <div className="flex flex-col sm:flex-row gap-6 items-start">
-            <div className="flex gap-4">
-              {/* Front image — drag & drop zone */}
-              <div
-                className="relative shrink-0 rounded-2xl overflow-hidden group cursor-pointer transition-all aspect-[2.5/3.5] h-40"
-                style={{
-                  outline: dragOver === 'front' ? '2px solid var(--accent)' : '1px solid white/10',
-                  background: dragOver === 'front' ? 'var(--accent-dim)' : 'var(--bg-card)',
-                }}
-                onDragOver={(e) => { if (!editing) return; e.preventDefault(); setDragOver('front'); }}
-                onDragLeave={() => { if (editing) setDragOver(null); }}
-                onDrop={(e) => { if (!editing) return; e.preventDefault(); setDragOver(null); const f = e.dataTransfer.files[0]; if (f) handleImageUpload(f, 'front'); }}
-                onClick={() => handleImageClick('front')}
-              >
-                {card.image_front_url ? (
-                  <img
-                    src={cdnImg(card.image_front_url)}
-                    alt="Face"
-                    loading="lazy"
-                    decoding="async"
-                    className={`h-full w-full object-cover transition-transform duration-500 ${editing ? 'group-hover:scale-105 opacity-80' : 'group-hover:scale-110'}`}
-                  />
-                ) : (
-                  <div className="h-full w-full flex flex-col items-center justify-center gap-2 opacity-30 text-[var(--text-muted)]">
-                    <ImageIcon size={32} strokeWidth={1} />
-                    <span className="text-[10px] uppercase font-bold tracking-widest">Face</span>
-                  </div>
-                )}
-
-                {editing && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Camera size={20} className="text-white" />
-                  </div>
-                )}
-
-                {uploadingImage === 'front' && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/60">
-                    <RefreshCw size={24} className="text-[var(--accent)] animate-spin" />
-                  </div>
-                )}
-                <input ref={frontInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageUpload(f, 'front'); e.target.value = ''; }} />
-              </div>
-
-              {/* Back image — drag & drop zone */}
-              <div
-                className="relative shrink-0 rounded-2xl overflow-hidden group cursor-pointer transition-all aspect-[2.5/3.5] h-40"
-                style={{
-                  outline: dragOver === 'back' ? '2px solid var(--accent)' : '1px solid white/10',
-                  background: dragOver === 'back' ? 'var(--accent-dim)' : 'var(--bg-card)',
-                }}
-                onDragOver={(e) => { if (!editing) return; e.preventDefault(); setDragOver('back'); }}
-                onDragLeave={() => { if (editing) setDragOver(null); }}
-                onDrop={(e) => { if (!editing) return; e.preventDefault(); setDragOver(null); const f = e.dataTransfer.files[0]; if (f) handleImageUpload(f, 'back'); }}
-                onClick={() => handleImageClick('back')}
-              >
-                {card.image_back_url ? (
-                  <img
-                    src={cdnImg(card.image_back_url)}
-                    alt="Dos"
-                    loading="lazy"
-                    decoding="async"
-                    className={`h-full w-full object-cover transition-transform duration-500 ${editing ? 'group-hover:scale-105 opacity-80' : 'group-hover:scale-110'}`}
-                  />
-                ) : (
-                  <div className="h-full w-full flex flex-col items-center justify-center gap-2 opacity-20 text-[var(--text-muted)]">
-                    <ImageIcon size={32} strokeWidth={1} />
-                    <span className="text-[10px] uppercase font-bold tracking-widest">Dos</span>
-                  </div>
-                )}
-
-                {editing && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Camera size={20} className="text-white" />
-                  </div>
-                )}
-
-                {uploadingImage === 'back' && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/60">
-                    <RefreshCw size={24} className="text-[var(--accent)] animate-spin" />
-                  </div>
-                )}
-                <input ref={backInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageUpload(f, 'back'); e.target.value = ''; }} />
-              </div>
-            </div>
-
-            <div className="flex-1 flex flex-col justify-center min-w-0">
-              <div className="mb-4">
-                <h2 className="text-2xl font-black leading-tight tracking-tight text-white mb-1 truncate">
-                  {card.player ?? 'Carte Inconnue'}
-                </h2>
-                <div className="flex items-center gap-2 text-[var(--text-secondary)] font-medium text-sm">
-                  <span>{card.team}</span>
-                  {card.year && (
-                    <>
-                      <div className="w-1 h-1 rounded-full bg-white/20" />
-                      <span>{card.year}</span>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-2">
-                <StatusBadge status={card.status} />
-                {(card.vinted_price ?? card.price) != null && (
-                  <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--accent)] text-[#09090B] text-[11px] font-black">
-                    <Euro size={11} strokeWidth={2.5} />
-                    Vinted {card.vinted_price ?? card.price} €
-                  </span>
-                )}
-                {card.ebay_price != null && (
-                  <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 text-white text-[11px] font-black">
-                    <Euro size={11} strokeWidth={2.5} />
-                    eBay {card.ebay_price} €
-                  </span>
-                )}
-                {card.is_rookie && <RookieBadge compact />}
-                {card.grading_company && <GradingBadge card={card} />}
-
-                {card.numbered && (
-                  <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--accent-dim)] text-[var(--accent)] text-[10px] font-black border border-[var(--border-accent)]">
-                    <Hash size={10} />
-                    {card.numbered}
-                  </span>
-                )}
-                {card.card_type && !(card.card_type === 'numbered' && card.numbered) && (
-                  <span className="px-3 py-1 rounded-full bg-white/5 text-[var(--text-muted)] text-[10px] font-black border border-white/10 uppercase tracking-widest">
-                    {card.card_type}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            </div>
-          </div>
-
-          <div className="overflow-y-auto flex-1 min-h-0 p-6 custom-scrollbar">
-            {ebaySyncNotice && (
-              <div className="mb-4 flex items-start gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold">
-                <AlertCircle size={14} className="shrink-0 mt-0.5" />
-                <span className="flex-1">{ebaySyncNotice}</span>
-                <button onClick={() => setEbaySyncNotice(null)} className="shrink-0 opacity-70 hover:opacity-100">
-                  <X size={13} />
-                </button>
-              </div>
-            )}
-            {!editing ? (
-              /* View mode */
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="space-y-8"
-              >
-                <div className="rounded-2xl bg-white/[0.03] border border-white/5 overflow-hidden">
-                  {[
-                    { label: 'Marque', value: card.brand, icon: Tag, highlight: false },
-                    { label: 'Set', value: card.set_name, icon: Hash, highlight: false },
-                    { label: 'Parallel', value: normalizeParallelName(card.parallel_name), icon: Layers, highlight: false },
-                    { label: 'Insert', value: card.insert_name, icon: Star, highlight: false },
-                    { label: 'N° carte', value: card.card_number, icon: Hash, highlight: false },
-                    { label: 'Rookie', value: card.is_rookie ? 'Oui' : null, icon: Trophy, highlight: false },
-                    { label: 'État', value: card.condition_notes || 'Mint / Near Mint', icon: Search, highlight: false },
-                    { label: 'Prix d’achat', value: card.purchase_price != null ? `${card.purchase_price} €` : null, icon: Euro, highlight: false },
-                    { label: 'Prix Vinted', value: (card.vinted_price ?? card.price) != null ? `${card.vinted_price ?? card.price} €` : null, icon: Euro, highlight: true },
-                    { label: 'Prix eBay', value: card.ebay_price != null ? `${card.ebay_price} €` : null, icon: Euro, highlight: true },
-                  ]
-                    .filter((item) => item.value)
-                    .map((item, idx) => (
-                      <div
-                        key={item.label}
-                        className={`flex items-center justify-between gap-4 px-4 py-3 ${idx > 0 ? 'border-t border-white/5' : ''}`}
-                      >
-                        <span className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-[var(--text-muted)]">
-                          <item.icon size={13} className="opacity-50" />
-                          {item.label}
-                        </span>
-                        <span
-                          className="text-sm font-black text-right truncate"
-                          style={{ color: item.highlight ? 'var(--accent)' : 'white' }}
-                        >
-                          {item.value}
-                        </span>
-                      </div>
-                    ))}
-                </div>
-
-
-                {card.grading_company && (
-                  <div className="p-4 rounded-3xl bg-white/[0.03] border border-white/5 space-y-3">
-                    <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
-                      <Trophy size={14} className="text-[var(--accent)]" />
-                      Certification {card.grading_company}
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <div className="text-[10px] opacity-40 uppercase font-black mb-1">Grade</div>
-                        <div className="text-xl font-black text-[var(--accent)]">{card.grading_grade || 'Pending'}</div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] opacity-40 uppercase font-black mb-1">Status</div>
-                        <div className="text-sm font-bold text-white">{card.grading_status ? GRADING_STATUS_LABELS[card.grading_status] : '—'}</div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {!editing && (
-                  <div className="flex flex-col gap-5 pt-4">
-                    <div className="flex flex-col gap-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
-                          Marché
-                        </span>
-                        <div className="flex items-center gap-1.5 text-xs" style={{ color: 'var(--text-secondary)' }}>
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(buildPriceSearchText(card));
-                              window.open(`https://130point.com/sales/?q=${encodeURIComponent(buildPriceSearchText(card))}`, '_blank');
-                            }}
-                            className="hover:text-white transition-colors"
-                          >
-                            130 Point ↗
-                          </button>
-                          <span className="opacity-40">·</span>
-                          <button onClick={openEbaySold} className="hover:text-white transition-colors">
-                            eBay Sold ↗
-                          </button>
-                        </div>
-                      </div>
-
-                      <EbaySoldItems
-                        query={buildPriceSearchText(card)}
-                        imageUrl={card.image_front_url}
-                        match={{
-                          year: card.year,
-                          cardNumber: card.card_number,
-                          numbered: card.numbered,
-                          setName: card.set_name || card.brand,
-                        }}
-                        cardId={card.id}
-                        currentPrice={card.price}
-                        onApplyPrice={(eur) =>
-                          updateCard.mutateAsync({
-                            id: card.id,
-                            price: eur,
-                            status: card.status === 'draft' || card.status === 'collection' ? 'a_vendre' : card.status,
-                          })
-                        }
-                      />
-                    </div>
-
-                    <div className="flex flex-col gap-3">
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">
-                        Mettre en vente
-                      </span>
-
-                      {ebayError && (
-                        <p className="text-xs" style={{ color: 'var(--red)' }}>{ebayError}</p>
-                      )}
-
-                      <div className="grid grid-cols-2 gap-3 items-start">
-                        {card.ebay_offer_id ? (
-                          <div className="flex flex-col gap-1.5">
-                            <a
-                              href={card.ebay_url ?? '#'}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="py-4 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-2 bg-white/5 border border-white/10 hover:bg-white/10 text-[var(--text-secondary)] active:scale-95"
-                            >
-                              <EbayLogo width={36} height={14} />
-                              VOIR ↗
-                            </a>
-                            <button
-                              onClick={withdrawFromEbay}
-                              disabled={withdrawingEbay}
-                              className="py-1 text-[11px] text-center transition-colors disabled:opacity-50"
-                              style={{ color: 'var(--red)' }}
-                            >
-                              {withdrawingEbay ? 'Retrait…' : 'Retirer de eBay'}
-                            </button>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={() => setShowEbayPublish(true)}
-                            className="py-4 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-2 bg-[var(--accent)] text-[#09090B] shadow-xl shadow-[var(--accent-glow)] hover:brightness-110 active:scale-95"
-                          >
-                            <EbayLogo width={36} height={14} mono="#09090B" />
-                            PUBLIER
-                          </button>
-                        )}
-
-                        {card.vinted_url ? (
-                          <a
-                            href={card.vinted_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="py-4 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-2 bg-white/5 border border-white/10 hover:bg-white/10 text-[var(--text-secondary)] active:scale-95"
-                          >
-                            <VintedLogo width={50} height={14} />
-                            VOIR ↗
-                          </a>
-                        ) : (
-                          <button
-                            onClick={publishToVinted}
-                            className="py-4 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-2 bg-[var(--accent)] text-[#09090B] shadow-xl shadow-[var(--accent-glow)] hover:brightness-110 active:scale-95"
-                          >
-                            <VintedLogo width={50} height={14} mono="#09090B" />
-                            PUBLIER
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="h-px bg-white/5 my-1" />
-                    <button
-                      onClick={handleDelete}
-                      disabled={deleteCard.isPending}
-                      className="py-3 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-2 text-red-400 bg-transparent hover:bg-red-500/10 active:scale-95 disabled:opacity-50"
-                    >
-                      <Trash2 size={14} />
-                      Supprimer la carte
-                    </button>
-                  </div>
-                )}
-              </motion.div>
-            ) : (
-              /* Edit mode */
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="space-y-6"
-              >
-                <div
-                  className="rounded-3xl p-5 bg-white/5 border border-white/10"
+              {shownUrl && (
+                <button
+                  onClick={() => setLightboxSide(side)}
+                  title="Plein écran"
+                  aria-label="Afficher en plein écran"
+                  className="ui-btn ui-btn-icon"
                 >
-                  <div className="flex items-center justify-between gap-3 mb-5">
-                    <div className="flex items-center gap-2">
-                      <Trophy size={16} className="text-[var(--accent)]" />
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Grading Settings</span>
-                    </div>
-                    <button
-                      onClick={() => setShowGrading((v) => !v)}
-                      className="px-3 py-1.5 rounded-xl text-[10px] font-bold transition-all border border-white/10 bg-white/5 text-[var(--text-secondary)] flex items-center gap-2"
-                    >
-                      {showGrading ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                      {showGrading ? 'MOINS' : 'PLUS D’OPTIONS'}
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-4">
-                    <div>
-                      <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Société</label>
-                      <select className={inputCls} value={fields.grading_company} onChange={(e) => set('grading_company', e.target.value)}>
-                        <option value="">—</option>
-                        {GRADING_COMPANIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Statut</label>
-                      <select className={inputCls} value={fields.grading_status} onChange={(e) => set('grading_status', e.target.value)}>
-                        {(Object.entries(GRADING_STATUS_LABELS) as [GradingStatus, string][]).map(([k, v]) => (
-                          <option key={k} value={k}>{v}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Note</label>
-                      <input className={inputCls} value={fields.grading_grade} onChange={(e) => set('grading_grade', e.target.value)} placeholder="10 / 9 / 8.5" />
-                    </div>
-                  </div>
-
-                  {showGrading && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-white/5"
-                    >
-                      <div className="col-span-1">
-                        <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Certificat #</label>
-                        <input className={inputCls} value={fields.grading_cert} onChange={(e) => set('grading_cert', e.target.value)} placeholder="00000000" />
-                      </div>
-                      <div className="col-span-1">
-                        <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Coût Grading (€)</label>
-                        <input type="number" className={inputCls} value={fields.grading_cost} onChange={(e) => set('grading_cost', e.target.value)} placeholder="0" />
-                      </div>
-                      <div className="col-span-1">
-                        <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Envoyé le</label>
-                        <input type="date" className={inputCls} value={fields.grading_submitted_at} onChange={(e) => set('grading_submitted_at', e.target.value)} />
-                      </div>
-                      <div className="col-span-1">
-                        <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Reçu le</label>
-                        <input type="date" className={inputCls} value={fields.grading_returned_at} onChange={(e) => set('grading_returned_at', e.target.value)} />
-                      </div>
-                    </motion.div>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Sport</label>
-                    <select className={inputCls} value={fields.sport} onChange={(e) => set('sport', e.target.value as Sport)}>
-                      {SPORTS.map((sport) => <option key={sport} value={sport}>{sport}</option>)}
-                    </select>
-                  </div>
-                  {([
-                    ['player', 'Joueur'],
-                    ['team', 'Équipe'],
-                    ['year', 'Année'],
-                    ['brand', 'Marque'],
-                    ['set_name', 'Set'],
-                    ['insert_name', 'Insert'],
-                    ['parallel_name', 'Parallel'],
-                    ['card_number', 'N° carte'],
-                    ['numbered', 'Tirage'],
-                    ['purchase_price', 'Prix achat (€)'],
-                    ['vinted_price', 'Prix Vinted (€)'],
-                    ['ebay_price', 'Prix eBay (€)'],
-                    ['vinted_url', 'Lien Vinted'],
-                    ['ebay_url', 'Lien eBay'],
-                  ] as [
-                    'player' | 'team' | 'year' | 'brand' | 'set_name' | 'insert_name' | 'parallel_name' | 'card_number' | 'numbered' | 'purchase_price' | 'vinted_price' | 'ebay_price' | 'vinted_url' | 'ebay_url',
-                    string
-                  ][]).map(([key, label]) => (
-                    <div key={key}>
-                      <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">{label}</label>
-                      <input className={inputCls} value={fields[key]} onChange={(e) => set(key, e.target.value)} />
-                    </div>
-                  ))}
-                  <div className="col-span-2 flex items-center justify-between gap-3 rounded-xl px-3 py-2.5 bg-white/5 border border-white/10">
-                    <p className="text-xs text-[var(--text-muted)]">
-                      Prix cible après 9 % de frais eBay + 0,35 €
-                    </p>
-                    <button type="button" onClick={recalculateEbayPrice} className="px-3 py-2 rounded-lg text-xs font-black bg-[var(--accent)] text-[#09090B]">
-                      Recalculer eBay
-                    </button>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Quantité</label>
-                    <input type="number" min={1} className={inputCls} value={fields.quantity} onChange={(e) => set('quantity', e.target.value)} placeholder="1" />
-                  </div>
-                  <div>
-                    <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Type</label>
-                    <select className={inputCls} value={fields.card_type} onChange={(e) => set('card_type', e.target.value)}>
-                      <option value="">—</option>
-                      {CARD_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Statut</label>
-                    <select className={inputCls} value={fields.status} onChange={(e) => set('status', e.target.value)}>
-                      <option value="collection">Collection</option>
-                      <option value="a_vendre">À vendre</option>
-                      <option value="reserve">Réservé</option>
-                      <option value="vendu">Vendu</option>
-                    </select>
-                  </div>
-                  <div className="col-span-2">
-                    <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Notes d'état</label>
-                    <input className={inputCls} value={fields.condition_notes} onChange={(e) => set('condition_notes', e.target.value)} />
-                  </div>
-                  {folders.length > 0 && (
-                    <div className="col-span-2">
-                      <label className="block text-[10px] uppercase tracking-wider font-bold mb-1.5 opacity-50">Dossiers</label>
-                      <div className="flex flex-wrap gap-2">
-                        {folders.map((f) => {
-                          const active = folderIds.includes(f.id);
-                          return (
-                            <button
-                              type="button"
-                              key={f.id}
-                              onClick={() => setFolderIds((prev) => (active ? prev.filter((id) => id !== f.id) : [...prev, f.id]))}
-                              className="inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-bold transition-all border"
-                              style={active
-                                ? { background: 'var(--accent)', color: '#09090B', borderColor: 'var(--border-accent)' }
-                                : { background: 'rgba(255,255,255,0.05)', borderColor: 'rgba(255,255,255,0.1)', color: 'var(--text-secondary)' }}
-                            >
-                              {f.emoji && <span>{f.emoji}</span>}
-                              {f.name}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="pt-2 space-y-3">
-                  <button
-                    onClick={handleReanalyze}
-                    disabled={identify.isPending}
-                    className="w-full py-3.5 rounded-2xl text-xs font-bold transition-all flex items-center justify-center gap-3 bg-white/5 border border-white/10 hover:bg-white/10 text-[var(--text-secondary)] active:scale-95"
-                  >
-                    {identify.isPending ? <RefreshCw size={14} className="animate-spin" /> : <Search size={14} />}
-                    {identify.isPending ? 'ANALYSE EN COURS…' : 'RÉ-ANALYSER AVEC L’IA'}
-                  </button>
-
-                  {reanalyzeError && (
-                    <div className="flex items-center gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold">
-                      <AlertCircle size={14} />
-                      {reanalyzeError}
-                    </div>
-                  )}
-
-                  <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="w-full py-4 rounded-2xl text-sm font-black transition-all flex items-center justify-center gap-2 bg-[var(--accent)] text-[#09090B] shadow-xl shadow-[var(--accent-glow)] hover:brightness-110 active:scale-95"
-                  >
-                    {saving ? <RefreshCw size={16} className="animate-spin" /> : <Save size={16} />}
-                    {saving ? 'ENREGISTREMENT…' : 'ENREGISTRER LES MODIFICATIONS'}
-                  </button>
-                </div>
-              </motion.div>
-            )}
-          </div>
-        </motion.div>
-      </motion.div>
-    </AnimatePresence>
-
-    <AnimatePresence>
-    {lightboxSide && (() => {
-      const urls = [card.image_front_url, card.image_back_url].filter(Boolean) as string[];
-      const currentUrl = lightboxSide === 'front' ? card.image_front_url : card.image_back_url;
-      const canPrev = lightboxSide === 'back' && !!card.image_front_url;
-      const canNext = lightboxSide === 'front' && !!card.image_back_url;
-      void urls;
-      return (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-xl"
-          onClick={() => setLightboxSide(null)}
-          onKeyDown={(e) => {
-            if (e.key === 'Escape') setLightboxSide(null);
-            if (e.key === 'ArrowLeft' && canPrev) setLightboxSide('front');
-            if (e.key === 'ArrowRight' && canNext) setLightboxSide('back');
-          }}
-          tabIndex={0}
-          ref={(el) => el?.focus()}
-        >
-          <motion.img
-            key={lightboxSide}
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.95 }}
-            src={cdnImg(currentUrl) ?? ''}
-            alt=""
-            decoding="async"
-            className="max-h-[90vh] max-w-[80vw] object-contain rounded-2xl shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          />
-
-          {canPrev && (
-            <button
-              onClick={(e) => { e.stopPropagation(); setLightboxSide('front'); }}
-              className="absolute left-6 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center rounded-2xl bg-white/10 text-white hover:bg-white/20 transition-all"
-            >
-              <ChevronLeft size={24} />
-            </button>
+                  <Maximize2 size={15} />
+                </button>
+              )}
+            </>
           )}
-          {canNext && (
-            <button
-              onClick={(e) => { e.stopPropagation(); setLightboxSide('back'); }}
-              className="absolute right-6 top-1/2 -translate-y-1/2 w-12 h-12 flex items-center justify-center rounded-2xl bg-white/10 text-white hover:bg-white/20 transition-all"
-            >
-              <ChevronRight size={24} />
-            </button>
-          )}
+        </div>
+      </div>
 
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2">
-            {card.image_front_url && (
-              <button onClick={(e) => { e.stopPropagation(); setLightboxSide('front'); }}
-                className={`w-2 h-2 rounded-full transition-all ${lightboxSide === 'front' ? 'bg-white scale-125' : 'bg-white/30 hover:bg-white/60'}`}
-              />
-            )}
-            {card.image_back_url && (
-              <button onClick={(e) => { e.stopPropagation(); setLightboxSide('back'); }}
-                className={`w-2 h-2 rounded-full transition-all ${lightboxSide === 'back' ? 'bg-white scale-125' : 'bg-white/30 hover:bg-white/60'}`}
-              />
-            )}
+      <input ref={frontInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageUpload(f, 'front'); e.target.value = ''; }} />
+      <input ref={backInputRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageUpload(f, 'back'); e.target.value = ''; }} />
+    </div>
+  );
+
+  const viewContent = (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <StatusBadge status={card.status} />
+        {card.is_rookie && <RookieBadge compact />}
+        {card.grading_company && <GradingBadge card={card} />}
+        {card.numbered && (
+          <Badge tone="accent" className="tabular">
+            <Hash size={11} />
+            {card.numbered}
+          </Badge>
+        )}
+        {card.card_type && !(card.card_type === 'numbered' && card.numbered) && <CardBadge type={card.card_type} />}
+      </div>
+
+      <section>
+        <SectionTitle>Prix & vente</SectionTitle>
+        {ebayError && (
+          <div className="mb-2">
+            <Notice tone="error" icon={AlertCircle}>{ebayError}</Notice>
           </div>
+        )}
+        <div className="divide-y divide-[var(--border)] rounded-xl border border-[var(--border)]">
+          <MarketRow logo={<VintedLogo width={50} height={14} />} label="Vinted" price={vintedPrice} live={!!card.vinted_url}>
+            {card.vinted_url ? (
+              <a href={card.vinted_url} target="_blank" rel="noopener noreferrer" className="ui-btn">
+                Voir <ExternalLink size={13} />
+              </a>
+            ) : (
+              <button onClick={publishToVinted} className="ui-btn text-[var(--accent)]">
+                Publier
+              </button>
+            )}
+          </MarketRow>
+          <MarketRow logo={<EbayLogo width={36} height={14} />} label="eBay" price={card.ebay_price} live={!!card.ebay_offer_id}>
+            {card.ebay_offer_id ? (
+              <>
+                <button onClick={withdrawFromEbay} disabled={withdrawingEbay} className="ui-btn ui-btn-danger">
+                  {withdrawingEbay ? <Loader2 size={14} className="animate-spin" /> : null}
+                  {withdrawingEbay ? 'Retrait…' : 'Retirer'}
+                </button>
+                <a href={card.ebay_url ?? '#'} target="_blank" rel="noopener noreferrer" className="ui-btn">
+                  Voir <ExternalLink size={13} />
+                </a>
+              </>
+            ) : (
+              <button onClick={() => setShowEbayPublish(true)} className="ui-btn text-[var(--accent)]">
+                Publier
+              </button>
+            )}
+          </MarketRow>
+          {card.purchase_price != null && (
+            <div className="flex items-center justify-between gap-3 px-3 py-2.5 text-[13px]">
+              <span className="text-[var(--text-muted)]">Prix d’achat</span>
+              <span className="tabular font-medium text-[var(--text-secondary)]">{formatEuro(card.purchase_price)}</span>
+            </div>
+          )}
+        </div>
+      </section>
 
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              if (currentUrl && lightboxSide) {
-                downloadImage(currentUrl, buildPhotoFilename(card, lightboxSide));
-              }
-            }}
-            title="Télécharger cette photo"
-            className="absolute top-6 right-20 w-10 h-10 flex items-center justify-center rounded-xl bg-white/10 text-white hover:bg-white/20 transition-all"
-          >
-            <Download size={20} />
-          </button>
-
-          <button
-            onClick={() => setLightboxSide(null)}
-            className="absolute top-6 right-6 w-10 h-10 flex items-center justify-center rounded-xl bg-white/10 text-white hover:bg-white/20 transition-all"
-          >
-            <X size={20} />
-          </button>
-        </motion.div>
-      );
-    })()}
-    </AnimatePresence>
-    {showEbayPublish && (
-      <EbayPublishModal
-        card={card}
-        onClose={() => setShowEbayPublish(false)}
-        onPublished={() => { setShowEbayPublish(false); queryClient.invalidateQueries({ queryKey: ['cards'] }); }}
-      />
-    )}
-    <AnimatePresence>
-      {vintedPreview && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/90 p-4 backdrop-blur-xl"
-          onClick={() => setVintedPreview(null)}
-        >
-          <motion.div
-            initial={{ scale: 0.96, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.96, opacity: 0 }}
-            className="w-full max-w-md rounded-3xl border border-white/10 bg-[#121214] p-5 shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div>
-                <p className="text-sm font-black text-white">Aperçu de la photo Vinted</p>
-                <p className="mt-1 text-xs text-[var(--text-muted)]">{formatVintedNumberedBadge(card.numbered)}</p>
+      <section>
+        <SectionTitle>Détails</SectionTitle>
+        <dl className="divide-y divide-[var(--border)] rounded-xl border border-[var(--border)]">
+          {details
+            .filter((item) => item.value)
+            .map((item) => (
+              <div key={item.label} className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-3 px-3 py-2 text-[13px]">
+                <dt className="text-[var(--text-muted)]">{item.label}</dt>
+                <dd className={`break-words font-medium text-[var(--text-primary)] ${item.num ? 'tabular' : ''}`}>{item.value}</dd>
               </div>
-              <button onClick={() => setVintedPreview(null)} className="rounded-xl bg-white/5 p-2 text-white/70 hover:bg-white/10">
-                <X size={18} />
+            ))}
+        </dl>
+      </section>
+
+      {card.grading_company && (
+        <section>
+          <SectionTitle>Gradation {card.grading_company}</SectionTitle>
+          <div className="rounded-xl border border-[var(--border)] px-3 py-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="text-xs text-[var(--text-muted)]">Note</div>
+                <div className="tabular text-2xl font-semibold tracking-tight text-[var(--accent)]">{card.grading_grade || 'En attente'}</div>
+              </div>
+              <div>
+                <div className="text-xs text-[var(--text-muted)]">Statut</div>
+                <div className="mt-1 text-sm font-medium text-[var(--text-primary)]">
+                  {card.grading_status ? GRADING_STATUS_LABELS[card.grading_status] : '—'}
+                </div>
+              </div>
+            </div>
+            {(card.grading_cert || card.grading_cost != null || card.grading_submitted_at || card.grading_returned_at) && (
+              <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 border-t border-[var(--border)] pt-3 text-[13px]">
+                {card.grading_cert && (
+                  <div>
+                    <dt className="text-xs text-[var(--text-muted)]">Certificat</dt>
+                    <dd className="tabular break-all text-[var(--text-primary)]">{card.grading_cert}</dd>
+                  </div>
+                )}
+                {card.grading_cost != null && (
+                  <div>
+                    <dt className="text-xs text-[var(--text-muted)]">Coût</dt>
+                    <dd className="tabular text-[var(--text-primary)]">{formatEuro(card.grading_cost)}</dd>
+                  </div>
+                )}
+                {card.grading_submitted_at && (
+                  <div>
+                    <dt className="text-xs text-[var(--text-muted)]">Envoyée le</dt>
+                    <dd className="tabular text-[var(--text-primary)]">{formatDay(card.grading_submitted_at)}</dd>
+                  </div>
+                )}
+                {card.grading_returned_at && (
+                  <div>
+                    <dt className="text-xs text-[var(--text-muted)]">Reçue le</dt>
+                    <dd className="tabular text-[var(--text-primary)]">{formatDay(card.grading_returned_at)}</dd>
+                  </div>
+                )}
+              </dl>
+            )}
+          </div>
+        </section>
+      )}
+
+      <section>
+        <SectionTitle
+          action={
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(buildPriceSearchText(card));
+                  window.open(`https://130point.com/sales/?q=${encodeURIComponent(buildPriceSearchText(card))}`, '_blank');
+                }}
+                className="ui-btn ui-btn-ghost ui-btn-sm"
+              >
+                130 Point <ExternalLink size={12} />
+              </button>
+              <button onClick={openEbaySold} className="ui-btn ui-btn-ghost ui-btn-sm">
+                eBay Sold <ExternalLink size={12} />
               </button>
             </div>
-            <img src={vintedPreview.image} alt="Aperçu du badge de tirage" className="mx-auto max-h-[60vh] rounded-2xl object-contain" />
-            <div className="mt-5 grid grid-cols-2 gap-3">
-              <button onClick={() => setVintedPreview(null)} className="rounded-2xl border border-white/10 py-3 text-sm font-bold text-white/70 hover:bg-white/5">
+          }
+        >
+          Marché
+        </SectionTitle>
+        <EbaySoldItems
+          query={buildPriceSearchText(card)}
+          imageUrl={card.image_front_url}
+          match={{
+            year: card.year,
+            cardNumber: card.card_number,
+            numbered: card.numbered,
+            setName: card.set_name || card.brand,
+          }}
+          cardId={card.id}
+          currentPrice={card.price}
+          onApplyPrice={(eur) =>
+            updateCard.mutateAsync({
+              id: card.id,
+              price: eur,
+              status: card.status === 'draft' || card.status === 'collection' ? 'a_vendre' : card.status,
+            })
+          }
+        />
+      </section>
+    </div>
+  );
+
+  const editContent = (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[var(--border)] px-3 py-2.5">
+        <p className="text-xs text-[var(--text-muted)]">Pré-remplit les champs à partir de la photo du recto.</p>
+        <button onClick={handleReanalyze} disabled={identify.isPending || !card.image_front_url} className="ui-btn ui-btn-sm">
+          {identify.isPending ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+          {identify.isPending ? 'Analyse en cours…' : 'Ré-analyser avec l’IA'}
+        </button>
+      </div>
+      {reanalyzeError && <Notice tone="error" icon={AlertCircle}>{reanalyzeError}</Notice>}
+
+      <section>
+        <SectionTitle>Identification</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          {textFields([['player', 'Joueur', 'col-span-2'], ['team', 'Équipe']])}
+          <Field label="Sport">
+            <select className="ui-select" value={fields.sport} onChange={(e) => set('sport', e.target.value as Sport)}>
+              {SPORTS.map((sport) => <option key={sport} value={sport}>{sport}</option>)}
+            </select>
+          </Field>
+          {textFields([
+            ['year', 'Année'],
+            ['brand', 'Marque'],
+            ['set_name', 'Set'],
+            ['insert_name', 'Insert'],
+            ['parallel_name', 'Parallel'],
+            ['card_number', 'N° carte'],
+            ['numbered', 'Tirage'],
+          ])}
+          <Field label="Type">
+            <select className="ui-select" value={fields.card_type} onChange={(e) => set('card_type', e.target.value)}>
+              <option value="">—</option>
+              {CARD_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </select>
+          </Field>
+          <Field label="Notes d'état" className="col-span-2">
+            <input className="ui-input" value={fields.condition_notes} onChange={(e) => set('condition_notes', e.target.value)} />
+          </Field>
+        </div>
+      </section>
+
+      <section>
+        <SectionTitle>Prix & vente</SectionTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Statut" className="col-span-2">
+            <select className="ui-select" value={fields.status} onChange={(e) => set('status', e.target.value)}>
+              <option value="collection">Collection</option>
+              <option value="a_vendre">À vendre</option>
+              <option value="reserve">Réservé</option>
+              <option value="vendu">Vendu</option>
+            </select>
+          </Field>
+          {textFields([['purchase_price', 'Prix achat (€)']])}
+          <Field label="Quantité">
+            <input type="number" min={1} className="ui-input tabular" value={fields.quantity} onChange={(e) => set('quantity', e.target.value)} placeholder="1" />
+          </Field>
+          {textFields([['vinted_price', 'Prix Vinted (€)']])}
+          <Field label="Prix eBay (€)" hint="Cible : 9 % de frais eBay + 0,35 €">
+            <div className="flex gap-1.5">
+              <input
+                className="ui-input min-w-0"
+                inputMode="decimal"
+                value={fields.ebay_price}
+                onChange={(e) => set('ebay_price', e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={recalculateEbayPrice}
+                title="Recalculer depuis le prix Vinted"
+                aria-label="Recalculer le prix eBay depuis le prix Vinted"
+                className="ui-btn ui-btn-icon shrink-0"
+              >
+                <RefreshCw size={14} />
+              </button>
+            </div>
+          </Field>
+          {textFields([['vinted_url', 'Lien Vinted', 'col-span-2'], ['ebay_url', 'Lien eBay', 'col-span-2']])}
+        </div>
+      </section>
+
+      {folders.length > 0 && (
+        <section>
+          <SectionTitle>Dossiers</SectionTitle>
+          <div className="flex flex-wrap gap-2">
+            {folders.map((f) => {
+              const active = folderIds.includes(f.id);
+              return (
+                <button
+                  type="button"
+                  key={f.id}
+                  onClick={() => setFolderIds((prev) => (active ? prev.filter((id) => id !== f.id) : [...prev, f.id]))}
+                  data-active={active}
+                  className="ui-chip"
+                >
+                  {f.emoji && <span>{f.emoji}</span>}
+                  {f.name}
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      <section>
+        <SectionTitle
+          action={
+            <button onClick={() => setShowGrading((v) => !v)} className="ui-btn ui-btn-ghost ui-btn-sm">
+              {showGrading ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+              {showGrading ? 'Moins d’options' : 'Plus d’options'}
+            </button>
+          }
+        >
+          Gradation
+        </SectionTitle>
+        <div className="grid grid-cols-3 gap-3">
+          <Field label="Société">
+            <select className="ui-select" value={fields.grading_company} onChange={(e) => set('grading_company', e.target.value)}>
+              <option value="">—</option>
+              {GRADING_COMPANIES.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </Field>
+          <Field label="Statut">
+            <select className="ui-select" value={fields.grading_status} onChange={(e) => set('grading_status', e.target.value)}>
+              {(Object.entries(GRADING_STATUS_LABELS) as [GradingStatus, string][]).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Note">
+            <input className="ui-input" value={fields.grading_grade} onChange={(e) => set('grading_grade', e.target.value)} placeholder="10 / 9 / 8.5" />
+          </Field>
+        </div>
+        {showGrading && (
+          <div className="mt-3 grid grid-cols-2 gap-3 border-t border-[var(--border)] pt-3">
+            <Field label="Certificat #">
+              <input className="ui-input tabular" value={fields.grading_cert} onChange={(e) => set('grading_cert', e.target.value)} placeholder="00000000" />
+            </Field>
+            <Field label="Coût grading (€)">
+              <input type="number" className="ui-input tabular" value={fields.grading_cost} onChange={(e) => set('grading_cost', e.target.value)} placeholder="0" />
+            </Field>
+            <Field label="Envoyé le">
+              <input type="date" className="ui-input" value={fields.grading_submitted_at} onChange={(e) => set('grading_submitted_at', e.target.value)} />
+            </Field>
+            <Field label="Reçu le">
+              <input type="date" className="ui-input" value={fields.grading_returned_at} onChange={(e) => set('grading_returned_at', e.target.value)} />
+            </Field>
+          </div>
+        )}
+      </section>
+    </div>
+  );
+
+  return (
+    <>
+      {createPortal(
+        <motion.div
+          className="fixed inset-0 z-[80] flex items-end justify-center sm:items-center sm:p-4"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.15 }}
+        >
+          <div className="absolute inset-0 bg-black/65 backdrop-blur-[2px]" onClick={saving ? undefined : onClose} />
+          <motion.div
+            ref={panelRef}
+            tabIndex={-1}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="card-detail-title"
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ type: 'spring', damping: 34, stiffness: 420 }}
+            className="relative flex h-[94dvh] max-h-[94dvh] w-full flex-col overflow-hidden rounded-t-2xl border border-[var(--border-strong)] bg-[var(--bg-card)] shadow-[var(--shadow-lg)] outline-none sm:h-auto sm:max-h-[92dvh] sm:max-w-5xl sm:rounded-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <header className="flex shrink-0 items-start gap-3 border-b border-[var(--border)] px-5 py-4">
+              <div className="min-w-0 flex-1">
+                <h2 id="card-detail-title" className="truncate text-[15px] font-semibold text-[var(--text-primary)]">
+                  {card.player ?? 'Carte inconnue'}
+                </h2>
+                <p className="mt-0.5 truncate text-[13px] text-[var(--text-muted)]">
+                  {editing ? 'Modification de la carte' : subtitle || '—'}
+                </p>
+              </div>
+              <button onClick={onClose} className="ui-btn ui-btn-ghost ui-btn-icon -mr-2 -mt-1 h-8 w-8" aria-label="Fermer">
+                <X size={16} />
+              </button>
+            </header>
+
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <div className="grid gap-5 p-4 sm:p-5 md:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] md:gap-6">
+                <div className="md:sticky md:top-5 md:self-start">{photoStage}</div>
+                <div className="min-w-0 space-y-4">
+                  {ebaySyncNotice && (
+                    <Notice tone="error" icon={AlertCircle}>
+                      <div className="flex items-start gap-2">
+                        <span className="flex-1">{ebaySyncNotice}</span>
+                        <button onClick={() => setEbaySyncNotice(null)} aria-label="Masquer" className="shrink-0 opacity-70 hover:opacity-100">
+                          <X size={14} />
+                        </button>
+                      </div>
+                    </Notice>
+                  )}
+                  {editing ? editContent : viewContent}
+                </div>
+              </div>
+            </div>
+
+            <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-[var(--border)] px-5 py-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:pb-3">
+              {editing ? (
+                <>
+                  <button onClick={() => setEditing((v) => !v)} disabled={saving} className="ui-btn">
+                    Annuler
+                  </button>
+                  <button onClick={handleSave} disabled={saving} className="ui-btn ui-btn-primary">
+                    {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                    {saving ? 'Enregistrement…' : 'Enregistrer'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button onClick={handleDelete} disabled={deleteCard.isPending} className="ui-btn ui-btn-danger mr-auto">
+                    <Trash2 size={15} />
+                    Supprimer
+                  </button>
+                  <button onClick={() => setEditing((v) => !v)} className="ui-btn ui-btn-primary">
+                    <Pencil size={15} />
+                    Modifier
+                  </button>
+                </>
+              )}
+            </footer>
+          </motion.div>
+        </motion.div>,
+        document.body,
+      )}
+
+      {lightboxSide && (
+        <Lightbox
+          card={card}
+          side={lightboxSide}
+          onSide={(s) => { setLightboxSide(s); setSide(s); }}
+          onClose={() => setLightboxSide(null)}
+        />
+      )}
+
+      {showEbayPublish &&
+        createPortal(
+          <EbayPublishModal
+            card={card}
+            onClose={() => setShowEbayPublish(false)}
+            onPublished={() => { setShowEbayPublish(false); queryClient.invalidateQueries({ queryKey: ['cards'] }); }}
+          />,
+          document.body,
+        )}
+
+      {vintedPreview && (
+        <Modal
+          onClose={() => setVintedPreview(null)}
+          title="Aperçu de la photo Vinted"
+          subtitle={formatVintedNumberedBadge(card.numbered)}
+          size="sm"
+          zIndex={110}
+          footer={
+            <>
+              <button onClick={() => setVintedPreview(null)} className="ui-btn">
                 Annuler
               </button>
               <button
                 onClick={() => { openVintedDraft(vintedPreview.payload); setVintedPreview(null); }}
-                className="rounded-2xl bg-[var(--accent)] py-3 text-sm font-black text-[#09090B] hover:brightness-110"
+                className="ui-btn ui-btn-primary"
               >
                 Continuer vers Vinted
               </button>
-            </div>
-          </motion.div>
-        </motion.div>
+            </>
+          }
+        >
+          <img src={vintedPreview.image} alt="Aperçu du badge de tirage" className="mx-auto max-h-[60vh] rounded-xl object-contain" />
+        </Modal>
       )}
-    </AnimatePresence>
     </>
   );
 }

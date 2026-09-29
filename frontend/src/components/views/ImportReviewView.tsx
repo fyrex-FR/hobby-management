@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, ArrowRight, Check, CopyPlus, Eye, PackageCheck, Plus, RefreshCw, Sparkles, X } from 'lucide-react';
+import { AlertCircle, ArrowLeft, ChevronLeft, ChevronRight, Check, CopyPlus, Eye, ImageOff, Inbox, PackageCheck, Plus, RefreshCw, SearchX, Sparkles, X } from 'lucide-react';
 import { apiFetch } from '../../api/client';
 import { useCards } from '../../hooks/useCards';
 import { useAppStore } from '../../stores/appStore';
 import type { Card, ImportAction, ImportBatch, ImportItem } from '../../types';
+import { Badge, EmptyState, Modal, Notice, Page, PageHeader, Panel, Spinner } from '../ui';
 
 const CLASS_LABEL = { match: 'Déjà en collection', probable: 'Doublon probable', new: 'Nouvelle carte', insufficient: 'Identification insuffisante', error: 'Erreur', processing: 'Analyse en cours' } as const;
+const CLASS_TONE = { match: 'blue', probable: 'accent', new: 'green', insufficient: 'neutral', error: 'red', processing: 'neutral' } as const;
+const ACTION_LABEL: Record<ImportAction, string> = { shelve: 'mis de côté', create: 'carte créée', increment: 'exemplaire ajouté', ignore: 'ignoré', review: 'à revoir' };
 interface BulkResult { processed: number; created: number; shelved: number; remaining: number; manual_review: number }
 
 export function ImportReviewView() {
@@ -88,53 +91,212 @@ export function ImportReviewView() {
     } catch (cause) { setError((cause as Error).message); } finally { setBusy(false); }
   }
 
-  if (!batchId) return <div className="p-10">Aucun sas sélectionné.</div>;
-  if (!batch || !item) return <div className="p-10">{error || 'Chargement…'}</div>;
+  const backButton = (
+    <button onClick={() => setActiveView('batch')} className="ui-btn ui-btn-ghost">
+      <ArrowLeft size={16} /> Sas d’import
+    </button>
+  );
+
+  if (!batchId) {
+    return (
+      <Page>
+        <PageHeader title="Revue de l’import" actions={backButton} />
+        <EmptyState icon={Inbox} title="Aucun sas sélectionné" description="Lance un import depuis le sas ou reprends un import récent." />
+      </Page>
+    );
+  }
+  if (!batch || !item) {
+    return (
+      <Page>
+        <PageHeader title="Revue de l’import" subtitle={batch?.name} actions={backButton} />
+        {error ? (
+          <Notice tone="error" icon={AlertCircle}>{error}</Notice>
+        ) : batch ? (
+          <EmptyState icon={Inbox} title="Ce sas est vide" description="Aucune carte n’a été analysée dans cet import." />
+        ) : (
+          <Spinner label="Chargement…" />
+        )}
+      </Page>
+    );
+  }
   const identification = item.identification;
+  const idRows: Array<[string, string | null | undefined]> = identification ? [
+    ['Année', identification.year],
+    ['Set', [identification.brand, identification.set].filter(Boolean).join(' ')],
+    ['N°', identification.card_number],
+    ['Insert', identification.insert],
+    ['Parallel', identification.parallel],
+    ['Tirage', identification.serial_number || identification.numbered],
+  ] : [];
 
-  return <div className="max-w-7xl mx-auto p-5 sm:p-8 space-y-5">
-    <div className="flex items-center justify-between gap-4">
-      <button onClick={() => setActiveView('batch')} className="flex items-center gap-2 text-sm"><ArrowLeft size={17} /> Sas</button>
-      <div className="text-center"><strong>{CLASS_LABEL[item.classification]}</strong><small className="block text-[var(--text-muted)]">{index + 1} / {items.length} · {batch.name}</small></div>
-      <div className="flex gap-2"><button disabled={index === 0} onClick={() => setIndex(index - 1)} className="p-2 rounded-lg bg-white/5"><ArrowLeft size={16} /></button><button disabled={index + 1 >= items.length} onClick={() => setIndex(index + 1)} className="p-2 rounded-lg bg-white/5"><ArrowRight size={16} /></button></div>
-    </div>
+  return (
+    <Page width="wide">
+      <PageHeader title="Revue de l’import" subtitle={batch.name} actions={backButton} />
 
-    {recommended.length > 0 && <section className="panel rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border border-[var(--border-accent)]">
-      <div><strong className="flex items-center gap-2"><Sparkles size={17} className="text-[var(--accent)]" /> {recommended.length} décisions sûres peuvent être appliquées ensemble</strong><small className="text-[var(--text-muted)]">{recommendedCreates} nouvelles cartes à créer · {recommendedShelves} matchs ≥85 % à mettre de côté · cas ambigus exclus</small></div>
-      <button disabled={busy} onClick={() => setShowBulkConfirm(true)} className="px-5 py-3 rounded-xl bg-[var(--accent)] text-black font-black whitespace-nowrap">Appliquer en masse</button>
-    </section>}
+      {recommended.length > 0 && (
+        <section className="ui-card flex flex-col justify-between gap-3 border-[var(--border-accent)] p-4 sm:flex-row sm:items-center">
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-sm font-semibold text-[var(--text-primary)]">
+              <Sparkles size={16} className="shrink-0 text-[var(--accent)]" />
+              {recommended.length} décisions sûres peuvent être appliquées ensemble
+            </p>
+            <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+              {recommendedCreates} nouvelles cartes à créer · {recommendedShelves} matchs ≥85 % à mettre de côté · cas ambigus exclus
+            </p>
+          </div>
+          <button disabled={busy} onClick={() => setShowBulkConfirm(true)} className="ui-btn ui-btn-primary shrink-0">
+            Appliquer en masse
+          </button>
+        </section>
+      )}
 
-    {bulkProgress && <section className="panel rounded-2xl p-4 space-y-2"><div className="flex justify-between text-sm"><strong>Décisions en masse</strong><span>{bulkProgress.done} / {bulkProgress.total}</span></div><div className="h-2 rounded-full bg-white/5 overflow-hidden"><div className="h-full bg-[var(--accent)] transition-all" style={{ width: `${Math.round((bulkProgress.done / bulkProgress.total) * 100)}%` }} /></div></section>}
+      {bulkProgress && (
+        <section className="ui-card space-y-2 p-4">
+          <div className="flex items-center justify-between text-[13px]">
+            <span className="font-medium text-[var(--text-primary)]">Décisions en masse</span>
+            <span className="tabular text-[var(--text-muted)]">{bulkProgress.done} / {bulkProgress.total}</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
+            <div className="h-full rounded-full bg-[var(--accent)] transition-all" style={{ width: `${Math.round((bulkProgress.done / bulkProgress.total) * 100)}%` }} />
+          </div>
+        </section>
+      )}
 
-    {showBulkConfirm && <div className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4" onClick={() => setShowBulkConfirm(false)}><div className="panel max-w-md w-full rounded-3xl p-6 space-y-5" onClick={(event) => event.stopPropagation()}><h2 className="text-xl font-black">Confirmer les décisions en masse</h2><p className="text-sm text-[var(--text-muted)]">Créer {recommendedCreates} nouvelles cartes et mettre de côté {recommendedShelves} correspondances à au moins 85 %. Les doublons probables et identifications insuffisantes resteront à vérifier manuellement.</p><div className="grid grid-cols-2 gap-2"><button onClick={() => setShowBulkConfirm(false)} className="p-3 rounded-xl bg-white/5">Annuler</button><button onClick={applyBulk} className="p-3 rounded-xl bg-[var(--accent)] text-black font-black">Appliquer {recommended.length}</button></div></div></div>}
+      <Modal
+        open={showBulkConfirm}
+        onClose={() => setShowBulkConfirm(false)}
+        title="Confirmer les décisions en masse"
+        icon={<Sparkles size={18} className="text-[var(--accent)]" />}
+        size="sm"
+        footer={
+          <>
+            <button onClick={() => setShowBulkConfirm(false)} className="ui-btn">Annuler</button>
+            <button onClick={applyBulk} className="ui-btn ui-btn-primary">Appliquer {recommended.length}</button>
+          </>
+        }
+      >
+        <p className="text-[13px] leading-relaxed text-[var(--text-secondary)]">
+          Créer {recommendedCreates} nouvelles cartes et mettre de côté {recommendedShelves} correspondances à au moins 85 %. Les doublons probables et identifications insuffisantes resteront à vérifier manuellement.
+        </p>
+      </Modal>
 
-    <div className="grid lg:grid-cols-[minmax(300px,0.8fr)_minmax(420px,1.2fr)] gap-6">
-      <section className="panel rounded-3xl p-5 space-y-4">
-        <div className="grid grid-cols-2 gap-3"><img src={item.front_image_url} className="w-full rounded-2xl object-contain max-h-[55vh]" />{item.back_image_url && <img src={item.back_image_url} className="w-full rounded-2xl object-contain max-h-[55vh]" />}</div>
-        {identification && <div className="grid grid-cols-2 gap-2 text-sm">
-          <strong>{identification.player || 'Joueur non lu'}</strong><span>{identification.year}</span><span>{identification.brand} {identification.set}</span><span>{identification.card_number}</span><span>{identification.insert}</span><span>{identification.parallel}</span><span>{identification.serial_number || identification.numbered}</span>
-        </div>}
-        {item.error && <div className="space-y-2"><p className="text-red-400 text-sm">{item.error}</p><button disabled={busy} onClick={retry} className="px-3 py-2 rounded-xl bg-white/10 text-sm flex gap-2"><RefreshCw size={15} /> Relancer l’identification</button></div>}
-      </section>
+      {/* Navigation entre les cartes du lot */}
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <Badge tone={CLASS_TONE[item.classification]}>{CLASS_LABEL[item.classification]}</Badge>
+          <span className="tabular text-[13px] text-[var(--text-muted)]">Carte {index + 1} / {items.length}</span>
+        </div>
+        <div className="flex gap-2">
+          <button disabled={index === 0} onClick={() => setIndex(index - 1)} className="ui-btn ui-btn-icon" aria-label="Carte précédente">
+            <ChevronLeft size={16} />
+          </button>
+          <button disabled={index + 1 >= items.length} onClick={() => setIndex(index + 1)} className="ui-btn ui-btn-icon" aria-label="Carte suivante">
+            <ChevronRight size={16} />
+          </button>
+        </div>
+      </div>
 
-      <section className="space-y-3">
-        <h2 className="font-bold">Meilleurs matchs existants</h2>
-        {candidates.length === 0 && <div className="panel rounded-2xl p-8 text-center text-[var(--text-muted)]">Aucun candidat suffisamment proche.</div>}
-        {candidates.map(({ match, card }) => <button key={card.id} onClick={() => setSelectedCardId(card.id)} className="panel w-full rounded-2xl p-4 text-left grid grid-cols-[72px_1fr_auto] gap-4" style={{ borderColor: selectedCardId === card.id ? 'var(--accent)' : undefined }}>
-          {card.image_front_url ? <img src={card.image_front_url} className="w-[72px] h-24 rounded-lg object-cover" /> : <div className="w-[72px] h-24 bg-white/5 rounded-lg" />}
-          <span><strong className="block">{card.player}</strong><small className="text-[var(--text-muted)]">{card.year} · {card.brand} {card.set_name} · {card.card_number}</small><span className="block mt-2 text-xs">{match.reasons.join(' · ') || 'Peu de signaux communs'}</span>{match.conflicts.length > 0 && <span className="block text-xs text-amber-400">Différences : {match.conflicts.join(', ')}</span>}</span>
-          <strong className="text-[var(--accent)]">{match.score}%</strong>
-        </button>)}
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(300px,0.8fr)_minmax(0,1.2fr)]">
+        <Panel title="Carte importée">
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex items-center justify-center overflow-hidden rounded-lg bg-[var(--bg-elevated)]">
+                <img src={item.front_image_url} alt="Recto" className="max-h-[55vh] w-full object-contain" />
+              </div>
+              {item.back_image_url ? (
+                <div className="flex items-center justify-center overflow-hidden rounded-lg bg-[var(--bg-elevated)]">
+                  <img src={item.back_image_url} alt="Verso" className="max-h-[55vh] w-full object-contain" />
+                </div>
+              ) : (
+                <div className="flex aspect-[3/4] flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-[var(--border-strong)] text-xs text-[var(--text-muted)]">
+                  <ImageOff size={18} /> Pas de verso
+                </div>
+              )}
+            </div>
+            {identification && (
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-[var(--text-primary)]">{identification.player || 'Joueur non lu'}</p>
+                <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[13px]">
+                  {idRows.map(([label, value]) => (
+                    <div key={label} className="flex min-w-0 gap-2">
+                      <dt className="shrink-0 text-[var(--text-muted)]">{label}</dt>
+                      <dd className="truncate text-[var(--text-primary)]">{value || '—'}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            )}
+            {item.error && (
+              <div className="space-y-2">
+                <Notice tone="error" icon={AlertCircle}>{item.error}</Notice>
+                <button disabled={busy} onClick={retry} className="ui-btn">
+                  <RefreshCw size={15} className={busy ? 'animate-spin' : ''} /> Relancer l’identification
+                </button>
+              </div>
+            )}
+          </div>
+        </Panel>
 
-        {item.action_at ? <div className="panel rounded-2xl p-4 text-green-400 flex gap-2"><Check size={18} /> Traité : {item.action}</div> : <div className="grid sm:grid-cols-2 gap-2 pt-3">
-          <button disabled={busy} onClick={() => act('shelve')} className="p-3 rounded-xl bg-amber-500/15 flex justify-center gap-2"><PackageCheck size={17} /> Mettre de côté</button>
-          <button disabled={busy} onClick={() => act('increment')} className="p-3 rounded-xl bg-blue-500/15 flex justify-center gap-2"><CopyPlus size={17} /> Ajouter un exemplaire</button>
-          <button disabled={busy} onClick={() => act('create')} className="p-3 rounded-xl bg-[var(--accent)] text-black flex justify-center gap-2"><Plus size={17} /> Créer la carte</button>
-          <button disabled={busy} onClick={() => act('review')} className="p-3 rounded-xl bg-white/10 flex justify-center gap-2"><Eye size={17} /> À revoir</button>
-          <button disabled={busy} onClick={() => act('ignore')} className="sm:col-span-2 p-3 rounded-xl bg-white/5 flex justify-center gap-2"><X size={17} /> Ignorer</button>
-        </div>}
-        {error && <p className="text-red-400 text-sm">{error}</p>}
-      </section>
-    </div>
-  </div>;
+        <div className="space-y-4">
+          <Panel title="Meilleurs matchs existants" padded={false}>
+            {candidates.length === 0 ? (
+              <EmptyState icon={SearchX} title="Aucun candidat suffisamment proche" description="Cette carte semble absente de ta collection." />
+            ) : (
+              <div className="space-y-2 p-3">
+                {candidates.map(({ match, card }) => {
+                  const selected = selectedCardId === card.id;
+                  return (
+                    <button
+                      key={card.id}
+                      onClick={() => setSelectedCardId(card.id)}
+                      aria-pressed={selected}
+                      className={`grid w-full grid-cols-[56px_1fr_auto] gap-3 rounded-lg border p-2.5 text-left transition-colors ${
+                        selected ? 'border-[var(--border-accent)] bg-[var(--accent-dim)]' : 'border-[var(--border)] bg-[var(--bg-elevated)] hover:border-[var(--border-strong)]'
+                      }`}
+                    >
+                      {card.image_front_url
+                        ? <img src={card.image_front_url} alt="" className="h-[75px] w-14 rounded-md object-cover" />
+                        : <div className="h-[75px] w-14 rounded-md bg-[var(--bg-hover)]" />}
+                      <span className="min-w-0">
+                        <span className="block truncate text-sm font-medium text-[var(--text-primary)]">{card.player}</span>
+                        <span className="block truncate text-xs text-[var(--text-muted)]">{card.year} · {card.brand} {card.set_name} · {card.card_number}</span>
+                        <span className="mt-1.5 block text-xs text-[var(--text-secondary)]">{match.reasons.join(' · ') || 'Peu de signaux communs'}</span>
+                        {match.conflicts.length > 0 && <span className="mt-0.5 block text-xs text-[var(--accent)]">Différences : {match.conflicts.join(', ')}</span>}
+                      </span>
+                      <span className="tabular text-sm font-semibold text-[var(--accent)]">{match.score}%</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </Panel>
+
+          {item.action_at ? (
+            <Notice tone="success" icon={Check}>Traité : {item.action ? ACTION_LABEL[item.action] ?? item.action : '—'}</Notice>
+          ) : (
+            <Panel title="Décision">
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button disabled={busy} onClick={() => act('create')} className="ui-btn ui-btn-primary ui-btn-lg sm:col-span-2">
+                  <Plus size={16} /> Créer la carte
+                </button>
+                <button disabled={busy} onClick={() => act('shelve')} className="ui-btn ui-btn-lg">
+                  <PackageCheck size={16} /> Mettre de côté
+                </button>
+                <button disabled={busy} onClick={() => act('increment')} className="ui-btn ui-btn-lg">
+                  <CopyPlus size={16} /> Ajouter un exemplaire
+                </button>
+                <button disabled={busy} onClick={() => act('review')} className="ui-btn">
+                  <Eye size={15} /> À revoir
+                </button>
+                <button disabled={busy} onClick={() => act('ignore')} className="ui-btn ui-btn-ghost">
+                  <X size={15} /> Ignorer
+                </button>
+              </div>
+            </Panel>
+          )}
+          {error && <Notice tone="error" icon={AlertCircle}>{error}</Notice>}
+        </div>
+      </div>
+    </Page>
+  );
 }

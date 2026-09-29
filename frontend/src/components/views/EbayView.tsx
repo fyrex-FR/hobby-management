@@ -1,16 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   AlertCircle,
   AlertTriangle,
+  Calculator,
   Camera,
   Check,
   CheckCircle2,
+  ClipboardList,
   Copy,
   CreditCard,
   Download,
   ExternalLink,
   FileText,
+  ImageOff,
   ImagePlus,
   Link2,
   Loader2,
@@ -26,6 +28,7 @@ import {
   Tag,
   Trash2,
   Truck,
+  type LucideIcon,
 } from 'lucide-react';
 import { useCards } from '../../hooks/useCards';
 import {
@@ -53,6 +56,7 @@ import { EbayStockSyncModal } from '../shared/EbayStockSyncModal';
 import { EbaySaleReconcileModal } from '../shared/EbaySaleReconcileModal';
 import { pendingReconcileCount } from '../../lib/saleReconcile';
 import type { Card } from '../../types';
+import { Badge, EmptyState, Field, Notice, Page, PageHeader, Panel, Spinner } from '../ui';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
@@ -65,23 +69,36 @@ function SetupStep({
   title: string;
   detail: string;
   done?: boolean;
-  icon: any;
+  icon: LucideIcon;
 }) {
   return (
-    <div className="flex gap-3 rounded-2xl p-3" style={{ background: done ? 'rgba(34,197,94,0.08)' : 'rgba(255,255,255,0.04)' }}>
-      <div
-        className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
-        style={{ background: done ? 'rgba(34,197,94,0.12)' : 'rgba(245,158,11,0.12)' }}
-      >
-        <Icon size={17} style={{ color: done ? 'var(--green)' : 'var(--accent)' }} />
+    <div className="flex gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] p-3">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--bg-card)] text-[var(--text-muted)]">
+        <Icon size={16} />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          {done ? <CheckCircle2 size={14} style={{ color: 'var(--green)' }} /> : <AlertCircle size={14} style={{ color: 'var(--accent)' }} />}
-          <p className="text-sm font-bold text-white">{title}</p>
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[13px] font-medium text-[var(--text-primary)]">{title}</p>
+          {done ? (
+            <Badge tone="green"><CheckCircle2 size={11} /> OK</Badge>
+          ) : (
+            <Badge tone="accent"><AlertCircle size={11} /> À faire</Badge>
+          )}
         </div>
-        <p className="text-xs leading-relaxed mt-1" style={{ color: 'var(--text-muted)' }}>{detail}</p>
+        <p className="mt-1 text-xs leading-relaxed text-[var(--text-muted)]">{detail}</p>
       </div>
+    </div>
+  );
+}
+
+const euro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2, minimumFractionDigits: 0 });
+
+/** Barre de progression fine (lots eBay). */
+function ProgressBar({ done, total }: { done: number; total: number }) {
+  const pct = total > 0 ? (done / total) * 100 : 0;
+  return (
+    <div className="h-1 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
+      <div className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-300" style={{ width: `${pct}%` }} />
     </div>
   );
 }
@@ -90,14 +107,11 @@ const APPLY_IMAGE_BATCH = 20;
 
 function PricingRatesCard() {
   return (
-    <div className="glass rounded-2xl p-5">
-      <div>
-        <p className="text-sm font-black text-white">Calcul du prix eBay</p>
-        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-          Prix Vinted majoré pour couvrir 9 % de frais eBay et 0,35 € de frais fixes, puis arrondi au-dessus.
-        </p>
-      </div>
-    </div>
+    <Panel title="Calcul du prix eBay" icon={Calculator}>
+      <p className="text-[13px] text-[var(--text-muted)]">
+        Prix Vinted majoré pour couvrir 9 % de frais eBay et 0,35 € de frais fixes, puis arrondi au-dessus.
+      </p>
+    </Panel>
   );
 }
 
@@ -209,131 +223,109 @@ function SellerImageCard() {
   const busy = uploading || save.isPending;
 
   return (
-    <div className="glass rounded-2xl p-5 flex flex-col gap-3">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(255,255,255,0.06)' }}>
-          <ImagePlus size={18} style={{ color: imageUrl ? 'var(--green)' : 'var(--accent)' }} />
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-bold text-white">Image d’annonce</p>
-          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            Ajoutée automatiquement en 3e photo de chaque annonce publiée
-          </p>
-        </div>
-      </div>
-
-      {isLoading ? (
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Chargement…</p>
-      ) : imageUrl ? (
-        <div className="flex flex-col gap-3">
-          <img src={cdnImg(imageUrl)} alt="Image vendeur" className="max-h-40 w-auto rounded-xl object-contain self-start" style={{ background: 'rgba(255,255,255,0.04)' }} />
-          <div className="flex items-center flex-wrap gap-3">
-            <button
-              onClick={() => inputRef.current?.click()}
-              disabled={busy}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50"
-              style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)' }}
-            >
-              {uploading ? <Loader2 size={15} className="animate-spin" /> : <ImagePlus size={15} />}
-              Remplacer
-            </button>
-            <button
-              onClick={handleDownload}
-              disabled={busy || downloading}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50"
-              style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)' }}
-            >
-              {downloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-              Télécharger
-            </button>
-            <button
-              onClick={handleCopyLink}
-              disabled={busy}
-              className="flex items-center gap-2 text-xs font-bold disabled:opacity-50"
-              style={{ color: copied ? 'var(--green)' : 'var(--text-secondary)' }}
-            >
-              {copied ? <Check size={13} /> : <Copy size={13} />}
-              {copied ? 'Copié ✓' : 'Copier le lien'}
-            </button>
-            <button
-              onClick={remove}
-              disabled={busy}
-              className="flex items-center gap-2 text-xs font-bold disabled:opacity-50"
-              style={{ color: 'var(--red)' }}
-            >
-              <Trash2 size={13} />
-              Retirer
-            </button>
-          </div>
-
-          <div className="flex flex-col gap-2 pt-1" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-            <button
-              onClick={handleApplyToListings}
-              disabled={applying || busy}
-              className="self-start flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50 mt-3"
-              style={{ background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', color: 'var(--text-primary)' }}
-            >
-              {applying ? <Loader2 size={15} className="animate-spin" /> : <RefreshCcw size={15} />}
-              {applying
-                ? applyProgress
-                  ? `Traitement… ${applyProgress.done}/${applyProgress.total} annonces`
-                  : 'Traitement…'
-                : 'Ajouter à mes annonces existantes'}
-            </button>
-            <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-              Uploade l’image dans le système photo eBay puis l’ajoute à chacune de tes annonces actives déjà en ligne. Opération sans risque à relancer : les annonces déjà mises à jour sont détectées et ignorées automatiquement.
-            </p>
-            {applyError && <p className="text-xs" style={{ color: 'var(--red)' }}>{applyError}</p>}
-            {applySummary && (
-              <div className="flex flex-col gap-1.5">
-                <p className="text-xs font-bold" style={{ color: 'var(--green)' }}>
-                  ✅ {applySummary.updated} mise{applySummary.updated > 1 ? 's' : ''} à jour · {applySummary.skipped} avaient déjà l’image
-                  {applySummary.errors.length > 0 ? ` · ${applySummary.errors.length} échec${applySummary.errors.length > 1 ? 's' : ''}` : ''}
-                </p>
-                {applySummary.errors.length > 0 && (
-                  <ul className="flex flex-col gap-0.5 max-h-32 overflow-y-auto rounded-lg px-2 py-1.5" style={{ background: 'rgba(239,68,68,0.06)' }}>
-                    {applySummary.errors.map((err, i) => (
-                      <li key={`${err.item_id}-${i}`} className="text-[11px]" style={{ color: 'var(--red)' }}>
-                        {(err.title || err.item_id)} — {err.message}
-                      </li>
-                    ))}
-                  </ul>
-                )}
+    <Panel
+      title="Image d’annonce"
+      icon={ImagePlus}
+      action={!isLoading && (imageUrl ? <Badge tone="green">Active</Badge> : <Badge>Aucune</Badge>)}
+    >
+      <div className="space-y-4">
+        {isLoading ? (
+          <Spinner className="py-4" />
+        ) : imageUrl ? (
+          <>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
+              <img
+                src={cdnImg(imageUrl)}
+                alt="Image vendeur"
+                className="max-h-40 w-auto self-start rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] object-contain"
+              />
+              <div className="min-w-0 flex-1 space-y-3">
+                <p className="text-[13px] text-[var(--text-muted)]">Ajoutée automatiquement en 3e photo de chaque annonce publiée.</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button onClick={() => inputRef.current?.click()} disabled={busy} className="ui-btn ui-btn-sm">
+                    {uploading ? <Loader2 size={14} className="animate-spin" /> : <ImagePlus size={14} />}
+                    Remplacer
+                  </button>
+                  <button onClick={handleDownload} disabled={busy || downloading} className="ui-btn ui-btn-sm">
+                    {downloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                    Télécharger
+                  </button>
+                  <button onClick={handleCopyLink} disabled={busy} className={`ui-btn ui-btn-ghost ui-btn-sm ${copied ? 'text-[var(--green)]' : ''}`}>
+                    {copied ? <Check size={14} /> : <Copy size={14} />}
+                    {copied ? 'Copié' : 'Copier le lien'}
+                  </button>
+                  <button onClick={remove} disabled={busy} className="ui-btn ui-btn-ghost ui-btn-danger ui-btn-sm">
+                    <Trash2 size={14} />
+                    Retirer
+                  </button>
+                </div>
               </div>
-            )}
+            </div>
+
+            <div className="space-y-3 border-t border-[var(--border)] pt-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-[13px] font-medium text-[var(--text-primary)]">Annonces déjà en ligne</p>
+                  <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                    Uploade l’image dans le système photo eBay puis l’ajoute à chacune de tes annonces actives déjà en ligne. Opération sans risque à relancer : les annonces déjà mises à jour sont détectées et ignorées automatiquement.
+                  </p>
+                </div>
+                <button onClick={handleApplyToListings} disabled={applying || busy} className="ui-btn shrink-0">
+                  {applying ? <Loader2 size={15} className="animate-spin" /> : <RefreshCcw size={15} />}
+                  {applying
+                    ? applyProgress
+                      ? `Traitement… ${applyProgress.done}/${applyProgress.total} annonces`
+                      : 'Traitement…'
+                    : 'Ajouter à mes annonces existantes'}
+                </button>
+              </div>
+              {applying && applyProgress && <ProgressBar done={applyProgress.done} total={applyProgress.total} />}
+              {applyError && <Notice tone="error" icon={AlertCircle}>{applyError}</Notice>}
+              {applySummary && (
+                <div className="space-y-2">
+                  <Notice tone={applySummary.errors.length > 0 ? 'warning' : 'success'} icon={CheckCircle2}>
+                    {applySummary.updated} mise{applySummary.updated > 1 ? 's' : ''} à jour · {applySummary.skipped} avaient déjà l’image
+                    {applySummary.errors.length > 0 ? ` · ${applySummary.errors.length} échec${applySummary.errors.length > 1 ? 's' : ''}` : ''}
+                  </Notice>
+                  {applySummary.errors.length > 0 && (
+                    <ul className="max-h-32 space-y-0.5 overflow-y-auto rounded-lg border border-[var(--border)] px-3 py-2">
+                      {applySummary.errors.map((err, i) => (
+                        <li key={`${err.item_id}-${i}`} className="text-xs text-[var(--red)]">
+                          {(err.title || err.item_id)} — {err.message}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+              <p className="text-xs text-[var(--text-muted)]">
+                Pour tes annonces créées directement sur eBay : télécharge l’image puis ajoute-la via l’éditeur photo eBay (eBay n’accepte pas les liens externes dans une annonce existante), ou utilise le bouton ci-dessus qui le fait automatiquement.
+              </p>
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-[13px] text-[var(--text-muted)]">
+              Ajoutée automatiquement en 3e photo de chaque annonce publiée — présente tes conditions d’envoi, ta protection des cartes, etc.
+            </p>
+            <button onClick={() => inputRef.current?.click()} disabled={busy} className="ui-btn ui-btn-primary shrink-0">
+              {uploading ? <Loader2 size={15} className="animate-spin" /> : <ImagePlus size={15} />}
+              {uploading ? 'Envoi…' : 'Ajouter une image'}
+            </button>
           </div>
+        )}
 
-          <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-            Pour tes annonces créées directement sur eBay : télécharge l’image puis ajoute-la via l’éditeur photo eBay (eBay n’accepte pas les liens externes dans une annonce existante), ou utilise le bouton ci-dessus qui le fait automatiquement.
-          </p>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-            Ajoutée automatiquement en 3e photo de chaque annonce publiée — présente tes conditions d’envoi, ta protection des cartes, etc.
-          </p>
-          <button
-            onClick={() => inputRef.current?.click()}
-            disabled={busy}
-            className="self-start flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50"
-            style={{ background: 'var(--accent)', color: '#09090B' }}
-          >
-            {uploading ? <Loader2 size={15} className="animate-spin" /> : <ImagePlus size={15} />}
-            {uploading ? 'Envoi…' : 'Ajouter une image'}
-          </button>
-        </div>
-      )}
+        {error && <Notice tone="error" icon={AlertCircle}>{error}</Notice>}
 
-      {error && <p className="text-xs" style={{ color: 'var(--red)' }}>{error}</p>}
-
-      <input
-        ref={inputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }}
-      />
-    </div>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ''; }}
+        />
+      </div>
+    </Panel>
   );
 }
 
@@ -418,37 +410,51 @@ function ShippingRulesCard({ fulfillmentOptions }: { fulfillmentOptions: EbayPol
 
   const configuredCount = current.filter((r) => r.policyId).length;
 
+  const preview = [...current]
+    .filter((r) => r.policyId)
+    .sort((a, b) => {
+      const av = a.maxPrice.trim() === '' ? Infinity : parseFloat(a.maxPrice);
+      const bv = b.maxPrice.trim() === '' ? Infinity : parseFloat(b.maxPrice);
+      return av - bv;
+    })
+    .map((r, i, arr) => {
+      const prev = i > 0 ? arr[i - 1].maxPrice : '';
+      const lo = prev.trim() === '' ? 0 : parseFloat(prev);
+      const label = r.maxPrice.trim() === ''
+        ? `> ${lo} €`
+        : i === 0 ? `≤ ${parseFloat(r.maxPrice)} €` : `${lo}–${parseFloat(r.maxPrice)} €`;
+      return { key: r.key, label, name: policyName(r.policyId) };
+    });
+
   return (
-    <div className="glass rounded-2xl p-5 flex flex-col gap-3">
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(255,255,255,0.06)' }}>
-          <Truck size={18} style={{ color: configuredCount > 0 ? 'var(--green)' : 'var(--accent)' }} />
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-bold text-white">Règles de livraison</p>
-          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-            Le bon mode d’envoi pré-sélectionné selon le prix, à la publication
-          </p>
-        </div>
-      </div>
-
+    <Panel
+      title="Règles de livraison"
+      icon={Truck}
+      action={configuredCount > 0 ? <Badge tone="green">{configuredCount} tranche{configuredCount > 1 ? 's' : ''}</Badge> : <Badge>Aucune</Badge>}
+    >
+      <p className="mb-4 text-[13px] text-[var(--text-muted)]">Le bon mode d’envoi pré-sélectionné selon le prix, à la publication.</p>
       {fulfillmentOptions.length === 0 ? (
-        <p className="text-xs leading-relaxed rounded-xl px-3 py-2" style={{ background: 'rgba(245,158,11,0.08)', color: 'var(--accent)' }}>
+        <Notice tone="warning" icon={AlertTriangle}>
           Configure d’abord tes politiques d’expédition sur eBay (une par mode : lettre suivie, colis R1, R2…) pour pouvoir les associer à des tranches de prix ici.
-        </p>
+        </Notice>
       ) : isLoading || rows === null ? (
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Chargement…</p>
+        <Spinner className="py-4" />
       ) : (
-        <div className="flex flex-col gap-3">
-          <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-            Chaque tranche s’applique aux prix <b>jusqu’à</b> son seuil inclus. Laisse le montant vide pour la tranche « et au-delà ». Au moment de publier, la politique d’expédition est choisie automatiquement d’après le prix (toujours modifiable).
+        <div className="space-y-4">
+          <p className="text-xs text-[var(--text-muted)]">
+            Chaque tranche s’applique aux prix <span className="font-medium text-[var(--text-secondary)]">jusqu’à</span> son seuil inclus. Laisse le montant vide pour la tranche « et au-delà ». Au moment de publier, la politique d’expédition est choisie automatiquement d’après le prix (toujours modifiable).
           </p>
 
-          <div className="flex flex-col gap-2">
+          <div className="space-y-2">
+            <div className="hidden grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_2.25rem] gap-2 text-xs font-medium text-[var(--text-secondary)] sm:grid">
+              <span>Prix jusqu’à</span>
+              <span>Mode d’envoi</span>
+              <span />
+            </div>
             {current.map((row) => (
-              <div key={row.key} className="grid grid-cols-[1fr_1.4fr_auto] gap-2 items-center">
-                <div className="flex items-center gap-1.5 rounded-xl px-2.5 py-2" style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)' }}>
-                  <span className="text-[11px] font-bold shrink-0" style={{ color: 'var(--text-muted)' }}>≤</span>
+              <div key={row.key} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)_2.25rem] items-center gap-2">
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs text-[var(--text-muted)]">≤</span>
                   <input
                     type="number"
                     inputMode="decimal"
@@ -456,16 +462,16 @@ function ShippingRulesCard({ fulfillmentOptions }: { fulfillmentOptions: EbayPol
                     value={row.maxPrice}
                     onChange={(e) => update(row.key, { maxPrice: e.target.value })}
                     placeholder="au-delà"
-                    className="w-full bg-transparent text-sm outline-none"
-                    style={{ color: 'var(--text-primary)' }}
+                    aria-label="Seuil de prix"
+                    className="ui-input tabular pl-7 pr-7"
                   />
-                  <span className="text-[11px] font-bold shrink-0" style={{ color: 'var(--text-muted)' }}>€</span>
+                  <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--text-muted)]">€</span>
                 </div>
                 <select
                   value={row.policyId}
                   onChange={(e) => update(row.key, { policyId: e.target.value })}
-                  className="w-full rounded-xl px-2.5 py-2 text-sm outline-none"
-                  style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                  aria-label="Politique d’expédition"
+                  className="ui-select"
                 >
                   <option value="">Choisir un envoi…</option>
                   {fulfillmentOptions.map((p) => (
@@ -474,8 +480,7 @@ function ShippingRulesCard({ fulfillmentOptions }: { fulfillmentOptions: EbayPol
                 </select>
                 <button
                   onClick={() => removeRow(row.key)}
-                  className="w-9 h-9 flex items-center justify-center rounded-xl shrink-0 transition-colors hover:bg-white/5"
-                  style={{ color: 'var(--red)' }}
+                  className="ui-btn ui-btn-ghost ui-btn-danger ui-btn-icon"
                   aria-label="Supprimer la tranche"
                 >
                   <Trash2 size={15} />
@@ -484,66 +489,57 @@ function ShippingRulesCard({ fulfillmentOptions }: { fulfillmentOptions: EbayPol
             ))}
           </div>
 
-          <button
-            onClick={addRow}
-            className="self-start flex items-center gap-1.5 text-xs font-bold"
-            style={{ color: 'var(--text-secondary)' }}
-          >
-            <Plus size={13} /> Ajouter une tranche
-          </button>
-
           {current.length > 0 && (
-            <p className="text-[11px] leading-relaxed rounded-lg px-2.5 py-2" style={{ background: 'rgba(255,255,255,0.03)', color: 'var(--text-muted)' }}>
-              Aperçu :{' '}
-              {[...current]
-                .filter((r) => r.policyId)
-                .sort((a, b) => {
-                  const av = a.maxPrice.trim() === '' ? Infinity : parseFloat(a.maxPrice);
-                  const bv = b.maxPrice.trim() === '' ? Infinity : parseFloat(b.maxPrice);
-                  return av - bv;
-                })
-                .map((r, i, arr) => {
-                  const prev = i > 0 ? arr[i - 1].maxPrice : '';
-                  const lo = prev.trim() === '' ? 0 : parseFloat(prev);
-                  const label = r.maxPrice.trim() === ''
-                    ? `> ${lo} €`
-                    : i === 0 ? `≤ ${parseFloat(r.maxPrice)} €` : `${lo}–${parseFloat(r.maxPrice)} €`;
-                  return `${label} → ${policyName(r.policyId)}`;
-                })
-                .join('  ·  ') || '—'}
-            </p>
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2.5">
+              <p className="mb-1.5 text-xs font-medium text-[var(--text-secondary)]">Aperçu</p>
+              {preview.length === 0 ? (
+                <p className="text-xs text-[var(--text-muted)]">—</p>
+              ) : (
+                <ul className="space-y-1">
+                  {preview.map((r) => (
+                    <li key={r.key} className="flex items-center gap-2 text-xs">
+                      <span className="tabular w-24 shrink-0 text-[var(--text-primary)]">{r.label}</span>
+                      <span className="text-[var(--text-muted)]">→</span>
+                      <span className="truncate text-[var(--text-secondary)]">{r.name}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           )}
 
-          {error && <p className="text-xs" style={{ color: 'var(--red)' }}>{error}</p>}
+          {error && <Notice tone="error" icon={AlertCircle}>{error}</Notice>}
 
-          <button
-            onClick={save}
-            disabled={saveRules.isPending}
-            className="self-start flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50"
-            style={{ background: 'var(--accent)', color: '#09090B' }}
-          >
-            {saveRules.isPending ? <Loader2 size={15} className="animate-spin" /> : saved ? <Check size={15} /> : <Save size={15} />}
-            {saveRules.isPending ? 'Enregistrement…' : saved ? 'Enregistré ✓' : 'Enregistrer les règles'}
-          </button>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <button onClick={addRow} className="ui-btn ui-btn-ghost ui-btn-sm">
+              <Plus size={14} /> Ajouter une tranche
+            </button>
+            <button onClick={save} disabled={saveRules.isPending} className="ui-btn ui-btn-primary">
+              {saveRules.isPending ? <Loader2 size={15} className="animate-spin" /> : saved ? <Check size={15} /> : <Save size={15} />}
+              {saveRules.isPending ? 'Enregistrement…' : saved ? 'Enregistré' : 'Enregistrer les règles'}
+            </button>
+          </div>
         </div>
       )}
-    </div>
+    </Panel>
   );
 }
 
 type ListingSegment = 'online' | 'sold' | 'ready';
 
-function ListingRow({ card, right }: { card: Card; right: React.ReactNode }) {
+function ListingRow({ card, right }: { card: Card; right: ReactNode }) {
   return (
-    <div className="flex items-center gap-3 py-2 px-1.5 rounded-xl transition-colors hover:bg-white/5">
+    <div className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-[var(--bg-elevated)]">
       {card.image_front_url ? (
-        <img src={cdnImg(card.image_front_url)} alt="" className="w-9 h-12 object-cover rounded-lg shrink-0" />
+        <img src={cdnImg(card.image_front_url)} alt="" className="h-12 w-9 shrink-0 rounded-md object-cover" />
       ) : (
-        <div className="w-9 h-12 rounded-lg shrink-0 flex items-center justify-center text-sm" style={{ background: 'var(--bg-elevated)' }}>🃏</div>
+        <div className="flex h-12 w-9 shrink-0 items-center justify-center rounded-md bg-[var(--bg-elevated)] text-[var(--text-muted)]">
+          <ImageOff size={14} />
+        </div>
       )}
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-white truncate">{card.player ?? '—'}</p>
-        <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{[card.team, card.year].filter(Boolean).join(' · ')}</p>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-[var(--text-primary)]">{card.player ?? '—'}</p>
+        <p className="truncate text-xs text-[var(--text-muted)]">{[card.team, card.year].filter(Boolean).join(' · ')}</p>
       </div>
       {right}
     </div>
@@ -606,17 +602,13 @@ function ListingsTab({
 
   if (!connected) {
     return (
-      <div className="glass rounded-2xl p-6 flex flex-col gap-3">
-        <p className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-          Connecte ton compte eBay pour voir et gérer tes annonces ici.
-        </p>
-        <button
-          onClick={onGoSettings}
-          className="self-start py-3 px-5 rounded-2xl text-sm font-black transition-all active:scale-95"
-          style={{ background: 'var(--accent)', color: '#09090B' }}
-        >
-          Aller dans Réglages
-        </button>
+      <div className="ui-card">
+        <EmptyState
+          icon={Link2}
+          title="Compte eBay non connecté"
+          description="Connecte ton compte eBay pour voir et gérer tes annonces ici."
+          action={<button onClick={onGoSettings} className="ui-btn ui-btn-primary">Aller dans Réglages</button>}
+        />
       </div>
     );
   }
@@ -627,140 +619,134 @@ function ListingsTab({
     { value: 'ready', label: 'Prêtes', count: ready.length, icon: Tag },
   ];
   const rows = segment === 'online' ? listed : segment === 'sold' ? sold : ready;
+  const emptyText = {
+    online: 'Aucune carte en ligne sur eBay pour le moment.',
+    sold: 'Aucune vente eBay enregistrée. Le suivi automatique du statut « vendu » arrive bientôt.',
+    ready: 'Aucune carte prête à publier (photo recto + prix requis).',
+  }[segment];
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-          {syncMsg || 'Synchronise pour remonter tes ventes eBay ici.'}
-        </p>
-        <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-          {pendingReconcile > 0 && (
+    <div className="space-y-4">
+      {pendingReconcile > 0 && (
+        <Notice tone="warning" icon={AlertTriangle}>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span>
+              {pendingReconcile} vente{pendingReconcile > 1 ? 's' : ''} à finaliser : des annonces sont encore en ligne alors que la carte est vendue.
+            </span>
             <button
               onClick={() => setReconcileOpen(true)}
               title="Des annonces sont encore en ligne alors que la carte est vendue"
-              className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all active:scale-95"
-              style={{ background: 'rgba(245,158,11,0.12)', color: 'var(--accent)' }}
+              className="ui-btn ui-btn-sm"
             >
-              <AlertTriangle size={14} />
-              {pendingReconcile} vente{pendingReconcile > 1 ? 's' : ''} à finaliser
+              Finaliser
             </button>
-          )}
+          </div>
+        </Notice>
+      )}
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="ui-segmented max-w-full overflow-x-auto no-scrollbar" role="tablist">
+          {segments.map((sg) => (
+            <button key={sg.value} role="tab" aria-selected={segment === sg.value} data-active={segment === sg.value} onClick={() => setSegment(sg.value)}>
+              <sg.icon size={14} />
+              {sg.label}
+              <span className="count">{sg.count}</span>
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setStockModalOpen(true)}
             disabled={syncSold.isPending}
             title="Pousse le stock de l'app sur tes annonces eBay (utile pour les annonces publiées avant la gestion du stock, restées à 1)"
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
-            style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)' }}
+            className="ui-btn"
           >
-            <PackageCheck size={14} />
+            <PackageCheck size={15} />
             Pousser les stocks
           </button>
           <button
             onClick={handleSync}
             disabled={syncSold.isPending}
             title="Récupère tes ventes eBay et met les cartes vendues à jour"
-            className="flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
-            style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)' }}
+            className="ui-btn"
           >
-            {syncSold.isPending ? <Loader2 size={14} className="animate-spin" /> : <RefreshCcw size={14} />}
+            {syncSold.isPending ? <Loader2 size={15} className="animate-spin" /> : <RefreshCcw size={15} />}
             {syncSold.isPending ? 'Synchronisation…' : 'Synchroniser'}
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-2">
-        {segments.map((s) => {
-          const active = segment === s.value;
-          return (
-            <button
-              key={s.value}
-              onClick={() => setSegment(s.value)}
-              className="flex flex-col items-start gap-1 rounded-2xl px-3 py-2.5 transition-all active:scale-95"
-              style={{
-                background: active ? 'var(--accent-glow)' : 'rgba(255,255,255,0.04)',
-                border: `1px solid ${active ? 'var(--accent)' : 'transparent'}`,
-              }}
-            >
-              <s.icon size={15} style={{ color: active ? 'var(--accent)' : 'var(--text-muted)' }} />
-              <span className="text-lg font-black tabular-nums leading-none" style={{ color: active ? 'var(--accent)' : 'var(--text-primary)' }}>{s.count}</span>
-              <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{s.label}</span>
-            </button>
-          );
-        })}
-      </div>
+      <p className="text-xs text-[var(--text-muted)]">
+        {syncMsg || 'Synchronise pour remonter tes ventes eBay ici.'}
+      </p>
 
-      <div className="glass rounded-2xl p-4 flex flex-col gap-1">
+      <Panel padded={false}>
         {rows.length === 0 ? (
-          <p className="text-sm py-6 text-center" style={{ color: 'var(--text-muted)' }}>
-            {segment === 'online' && 'Aucune carte en ligne sur eBay pour le moment.'}
-            {segment === 'sold' && 'Aucune vente eBay enregistrée. Le suivi automatique du statut « vendu » arrive bientôt.'}
-            {segment === 'ready' && 'Aucune carte prête à publier (photo recto + prix requis).'}
-          </p>
+          <EmptyState icon={segments.find((sg) => sg.value === segment)?.icon} title={emptyText} />
         ) : (
-          rows.map((card) => {
-            if (segment === 'online') {
+          <div className="divide-y divide-[var(--border)]">
+            {rows.map((card) => {
+              if (segment === 'online') {
+                const price = card.ebay_price ?? card.price;
+                return (
+                  <ListingRow
+                    key={card.id}
+                    card={card}
+                    right={
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        {(card.quantity ?? 1) > 1 && (
+                          <span title={`${card.quantity} exemplaires en ligne`}><Badge tone="blue">×{card.quantity}</Badge></span>
+                        )}
+                        {price != null && <span className="tabular mx-1 text-sm font-semibold text-[var(--accent)]">{euro.format(price)}</span>}
+                        <button onClick={() => setEditCard(card)} className="ui-btn ui-btn-ghost ui-btn-sm" title="Modifier l’annonce">
+                          <Pencil size={13} /> <span className="hidden sm:inline">Modifier</span>
+                        </button>
+                        <a href={card.ebay_url!} target="_blank" rel="noreferrer" className="ui-btn ui-btn-ghost ui-btn-sm" title="Voir sur eBay">
+                          <ExternalLink size={13} /> <span className="hidden sm:inline">Voir</span>
+                        </a>
+                      </div>
+                    }
+                  />
+                );
+              }
+              if (segment === 'sold') {
+                const soldPrice = card.ebay_sold_price ?? card.ebay_price ?? card.price;
+                return (
+                  <ListingRow
+                    key={card.id}
+                    card={card}
+                    right={
+                      <div className="flex shrink-0 flex-col items-end gap-0.5">
+                        {soldPrice != null && <span className="tabular text-sm font-semibold text-[var(--green)]">{euro.format(soldPrice)}</span>}
+                        {card.ebay_sold_at && (
+                          <span className="tabular text-[11px] text-[var(--text-muted)]">
+                            {new Date(card.ebay_sold_at).toLocaleDateString('fr-FR')}
+                          </span>
+                        )}
+                      </div>
+                    }
+                  />
+                );
+              }
+              const price = card.ebay_price ?? card.price;
               return (
                 <ListingRow
                   key={card.id}
                   card={card}
                   right={
-                    <div className="flex items-center gap-2.5 shrink-0">
-                      {(card.quantity ?? 1) > 1 && (
-                        <span className="text-[10px] font-black px-1.5 py-0.5 rounded" style={{ background: '#6366F1', color: 'white' }} title={`${card.quantity} exemplaires en ligne`}>×{card.quantity}</span>
-                      )}
-                      {(card.ebay_price ?? card.price) != null && <span className="text-sm font-black" style={{ color: 'var(--accent)' }}>{card.ebay_price ?? card.price} €</span>}
-                      <button onClick={() => setEditCard(card)} className="flex items-center gap-1 text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>
-                        <Pencil size={12} /> Modifier
+                    <div className="flex shrink-0 items-center gap-2">
+                      {price != null && <span className="tabular text-sm font-semibold text-[var(--accent)]">{euro.format(price)}</span>}
+                      <button onClick={() => setPublishCard(card)} className="ui-btn ui-btn-primary ui-btn-sm">
+                        <EbayLogo width={24} height={10} mono="#09090B" /> Publier
                       </button>
-                      <a href={card.ebay_url!} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-xs font-bold" style={{ color: 'var(--text-secondary)' }}>
-                        <ExternalLink size={13} /> Voir
-                      </a>
                     </div>
                   }
                 />
               );
-            }
-            if (segment === 'sold') {
-              const soldPrice = card.ebay_sold_price ?? card.ebay_price ?? card.price;
-              return (
-                <ListingRow
-                  key={card.id}
-                  card={card}
-                  right={
-                    <div className="flex flex-col items-end gap-0.5 shrink-0">
-                      {soldPrice != null && <span className="text-sm font-black" style={{ color: 'var(--green)' }}>{soldPrice} €</span>}
-                      {card.ebay_sold_at && (
-                        <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                          {new Date(card.ebay_sold_at).toLocaleDateString('fr-FR')}
-                        </span>
-                      )}
-                    </div>
-                  }
-                />
-              );
-            }
-            return (
-              <ListingRow
-                key={card.id}
-                card={card}
-                right={
-                  <div className="flex items-center gap-3 shrink-0">
-                    {(card.ebay_price ?? card.price) != null && <span className="text-sm font-black" style={{ color: 'var(--accent)' }}>{card.ebay_price ?? card.price} €</span>}
-                    <button
-                      onClick={() => setPublishCard(card)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all active:scale-95"
-                      style={{ background: 'var(--accent)', color: '#09090B' }}
-                    >
-                      <EbayLogo width={24} height={10} mono="#09090B" /> Publier
-                    </button>
-                  </div>
-                }
-              />
-            );
-          })
+            })}
+          </div>
         )}
-      </div>
+      </Panel>
 
       {publishCard && (
         <EbayPublishModal
@@ -844,213 +830,182 @@ export function EbayView() {
     );
   }
 
-  return (
-    <div className="p-6 max-w-4xl mx-auto flex flex-col gap-6">
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex items-center gap-3">
-        <EbayLogo width={56} height={22} />
-        <div>
-          <h1 className="text-xl font-black text-white leading-tight">eBay</h1>
-          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Tes annonces et tes réglages vendeur</p>
-        </div>
-      </motion.div>
+  const connected = Boolean(status?.connected);
+  const missingPolicyNames = policies && !policies.configured
+    ? [!policies.payment && 'paiement', !policies.fulfillment && 'livraison', !policies.return && 'retours'].filter(Boolean).join(', ')
+    : '';
+  const stepsDone = [connected, hasLocation, hasPolicies, readyNotListed.length > 0 || listed.length > 0].filter(Boolean).length;
 
-      <div className="flex items-center gap-1 p-1 rounded-2xl self-start" style={{ background: 'rgba(255,255,255,0.04)' }}>
-        {([
-          { value: 'annonces', label: 'Annonces', icon: ShoppingBag },
-          { value: 'reglages', label: 'Réglages', icon: Settings },
-        ] as const).map((t) => {
-          const active = tab === t.value;
-          return (
-            <button
-              key={t.value}
-              onClick={() => setTab(t.value)}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold transition-all"
-              style={{
-                background: active ? 'var(--accent)' : 'transparent',
-                color: active ? '#09090B' : 'var(--text-secondary)',
-              }}
-            >
-              <t.icon size={15} />
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
+  return (
+    <Page width="narrow">
+      <PageHeader
+        title={<span className="flex items-center gap-2.5"><EbayLogo width={52} height={20} /><span className="sr-only">eBay</span></span>}
+        subtitle="Tes annonces et tes réglages vendeur"
+        actions={
+          <div className="ui-segmented" role="tablist">
+            {([
+              { value: 'annonces', label: 'Annonces', icon: ShoppingBag },
+              { value: 'reglages', label: 'Réglages', icon: Settings },
+            ] as const).map((t) => (
+              <button key={t.value} role="tab" aria-selected={tab === t.value} data-active={tab === t.value} onClick={() => setTab(t.value)}>
+                <t.icon size={14} />
+                {t.label}
+              </button>
+            ))}
+          </div>
+        }
+      />
 
       {notice && (
-        <div
-          className="rounded-2xl px-4 py-3 text-sm font-medium"
-          style={{
-            background: notice.kind === 'success' ? 'rgba(34,197,94,0.1)' : 'rgba(239,68,68,0.1)',
-            color: notice.kind === 'success' ? 'var(--green)' : 'var(--red)',
-          }}
-        >
+        <Notice tone={notice.kind} icon={notice.kind === 'success' ? CheckCircle2 : AlertCircle}>
           {notice.text}
-        </div>
+        </Notice>
       )}
 
       {tab === 'reglages' ? (
-      <div className="flex flex-col gap-6">
-      <div className="glass rounded-2xl p-5 flex flex-col gap-4">
-        <div className="flex flex-col gap-1">
-          <p className="text-sm font-black text-white">Avant de publier</p>
-          <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-            Chaque vendeur configure son propre compte eBay. CardVaults utilise ensuite ces réglages pour créer l’annonce avec la bonne catégorie sport, l’état carte adapté, le lieu d’expédition et les options de vente eBay.
-          </p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <SetupStep
+        <div className="space-y-4">
+          {/* Statut de connexion */}
+          <Panel
+            title="Compte eBay"
             icon={Link2}
-            done={Boolean(status?.connected)}
-            title="Compte eBay connecté"
-            detail="Connexion OAuth obligatoire : l’annonce est publiée sur le compte du vendeur connecté, pas sur un compte global."
-          />
-          <SetupStep
-            icon={MapPin}
-            done={hasLocation}
-            title="Lieu d’expédition"
-            detail="Code postal et ville à enregistrer dans CardVaults. Cela crée une location eBay active propre au compte vendeur."
-          />
-          <SetupStep
-            icon={CreditCard}
-            done={hasPolicies}
-            title="Paiement, livraison et retours"
-            detail="eBay doit avoir une policy de paiement, une policy de livraison et une policy de retours sur EBAY_FR. Tu choisis lesquelles utiliser dans la modale de publication."
-          />
-          <SetupStep
-            icon={Camera}
-            done={readyNotListed.length > 0 || listed.length > 0}
-            title="Cartes prêtes"
-            detail="Avant publication : photo recto, prix positif, titre 80 caractères max et description 5000 caractères max. Titre et description restent modifiables dans la modale."
-          />
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
-          <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--text-secondary)' }}>
-            <Truck size={14} style={{ color: 'var(--accent)' }} />
-            Expédition depuis le lieu vendeur
-          </div>
-          <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--text-secondary)' }}>
-            <Tag size={14} style={{ color: 'var(--accent)' }} />
-            Catégorie sport prioritaire
-          </div>
-          <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--text-secondary)' }}>
-            <FileText size={14} style={{ color: 'var(--accent)' }} />
-            Description générée puis éditable
-          </div>
-        </div>
-        {status?.connected && policies && !policies.configured && (
-          <p className="text-xs leading-relaxed rounded-xl px-3 py-2" style={{ background: 'rgba(239,68,68,0.08)', color: 'var(--red)' }}>
-            À configurer côté eBay : {[!policies.payment && 'paiement', !policies.fulfillment && 'livraison', !policies.return && 'retours'].filter(Boolean).join(', ')}.
-          </p>
-        )}
-      </div>
-
-      <SellerImageCard />
-
-      <PricingRatesCard />
-
-      {status?.connected && (
-        <ShippingRulesCard fulfillmentOptions={policies?.options?.fulfillment ?? []} />
-      )}
-
-      {/* Statut de connexion */}
-      {isLoading ? (
-        <div className="glass rounded-2xl p-6">
-          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Chargement…</p>
-        </div>
-      ) : status?.connected ? (
-        <div className="flex flex-col gap-3">
-          <div className="glass rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center gap-4 justify-between">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-11 h-11 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(34,197,94,0.12)' }}>
-                <CheckCircle2 size={22} style={{ color: 'var(--green)' }} />
+            action={!isLoading && (connected ? <Badge tone="green">Connecté</Badge> : <Badge tone="red">Non connecté</Badge>)}
+          >
+            {isLoading ? (
+              <Spinner className="py-4" />
+            ) : status?.connected ? (
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--green)_12%,transparent)] text-[var(--green)]">
+                    <CheckCircle2 size={18} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-[var(--text-primary)]">
+                      Connecté{status.ebay_username ? ` en tant que ${status.ebay_username}` : ''}
+                    </p>
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Marketplace {status.marketplace_id || 'EBAY_FR'}
+                      {status.connected_at ? ` · depuis le ${new Date(status.connected_at).toLocaleDateString('fr-FR')}` : ''}
+                    </p>
+                  </div>
+                </div>
+                <button onClick={() => disconnect.mutate()} disabled={disconnect.isPending} className="ui-btn ui-btn-danger shrink-0">
+                  <LogOut size={15} />
+                  {disconnect.isPending ? 'Déconnexion…' : 'Déconnecter'}
+                </button>
               </div>
-              <div className="min-w-0">
-                <p className="text-sm font-bold text-white truncate">
-                  Connecté{status.ebay_username ? ` en tant que ${status.ebay_username}` : ''}
+            ) : (
+              <div className="space-y-3">
+                <p className="text-[13px] text-[var(--text-secondary)]">
+                  Connecte ton compte eBay pour publier tes cartes directement depuis
+                  CardVaults. Chaque utilisateur connecte son propre compte — tes
+                  annonces sont publiées en ton nom.
                 </p>
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                  Marketplace {status.marketplace_id || 'EBAY_FR'}
-                  {status.connected_at ? ` · depuis le ${new Date(status.connected_at).toLocaleDateString('fr-FR')}` : ''}
-                </p>
+                {connect.error && <Notice tone="error" icon={AlertCircle}>{(connect.error as Error).message}</Notice>}
+                <button onClick={() => connect.mutate()} disabled={connect.isPending} className="ui-btn ui-btn-primary">
+                  {connect.isPending ? <Loader2 size={15} className="animate-spin" /> : <Link2 size={15} />}
+                  {connect.isPending ? 'Redirection…' : 'Connecter mon compte eBay'}
+                </button>
               </div>
+            )}
+          </Panel>
+
+          <Panel
+            title="Avant de publier"
+            icon={ClipboardList}
+            action={<span className="tabular text-xs text-[var(--text-muted)]">{stepsDone} / 4</span>}
+          >
+            <div className="space-y-4">
+              <p className="text-[13px] text-[var(--text-muted)]">
+                Chaque vendeur configure son propre compte eBay. CardVaults utilise ensuite ces réglages pour créer l’annonce avec la bonne catégorie sport, l’état carte adapté, le lieu d’expédition et les options de vente eBay.
+              </p>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <SetupStep
+                  icon={Link2}
+                  done={connected}
+                  title="Compte eBay connecté"
+                  detail="Connexion OAuth obligatoire : l’annonce est publiée sur le compte du vendeur connecté, pas sur un compte global."
+                />
+                <SetupStep
+                  icon={MapPin}
+                  done={hasLocation}
+                  title="Lieu d’expédition"
+                  detail="Code postal et ville à enregistrer dans CardVaults. Cela crée une location eBay active propre au compte vendeur."
+                />
+                <SetupStep
+                  icon={CreditCard}
+                  done={hasPolicies}
+                  title="Paiement, livraison et retours"
+                  detail="eBay doit avoir une policy de paiement, une policy de livraison et une policy de retours sur EBAY_FR. Tu choisis lesquelles utiliser dans la modale de publication."
+                />
+                <SetupStep
+                  icon={Camera}
+                  done={readyNotListed.length > 0 || listed.length > 0}
+                  title="Cartes prêtes"
+                  detail="Avant publication : photo recto, prix positif, titre 80 caractères max et description 5000 caractères max. Titre et description restent modifiables dans la modale."
+                />
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-[var(--text-secondary)]">
+                <span className="flex items-center gap-1.5"><Truck size={13} className="text-[var(--text-muted)]" /> Expédition depuis le lieu vendeur</span>
+                <span className="flex items-center gap-1.5"><Tag size={13} className="text-[var(--text-muted)]" /> Catégorie sport prioritaire</span>
+                <span className="flex items-center gap-1.5"><FileText size={13} className="text-[var(--text-muted)]" /> Description générée puis éditable</span>
+              </div>
+              {status?.connected && policies && !policies.configured && (
+                <Notice tone="error" icon={AlertCircle}>À configurer côté eBay : {missingPolicyNames}.</Notice>
+              )}
             </div>
-            <button
-              onClick={() => disconnect.mutate()}
-              disabled={disconnect.isPending}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50 shrink-0"
-              style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--red)' }}
-            >
-              <LogOut size={15} />
-              {disconnect.isPending ? 'Déconnexion…' : 'Déconnecter'}
-            </button>
-          </div>
+          </Panel>
 
-          <div className="glass rounded-2xl p-5 flex flex-col gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0" style={{ background: 'rgba(255,255,255,0.06)' }}>
-                <MapPin size={18} style={{ color: location ? 'var(--green)' : 'var(--accent)' }} />
-              </div>
-              <div className="min-w-0">
-                <p className="text-sm font-bold text-white">Lieu d’expédition</p>
-                <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>
+          {status?.connected && (
+            <Panel
+              title="Lieu d’expédition"
+              icon={MapPin}
+              action={location ? <Badge tone="green">Enregistré</Badge> : <Badge tone="accent">Requis</Badge>}
+            >
+              <div className="space-y-3">
+                <p className="truncate text-[13px] text-[var(--text-muted)]">
                   {location
                     ? `${location.name || location.merchantLocationKey} · ${location.location?.address?.postalCode || ''} ${location.location?.address?.city || ''}`
                     : 'Requis pour publier sur eBay'}
                 </p>
+                <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-[140px_1fr_auto]">
+                  <Field label="Code postal">
+                    <input
+                      value={postalCode}
+                      onChange={(e) => setPostalCode(e.target.value)}
+                      placeholder="75001"
+                      inputMode="numeric"
+                      className="ui-input tabular"
+                    />
+                  </Field>
+                  <Field label="Ville">
+                    <input
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      placeholder="Paris"
+                      className="ui-input"
+                    />
+                  </Field>
+                  <button
+                    onClick={saveLocation}
+                    disabled={createLocation.isPending || !postalCode.trim() || !city.trim()}
+                    className="ui-btn ui-btn-primary"
+                  >
+                    {createLocation.isPending ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                    Enregistrer
+                  </button>
+                </div>
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-[120px_1fr_auto] gap-2">
-              <input
-                value={postalCode}
-                onChange={(e) => setPostalCode(e.target.value)}
-                placeholder="Code postal"
-                inputMode="numeric"
-                className="rounded-xl px-3 py-2.5 text-sm outline-none"
-                style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
-              />
-              <input
-                value={city}
-                onChange={(e) => setCity(e.target.value)}
-                placeholder="Ville"
-                className="rounded-xl px-3 py-2.5 text-sm outline-none"
-                style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
-              />
-              <button
-                onClick={saveLocation}
-                disabled={createLocation.isPending || !postalCode.trim() || !city.trim()}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95 disabled:opacity-50"
-                style={{ background: 'var(--accent)', color: '#09090B' }}
-              >
-                {createLocation.isPending ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
-                Enregistrer
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="glass rounded-2xl p-6 flex flex-col gap-3">
-          <p className="text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-            Connecte ton compte eBay pour publier tes cartes directement depuis
-            CardVaults. Chaque utilisateur connecte son propre compte — tes
-            annonces sont publiées en ton nom.
-          </p>
-          {connect.error && (
-            <p className="text-xs" style={{ color: 'var(--red)' }}>{(connect.error as Error).message}</p>
+            </Panel>
           )}
-          <button
-            onClick={() => connect.mutate()}
-            disabled={connect.isPending}
-            className="self-start py-3 px-5 rounded-2xl text-sm font-black transition-all active:scale-95 disabled:opacity-50"
-            style={{ background: 'var(--accent)', color: '#09090B' }}
-          >
-            {connect.isPending ? 'Redirection…' : 'Connecter mon compte eBay'}
-          </button>
-        </div>
-      )}
 
-      </div>
+          {status?.connected && (
+            <ShippingRulesCard fulfillmentOptions={policies?.options?.fulfillment ?? []} />
+          )}
+
+          <SellerImageCard />
+
+          <PricingRatesCard />
+        </div>
       ) : (
         <ListingsTab
           allCards={cards}
@@ -1061,6 +1016,6 @@ export function EbayView() {
           onGoSettings={() => setTab('reglages')}
         />
       )}
-    </div>
+    </Page>
   );
 }

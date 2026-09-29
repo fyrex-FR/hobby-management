@@ -7,16 +7,14 @@ import {
   Trash2,
   X,
   Maximize2,
-  Info,
-  Calendar,
-  Layers,
   Star,
-  Euro,
-  Hash,
-  Tag,
-  Clock,
+  ImageOff,
   ArrowRight,
-  RefreshCw
+  RefreshCw,
+  AlertTriangle,
+  AlertCircle,
+  Wand2,
+  Sparkles,
 } from 'lucide-react';
 import { useCards, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
 import { useIdentify } from '../../hooks/useIdentify';
@@ -27,6 +25,7 @@ import { buildSimilarityPrefill, findDuplicateMatches } from '../../lib/cardSimi
 import { SPORTS, type Card, type CardStatus, type CardType, type Sport } from '../../types';
 import { RookieBadge } from '../shared/RookieBadge';
 import { AlertChips, ConfidenceBadge } from '../shared/CardSignals';
+import { Badge, EmptyState, Field, Notice, Page, PageHeader, Panel, Spinner } from '../ui';
 
 function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
   return (
@@ -34,22 +33,21 @@ function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/95 backdrop-blur-xl"
+      transition={{ duration: 0.15 }}
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4"
       onClick={onClose}
     >
-      <motion.img
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.9, opacity: 0 }}
+      <img
         src={src}
         alt=""
-        className="max-h-[90vh] max-w-[90vw] rounded-2xl object-contain shadow-2xl"
+        className="max-h-[90vh] max-w-[90vw] rounded-xl object-contain"
       />
       <button
-        className="absolute top-6 right-6 w-12 h-12 flex items-center justify-center rounded-full bg-white/10 text-white hover:bg-white/20 transition-all active:scale-90"
+        className="ui-btn ui-btn-icon absolute right-4 top-[calc(env(safe-area-inset-top)+1rem)]"
         onClick={onClose}
+        aria-label="Fermer"
       >
-        <X size={24} />
+        <X size={18} />
       </button>
     </motion.div>
   );
@@ -71,22 +69,6 @@ const STATUS_OPTIONS: { value: Exclude<CardStatus, 'draft'>; label: string }[] =
   { value: 'reserve', label: 'Réservé' },
   { value: 'vendu', label: 'Vendu' },
 ];
-
-const inputCls = 'w-full rounded-xl px-3 py-2.5 text-[13px] font-medium outline-none transition-all bg-white/5 border border-white/10 focus:border-[var(--accent)]/50 focus:bg-white/10 placeholder:text-white/20';
-
-function Field({ label, icon: Icon, children }: { label: string; icon?: any; children: React.ReactNode }) {
-  return (
-    <div className="space-y-1.5">
-      <div className="flex items-center gap-1.5 ml-1">
-        {Icon && <Icon size={10} className="text-[var(--text-muted)]" />}
-        <label className="block text-[10px] font-black tracking-[0.15em] uppercase text-[var(--text-muted)]">
-          {label}
-        </label>
-      </div>
-      {children}
-    </div>
-  );
-}
 
 function DraftEditor({
   card,
@@ -222,225 +204,224 @@ function DraftEditor({
 
   return (
     <motion.div
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -20 }}
-      className="grid lg:grid-cols-[400px_1fr] gap-8"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
+      className="grid items-start gap-4 lg:grid-cols-[minmax(0,380px)_minmax(0,1fr)]"
     >
-      {/* Visual Side */}
-      <div className="space-y-6">
-        <div className="panel p-2 rounded-[32px] bg-white/[0.02] border border-white/10 overflow-hidden">
-          <div className="grid grid-cols-2 gap-2">
+      {/* Photos et aperçu */}
+      <div className="space-y-4 lg:sticky lg:top-4">
+        <Panel padded={false}>
+          <div className="grid grid-cols-2 gap-2 p-2">
             {[
-              { url: card.image_front_url, label: 'RECTO' },
-              { url: card.image_back_url, label: 'VERSO' }
+              { url: card.image_front_url, label: 'Recto' },
+              { url: card.image_back_url, label: 'Verso' }
             ].map((side, i) => (
-              <div key={i} className="relative aspect-[3/4] rounded-3xl overflow-hidden bg-white/5 border border-white/5 group">
+              <div key={i} className="group relative aspect-[3/4] overflow-hidden rounded-lg bg-[var(--bg-elevated)]">
                 {side.url ? (
                   <>
-                    <img src={side.url} alt={side.label} className="w-full h-full object-contain cursor-zoom-in transition-transform duration-500 group-hover:scale-105" />
+                    <img src={side.url} alt={side.label} className="h-full w-full object-contain" />
                     <button
                       onClick={() => setLightbox(side.url!)}
-                      className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                      className="absolute inset-0 flex cursor-zoom-in items-center justify-center bg-black/40 opacity-0 transition-opacity group-hover:opacity-100"
+                      aria-label={`Agrandir le ${side.label.toLowerCase()}`}
                     >
-                      <Maximize2 size={24} className="text-white" />
+                      <Maximize2 size={20} className="text-white" />
                     </button>
-                    <div className="absolute bottom-3 left-3 px-2 py-1 rounded-lg bg-black/60 backdrop-blur-md border border-white/10 text-[9px] font-black tracking-widest text-white/70">
-                      {side.label}
-                    </div>
+                    <span className="pointer-events-none absolute bottom-2 left-2"><Badge>{side.label}</Badge></span>
                   </>
                 ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center gap-2 opacity-20">
-                    <Clock size={24} />
-                    <span className="text-[10px] font-bold uppercase tracking-widest">NO {side.label}</span>
+                  <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 text-xs text-[var(--text-muted)]">
+                    <ImageOff size={18} />
+                    Pas de {side.label.toLowerCase()}
                   </div>
                 )}
               </div>
             ))}
           </div>
-        </div>
+        </Panel>
 
-        <div className="panel p-6 rounded-3xl bg-white/[0.03] border border-white/10">
-          <div className="flex items-start justify-between mb-4 gap-4">
-            <div>
-              <span className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--text-muted)]">Aperçu Réel</span>
-              <div className="mt-2">
-                <ConfidenceBadge card={signalCard} />
+        <Panel>
+          <div className="space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="truncate text-sm font-semibold text-[var(--text-primary)]">{fields.player || 'Joueur inconnu'}</h3>
+                <p className="mt-0.5 truncate text-xs text-[var(--text-muted)]">
+                  {[fields.year, fields.brand, fields.set_name].filter(Boolean).join(' · ') || 'Set non renseigné'}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {fields.is_rookie && <RookieBadge compact />}
+                {fields.numbered && <Badge tone="accent">{fields.numbered}</Badge>}
               </div>
             </div>
-            <div className="flex gap-2">
-              {fields.is_rookie && <RookieBadge compact />}
-              {fields.numbered && (
-                <div className="px-2 py-0.5 rounded-lg bg-[var(--accent-dim)] border border-[var(--border-accent)] text-[var(--accent)] text-[10px] font-black">
-                  {fields.numbered}
-                </div>
-              )}
+            <div className="flex flex-wrap items-center gap-2">
+              <ConfidenceBadge card={signalCard} />
             </div>
-          </div>
-          <h3 className="text-xl font-black text-white tracking-tight leading-tight">{fields.player || 'Joueur Inconnu'}</h3>
-          <p className="text-sm text-[var(--text-muted)] font-bold mt-1 uppercase tracking-wide">
-            {fields.year} {fields.brand} {fields.set_name}
-          </p>
-          <div className="mt-4">
             <AlertChips card={signalCard} />
-          </div>
 
-          <button
-            type="button"
-            onClick={handleRetryAI}
-            disabled={retrying || !card.image_front_url || !card.image_back_url}
-            className="mt-4 w-full flex items-center justify-center gap-2 rounded-2xl border border-[var(--border-accent)] bg-[var(--accent-dim)] px-4 py-3 text-xs font-black uppercase tracking-widest text-[var(--accent)] transition-all hover:brightness-110 active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <RefreshCw size={14} className={retrying ? 'animate-spin' : ''} />
-            {retrying ? 'Analyse IA…' : "Réessayer l'IA"}
-          </button>
-          {retryError && (
-            <div className="mt-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs text-red-300">
-              {retryError}
-            </div>
-          )}
-          {duplicateMatches.length > 0 && (
-            <div className="mt-4 rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3">
-              <div className="text-[10px] font-black uppercase tracking-[0.2em] text-red-300">Doublons probables</div>
-              <div className="mt-2 space-y-1.5">
-                {duplicateMatches.map((match) => (
-                  <div key={match.card.id} className="text-xs text-red-200/85">
-                    {match.reason} • {match.card.player} • {match.card.year} • {match.card.set_name} • score {match.score}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          {prefill && (
-            <button
-              type="button"
-              onClick={applyPrefill}
-              className="mt-4 w-full rounded-2xl border border-[var(--accent)]/20 bg-[var(--accent)-dim] px-4 py-3 text-xs font-black uppercase tracking-widest text-[var(--accent)]"
-            >
-              Préremplir depuis cartes similaires
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Editor Side */}
-      <div className="space-y-6">
-        <div className="panel p-8 rounded-[32px] bg-white/[0.02] border border-white/10 space-y-8">
-          <div className="grid sm:grid-cols-2 gap-6">
-            <Field label="Sport" icon={Tag}>
-              <select className={inputCls} value={fields.sport} onChange={(e) => set('sport', e.target.value)}>
-                {SPORTS.map((sport) => <option key={sport} value={sport}>{sport}</option>)}
-              </select>
-            </Field>
-            <Field label="Joueur" icon={Tag}>
-              <input className={inputCls} value={fields.player} onChange={(e) => set('player', e.target.value)} placeholder="ex: LeBron James" />
-            </Field>
-            <Field label="Équipe" icon={Tag}>
-              <input className={inputCls} value={fields.team} onChange={(e) => set('team', e.target.value)} placeholder="ex: Lakers" />
-            </Field>
-            <Field label="Année" icon={Calendar}>
-              <input className={inputCls} value={fields.year} onChange={(e) => set('year', e.target.value)} placeholder="2024-25" />
-            </Field>
-            <Field label="Marque" icon={Layers}>
-              <input className={inputCls} value={fields.brand} onChange={(e) => set('brand', e.target.value)} placeholder="Panini" />
-            </Field>
-            <Field label="Set" icon={Layers}>
-              <input className={inputCls} value={fields.set_name} onChange={(e) => set('set_name', e.target.value)} placeholder="Prizm" />
-            </Field>
-            <Field label="Insert" icon={Star}>
-              <input className={inputCls} value={fields.insert_name} onChange={(e) => set('insert_name', e.target.value)} placeholder="Downtown" />
-            </Field>
-            <Field label="Parallel" icon={Star}>
-              <input
-                className={inputCls}
-                value={fields.parallel_name}
-                onChange={(e) => set('parallel_name', e.target.value)}
-                onBlur={() => set('parallel_name', normalizeParallelName(fields.parallel_name) ?? '')}
-                placeholder="Silver"
-              />
-            </Field>
-            <Field label="Type" icon={Info}>
-              <select className={inputCls} value={fields.card_type} onChange={(e) => set('card_type', e.target.value)}>
-                <option value="">—</option>
-                {CARD_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
-              </select>
-            </Field>
-            <Field label="N° Carte" icon={Hash}>
-              <input className={inputCls} value={fields.card_number} onChange={(e) => set('card_number', e.target.value)} placeholder="#23" />
-            </Field>
-            <Field label="Tirage" icon={Hash}>
-              <input className={inputCls} value={fields.numbered} onChange={(e) => set('numbered', e.target.value)} placeholder="/99" />
-            </Field>
-            <Field label="Achat ($)" icon={Euro}>
-              <input type="number" className={inputCls} value={fields.purchase_price} onChange={(e) => set('purchase_price', e.target.value)} placeholder="0" />
-            </Field>
-            <Field label="Estimé ($)" icon={Euro}>
-              <input type="number" className={inputCls} value={fields.price} onChange={(e) => set('price', e.target.value)} placeholder="0" />
-            </Field>
-          </div>
-
-          <div className="grid grid-cols-2 gap-6">
-            <Field label="Rookie Status" icon={Star}>
+            <div className="flex flex-col gap-2 pt-1">
               <button
                 type="button"
-                className={`w-full flex items-center justify-between px-4 py-2.5 rounded-xl border transition-all ${fields.is_rookie
-                  ? 'bg-[var(--accent-dim)] border-[var(--border-accent)] text-[var(--accent)]'
-                  : 'bg-white/5 border-white/10 text-white/40'
-                  }`}
-                onClick={() => set('is_rookie', !fields.is_rookie)}
+                onClick={handleRetryAI}
+                disabled={retrying || !card.image_front_url || !card.image_back_url}
+                className="ui-btn w-full"
               >
-                <span className="text-xs font-bold uppercase tracking-widest">{fields.is_rookie ? 'Rookie CARD' : 'Non RC'}</span>
-                <div className={`w-8 h-4 rounded-full relative ${fields.is_rookie ? 'bg-[var(--accent)]' : 'bg-white/10'}`}>
-                  <div className={`absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rounded-full bg-white transition-all ${fields.is_rookie ? 'right-1' : 'right-4.5 opacity-30'}`} />
-                </div>
+                {retrying ? <RefreshCw size={15} className="animate-spin" /> : <Sparkles size={15} />}
+                {retrying ? 'Analyse IA…' : "Réessayer l'IA"}
               </button>
-            </Field>
-            <Field label="Statut Final" icon={Info}>
-              <select className={inputCls} value={fields.status} onChange={(e) => set('status', e.target.value as Exclude<CardStatus, 'draft'>)}>
-                {STATUS_OPTIONS.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
-              </select>
+              {retrying && (
+                <div className="h-1 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
+                  <div className="h-full w-1/3 animate-pulse rounded-full bg-[var(--accent)]" />
+                </div>
+              )}
+              {prefill && (
+                <button type="button" onClick={applyPrefill} className="ui-btn w-full">
+                  <Wand2 size={15} /> Préremplir depuis cartes similaires
+                </button>
+              )}
+            </div>
+
+            {retryError && <Notice tone="error" icon={AlertCircle}>{retryError}</Notice>}
+            {duplicateMatches.length > 0 && (
+              <Notice tone="error" icon={AlertTriangle}>
+                <p className="font-medium">Doublons probables</p>
+                <ul className="mt-1 space-y-1 text-xs opacity-90">
+                  {duplicateMatches.map((match) => (
+                    <li key={match.card.id}>
+                      {match.reason} · {match.card.player} · {match.card.year} · {match.card.set_name} · score <span className="tabular">{match.score}</span>
+                    </li>
+                  ))}
+                </ul>
+              </Notice>
+            )}
+          </div>
+        </Panel>
+      </div>
+
+      {/* Fiche éditable */}
+      <div className="space-y-4">
+        <Panel title="Fiche de la carte">
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Sport">
+                <select className="ui-select" value={fields.sport} onChange={(e) => set('sport', e.target.value)}>
+                  {SPORTS.map((sport) => <option key={sport} value={sport}>{sport}</option>)}
+                </select>
+              </Field>
+              <Field label="Joueur">
+                <input className="ui-input" value={fields.player} onChange={(e) => set('player', e.target.value)} placeholder="ex: LeBron James" />
+              </Field>
+              <Field label="Équipe">
+                <input className="ui-input" value={fields.team} onChange={(e) => set('team', e.target.value)} placeholder="ex: Lakers" />
+              </Field>
+              <Field label="Année">
+                <input className="ui-input" value={fields.year} onChange={(e) => set('year', e.target.value)} placeholder="2024-25" />
+              </Field>
+              <Field label="Marque">
+                <input className="ui-input" value={fields.brand} onChange={(e) => set('brand', e.target.value)} placeholder="Panini" />
+              </Field>
+              <Field label="Set">
+                <input className="ui-input" value={fields.set_name} onChange={(e) => set('set_name', e.target.value)} placeholder="Prizm" />
+              </Field>
+              <Field label="Insert">
+                <input className="ui-input" value={fields.insert_name} onChange={(e) => set('insert_name', e.target.value)} placeholder="Downtown" />
+              </Field>
+              <Field label="Parallel">
+                <input
+                  className="ui-input"
+                  value={fields.parallel_name}
+                  onChange={(e) => set('parallel_name', e.target.value)}
+                  onBlur={() => set('parallel_name', normalizeParallelName(fields.parallel_name) ?? '')}
+                  placeholder="Silver"
+                />
+              </Field>
+              <Field label="Type">
+                <select className="ui-select" value={fields.card_type} onChange={(e) => set('card_type', e.target.value)}>
+                  <option value="">—</option>
+                  {CARD_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </Field>
+              <Field label="N° carte">
+                <input className="ui-input" value={fields.card_number} onChange={(e) => set('card_number', e.target.value)} placeholder="#23" />
+              </Field>
+              <Field label="Tirage">
+                <input className="ui-input" value={fields.numbered} onChange={(e) => set('numbered', e.target.value)} placeholder="/99" />
+              </Field>
+              <Field label="Statut final">
+                <select className="ui-select" value={fields.status} onChange={(e) => set('status', e.target.value as Exclude<CardStatus, 'draft'>)}>
+                  {STATUS_OPTIONS.map((status) => <option key={status.value} value={status.value}>{status.label}</option>)}
+                </select>
+              </Field>
+              <Field label="Prix d’achat (€)">
+                <input type="number" className="ui-input tabular" value={fields.purchase_price} onChange={(e) => set('purchase_price', e.target.value)} placeholder="0" />
+              </Field>
+              <Field label="Prix estimé (€)">
+                <input type="number" className="ui-input tabular" value={fields.price} onChange={(e) => set('price', e.target.value)} placeholder="0" />
+              </Field>
+            </div>
+
+            <button
+              type="button"
+              role="switch"
+              aria-checked={fields.is_rookie}
+              onClick={() => set('is_rookie', !fields.is_rookie)}
+              className="flex w-full items-center justify-between gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2.5 text-left transition-colors hover:border-[var(--border-strong)]"
+            >
+              <span className="flex items-center gap-2 text-[13px] font-medium text-[var(--text-primary)]">
+                <Star size={15} className={fields.is_rookie ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'} />
+                {fields.is_rookie ? 'Rookie card' : 'Non RC'}
+              </span>
+              <span className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${fields.is_rookie ? 'bg-[var(--accent)]' : 'bg-[var(--bg-hover)]'}`}>
+                <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all ${fields.is_rookie ? 'left-[18px]' : 'left-0.5'}`} />
+              </span>
+            </button>
+
+            <Field label="Note d'état">
+              <input className="ui-input" value={fields.condition_notes} onChange={(e) => set('condition_notes', e.target.value)} placeholder="ex: Near Mint, Perfect Centering..." />
             </Field>
           </div>
+        </Panel>
 
-          <Field label="Note d'état" icon={Clock}>
-            <input className={inputCls} value={fields.condition_notes} onChange={(e) => set('condition_notes', e.target.value)} placeholder="ex: Near Mint, Perfect Centering..." />
-          </Field>
-        </div>
-
-        {/* Navigation & Actions */}
-        <div className="flex items-center justify-between gap-4 p-4 rounded-3xl bg-white/[0.01] border border-white/5">
+        {/* Navigation et actions */}
+        <div className="ui-card flex items-center justify-between gap-2 p-3">
           <div className="flex gap-2">
             <button
               onClick={() => onNavigate(index - 1)}
               disabled={index === 0}
-              className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white/5 border border-white/10 text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90"
+              className="ui-btn ui-btn-icon"
+              aria-label="Brouillon précédent"
             >
-              <ChevronLeft size={20} />
+              <ChevronLeft size={16} />
             </button>
             <button
               onClick={() => onNavigate(index + 1)}
               disabled={index >= total - 1}
-              className="w-12 h-12 flex items-center justify-center rounded-2xl bg-white/5 border border-white/10 text-white hover:bg-white/10 disabled:opacity-30 disabled:cursor-not-allowed transition-all active:scale-90"
+              className="ui-btn ui-btn-icon"
+              aria-label="Brouillon suivant"
             >
-              <ChevronRight size={20} />
+              <ChevronRight size={16} />
             </button>
           </div>
 
-          <div className="flex gap-3 flex-1 justify-end">
+          <div className="flex flex-1 justify-end gap-2">
             <button
               onClick={handleDiscardAndNext}
               disabled={discarding}
-              className="px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-widest border border-red-500/20 text-red-500 hover:bg-red-500/10 transition-all active:scale-95 disabled:opacity-50"
+              className="ui-btn ui-btn-danger"
+              title="Supprimer ce brouillon"
             >
-              {discarding ? '...' : <Trash2 size={18} />}
+              {discarding ? <RefreshCw size={15} className="animate-spin" /> : <Trash2 size={15} />}
+              <span className="hidden sm:inline">Supprimer</span>
             </button>
             <button
               onClick={handleValidateAndNext}
               disabled={saving}
-              className="px-8 py-3 rounded-2xl bg-[var(--accent)] border border-[var(--border-accent)] text-[#09090B] text-xs font-black uppercase tracking-widest flex items-center gap-3 shadow-xl shadow-[var(--accent-glow)] hover:brightness-110 transition-all active:scale-95 disabled:opacity-50"
+              className="ui-btn ui-btn-primary sm:min-w-40"
             >
-              {saving ? <RefreshCw size={18} className="animate-spin" /> : <CheckCircle2 size={18} />}
-              {saving ? 'Validation…' : index < total - 1 ? 'Suivant' : 'Terminer'}
+              {saving ? <RefreshCw size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+              {saving ? 'Validation…' : index < total - 1 ? 'Valider et suivant' : 'Valider et terminer'}
             </button>
           </div>
         </div>
@@ -498,35 +479,29 @@ export function ReviewView() {
 
   if (isLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <RefreshCw size={40} className="text-[var(--accent)] animate-spin opacity-20" />
-      </div>
+      <Page>
+        <Spinner label="Chargement des brouillons…" />
+      </Page>
     );
   }
 
   if (drafts.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-[radial-gradient(circle_at_50%_-20%,_var(--accent-dim)_0%,_transparent_70%)]">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="text-center space-y-6"
-        >
-          <div className="w-20 h-20 rounded-[32px] bg-[var(--accent-dim)] border border-[var(--border-accent)] flex items-center justify-center mx-auto text-[var(--accent)]">
-            <CheckCircle2 size={40} />
-          </div>
-          <div>
-            <h2 className="text-2xl font-black text-white tracking-tight">Vérification Terminée</h2>
-            <p className="text-[var(--text-muted)] font-medium mt-1">Tous vos brouillons ont été traités avec succès.</p>
-          </div>
-          <button
-            onClick={() => { setReviewSessionId(null); setActiveView('collection'); }}
-            className="px-8 py-3 rounded-2xl bg-white/[0.05] border border-white/10 text-white text-xs font-black uppercase tracking-widest hover:bg-white/10 transition-all flex items-center gap-3 mx-auto"
-          >
-            Retourner à la collection <ArrowRight size={16} />
-          </button>
-        </motion.div>
-      </div>
+      <Page>
+        <EmptyState
+          icon={CheckCircle2}
+          title="Vérification terminée"
+          description="Tous vos brouillons ont été traités."
+          action={
+            <button
+              onClick={() => { setReviewSessionId(null); setActiveView('collection'); }}
+              className="ui-btn ui-btn-primary"
+            >
+              Retourner à la collection <ArrowRight size={15} />
+            </button>
+          }
+        />
+      </Page>
     );
   }
 
@@ -534,53 +509,54 @@ export function ReviewView() {
   const current = drafts[safeIndex];
 
   return (
-    <div className="flex-1 overflow-auto bg-[radial-gradient(circle_at_50%_-20%,_var(--accent-dim)_0%,_transparent_70%)]">
-      <div className="max-w-7xl mx-auto px-6 py-10">
-        <div className="flex items-center justify-between mb-10">
-          <div className="flex items-center gap-4">
+    <Page width="wide">
+      <PageHeader
+        title={<span className="flex items-center gap-2">Vérification studio <Badge tone="accent" className="tabular">{drafts.length}</Badge></span>}
+        subtitle={reviewSession ? `${reviewSession.tag} · lot studio récent` : 'Validez ou corrigez les données extraites par l\'IA'}
+        actions={
+          <>
             <button
               onClick={() => { setReviewSessionId(null); setActiveView('batch'); }}
-              className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center text-[var(--text-muted)] hover:text-white transition-all active:scale-90"
+              className="ui-btn ui-btn-ghost"
             >
-              <ChevronLeft size={20} />
+              <ChevronLeft size={16} /> Retour
             </button>
-            <div>
-              <div className="flex items-center gap-3">
-                <h2 className="text-2xl font-black text-white tracking-tight">Vérification Studio</h2>
-                <div className="px-2.5 py-0.5 rounded-lg bg-[var(--accent-dim)] border border-[var(--border-accent)] text-[var(--accent)] text-xs font-black">
-                  {drafts.length}
-                </div>
-              </div>
-              <p className="text-sm text-[var(--text-muted)] font-medium">
-                {reviewSession ? `${reviewSession.tag} • lot studio récent` : 'Validez ou corrigez les données extraites par l\'IA'}
-              </p>
-            </div>
-          </div>
+            <button
+              onClick={handleValidateAll}
+              disabled={validatingAll}
+              className="ui-btn ui-btn-success"
+            >
+              {validatingAll ? <RefreshCw size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
+              {validatingAll ? 'Traitement en cours…' : `Tout valider (${drafts.length})`}
+            </button>
+          </>
+        }
+      />
 
-          <button
-            onClick={handleValidateAll}
-            disabled={validatingAll}
-            className="px-6 py-3 rounded-2xl bg-white/5 border border-white/10 text-white text-xs font-black uppercase tracking-widest hover:bg-white/10 disabled:opacity-30 transition-all active:scale-95"
-          >
-            {validatingAll ? 'TRAITEMENT EN COURS…' : `Tout valider`}
-          </button>
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
+          <span className="tabular">Brouillon {safeIndex + 1} sur {drafts.length}</span>
+          <span className="lg:hidden tabular">{drafts.length} à vérifier</span>
         </div>
-
-        <AnimatePresence mode="wait">
-          {current && (
-            <DraftEditor
-              key={current.id}
-              card={current}
-              index={safeIndex}
-              total={drafts.length}
-              cards={drafts}
-              onNavigate={setCurrentIndex}
-              onValidate={handleValidate}
-              onDiscard={handleDiscard}
-            />
-          )}
-        </AnimatePresence>
+        <div className="h-1 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
+          <div className="h-full rounded-full bg-[var(--accent)] transition-all" style={{ width: `${Math.round(((safeIndex + 1) / drafts.length) * 100)}%` }} />
+        </div>
       </div>
-    </div>
+
+      <AnimatePresence mode="wait">
+        {current && (
+          <DraftEditor
+            key={current.id}
+            card={current}
+            index={safeIndex}
+            total={drafts.length}
+            cards={drafts}
+            onNavigate={setCurrentIndex}
+            onValidate={handleValidate}
+            onDiscard={handleDiscard}
+          />
+        )}
+      </AnimatePresence>
+    </Page>
   );
 }

@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { Check, Clock, Loader2, RefreshCw, ScanSearch, TrendingDown, TrendingUp } from 'lucide-react';
 import { apiFetch } from '../../api/client';
 import { cdnImg } from '../../lib/cdn';
+import { Notice } from '../ui';
 import { EbayLogo } from './EbayLogo';
 
 interface EbayResult {
@@ -138,6 +140,24 @@ interface Props {
   autoFetch?: boolean;
 }
 
+const euro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2, minimumFractionDigits: 0 });
+function formatEuro(v: number): string {
+  return euro.format(v);
+}
+
+/** Petite pastille d'information (état, type de vente). */
+function MetaTag({ children, color = 'var(--text-secondary)' }: { children: ReactNode; color?: string }) {
+  const neutral = color === 'var(--text-secondary)';
+  return (
+    <span
+      className="inline-flex h-5 shrink-0 items-center whitespace-nowrap rounded-md px-1.5 text-[11px] font-medium"
+      style={{ color, background: neutral ? 'var(--bg-elevated)' : `color-mix(in srgb, ${color} 12%, transparent)` }}
+    >
+      {children}
+    </span>
+  );
+}
+
 /** Mini-graphe SVG de la tendance des ventes (prix dans le temps) + %. */
 function SalesTrend({ sales }: { sales: EbayResult[] }) {
   const pts = sales
@@ -175,31 +195,33 @@ function SalesTrend({ sales }: { sales: EbayResult[] }) {
 
   const firstDate = new Date(pts[0].t).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
   const lastDate = new Date(pts[n - 1].t).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+  const TrendIcon = up ? TrendingUp : TrendingDown;
 
   return (
-    <div className="rounded-xl p-3" style={{ background: 'var(--bg-primary)' }}>
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-[10px] uppercase font-black tracking-wide" style={{ color: 'var(--text-muted)' }}>
-          Tendance · {n} ventes
+    <div className="rounded-xl border border-[var(--border)] p-3">
+      <div className="mb-1 flex items-center justify-between">
+        <span className="text-xs font-medium text-[var(--text-secondary)]">
+          Tendance <span className="tabular text-[var(--text-muted)]">· {n} ventes</span>
         </span>
-        <span className="text-xs font-black" style={{ color }}>
-          {up ? '↗' : '↘'} {up ? '+' : ''}{trendPct.toFixed(0)} %
+        <span className="tabular inline-flex items-center gap-1 text-xs font-semibold" style={{ color }}>
+          <TrendIcon size={13} />
+          {up ? '+' : ''}{trendPct.toFixed(0)} %
         </span>
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-auto">
+      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full">
         {/* Grille médiane */}
-        <line x1={padL} y1={cy(median)} x2={W - padR} y2={cy(median)} stroke="var(--border)" strokeWidth={1} strokeDasharray="3 3" />
+        <line x1={padL} y1={cy(median)} x2={W - padR} y2={cy(median)} stroke="var(--border-strong)" strokeWidth={1} strokeDasharray="3 3" />
         {/* Labels prix */}
-        <text x={4} y={padT + 4} fontSize={9} fill="var(--text-muted)">${pMax}</text>
-        <text x={4} y={H - padB} fontSize={9} fill="var(--text-muted)">${pMin}</text>
+        <text x={2} y={padT + 4} fontSize={10} fill="var(--text-muted)">${pMax}</text>
+        <text x={2} y={H - padB} fontSize={10} fill="var(--text-muted)">${pMin}</text>
         {/* Dates */}
-        <text x={padL} y={H - 4} fontSize={9} fill="var(--text-muted)">{firstDate}</text>
-        <text x={W - padR} y={H - 4} fontSize={9} fill="var(--text-muted)" textAnchor="end">{lastDate}</text>
+        <text x={padL} y={H - 3} fontSize={10} fill="var(--text-muted)">{firstDate}</text>
+        <text x={W - padR} y={H - 3} fontSize={10} fill="var(--text-muted)" textAnchor="end">{lastDate}</text>
         {/* Ligne de tendance */}
-        <line x1={cx(0)} y1={yClamp(startP)} x2={cx(xMax)} y2={yClamp(endP)} stroke={color} strokeWidth={2.5} strokeLinecap="round" />
+        <line x1={cx(0)} y1={yClamp(startP)} x2={cx(xMax)} y2={yClamp(endP)} stroke={color} strokeWidth={2} strokeLinecap="round" />
         {/* Points */}
         {pts.map((d, i) => (
-          <circle key={i} cx={cx(xs[i])} cy={cy(d.p)} r={3.5} fill="var(--accent)" opacity={0.85} />
+          <circle key={i} cx={cx(xs[i])} cy={cy(d.p)} r={3} fill="var(--accent)" opacity={0.9} />
         ))}
       </svg>
     </div>
@@ -291,63 +313,62 @@ export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPri
   const currentRawCount = current?.results?.length ?? 0;
   const filteredOut = !showAll && currentRawCount > currentShown.length;
 
+
   return (
-    <div className="flex flex-col gap-2">
-      {/* --- Recherche visuelle --- */}
-      {imageUrl && !selectedTitle && (
-        <button
-          onClick={fetchVisual}
-          disabled={visualLoading}
-          className="w-full py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
-          style={{
-            background: 'var(--bg-elevated)',
-            border: '1px solid var(--border)',
-            color: 'var(--text-secondary)',
-            opacity: visualLoading ? 0.6 : 1,
-          }}
-        >
-          {visualLoading ? (
-            '🔍 Identification visuelle…'
-          ) : (
-            <span className="flex items-center gap-2">
-              <EbayLogo /> Correspondances visuelles
-            </span>
+    <div className="flex flex-col gap-3">
+      {/* --- Déclencheurs : prix (recherche texte) + recherche visuelle --- */}
+      {(!hasPrices || (imageUrl && !selectedTitle)) && (
+        <div className="flex flex-col gap-2 sm:flex-row">
+          {!hasPrices && (
+            <button onClick={() => fetchPrices(effectiveQuery)} disabled={priceLoading} className="ui-btn flex-1">
+              {priceLoading ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" /> Recherche eBay…
+                </>
+              ) : (
+                <>
+                  <EbayLogo /> Voir les ventes
+                </>
+              )}
+            </button>
           )}
-        </button>
+          {imageUrl && !selectedTitle && (
+            <button onClick={fetchVisual} disabled={visualLoading} className="ui-btn flex-1">
+              {visualLoading ? (
+                <>
+                  <Loader2 size={14} className="animate-spin" /> Identification visuelle…
+                </>
+              ) : (
+                <>
+                  <ScanSearch size={15} /> Correspondances visuelles
+                </>
+              )}
+            </button>
+          )}
+        </div>
       )}
 
+      {/* --- Résultats de la recherche visuelle --- */}
       {visual && !selectedTitle && (
-        <div
-          className="rounded-xl p-3 flex flex-col gap-2"
-          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}
-        >
+        <div className="rounded-xl border border-[var(--border)] p-3">
           {visual.error ? (
-            <p className="text-xs" style={{ color: 'var(--red)' }}>{visual.error}</p>
+            <Notice tone="error">{visual.error}</Notice>
           ) : !visual.results?.length ? (
-            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Aucune correspondance visuelle.</p>
+            <p className="text-[13px] text-[var(--text-muted)]">Aucune correspondance visuelle.</p>
           ) : (
             <>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                Tape la carte qui correspond pour voir ses prix
-              </p>
-              <div className="grid grid-cols-3 gap-2">
+              <p className="mb-2.5 text-xs text-[var(--text-muted)]">Sélectionne la carte qui correspond pour voir ses prix.</p>
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                 {visual.results.map((r, i) => (
                   <button
                     key={i}
                     onClick={() => selectVisual(r)}
-                    className="flex flex-col gap-1 rounded-lg overflow-hidden transition-transform active:scale-95 hover:opacity-90 text-left"
-                    style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)' }}
+                    className="flex flex-col overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] text-left transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--bg-elevated)]"
                   >
-                    {r.image && (
-                      <img src={r.image} alt="" className="w-full aspect-[3/4] object-cover" />
-                    )}
-                    <div className="px-1.5 pb-1.5">
-                      <p className="text-[10px] leading-tight line-clamp-2" style={{ color: 'var(--text-muted)' }}>
-                        {r.title}
-                      </p>
-                      <p className="text-xs font-bold" style={{ color: 'var(--accent)' }}>
-                        ${r.price}
-                      </p>
+                    {r.image && <img src={r.image} alt="" loading="lazy" className="aspect-[3/4] w-full object-cover" />}
+                    <div className="flex flex-1 flex-col gap-0.5 p-1.5">
+                      <p className="line-clamp-2 text-[11px] leading-tight text-[var(--text-muted)]">{r.title}</p>
+                      <p className="tabular mt-auto text-xs font-semibold text-[var(--accent)]">${r.price}</p>
                     </div>
                   </button>
                 ))}
@@ -357,44 +378,18 @@ export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPri
         </div>
       )}
 
-      {/* --- Déclencheur prix (recherche texte, sans passer par la grille) --- */}
-      {!hasPrices && (
-        <button
-          onClick={() => fetchPrices(effectiveQuery)}
-          disabled={priceLoading}
-          className="w-full py-2.5 rounded-xl text-sm font-medium transition-all flex items-center justify-center gap-2"
-          style={{
-            background: 'var(--bg-elevated)',
-            border: '1px solid var(--border)',
-            color: 'var(--text-secondary)',
-            opacity: priceLoading ? 0.6 : 1,
-          }}
-        >
-          {priceLoading ? (
-            '⏳ Recherche eBay…'
-          ) : (
-            <span className="flex items-center gap-2">
-              <EbayLogo /> Voir les ventes
-            </span>
-          )}
-        </button>
-      )}
-
       {/* --- Panneau prix --- */}
       {hasPrices && (
-        <div
-          className="rounded-xl p-3 flex flex-col gap-3"
-          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}
-        >
+        <div className="flex flex-col gap-3">
           {selectedTitle && (
-            <div className="flex items-center gap-2">
-              <p className="text-xs flex-1 truncate" style={{ color: 'var(--text-secondary)' }}>
-                ✓ {selectedTitle}
+            <div className="flex items-center gap-2 rounded-lg bg-[var(--bg-elevated)] py-1.5 pl-3 pr-1.5">
+              <Check size={14} className="shrink-0 text-[var(--green)]" />
+              <p className="min-w-0 flex-1 truncate text-xs text-[var(--text-secondary)]" title={selectedTitle}>
+                {selectedTitle}
               </p>
               <button
                 onClick={() => { setSelectedTitle(null); setEffectiveQuery(query); setSold(null); setActive(null); }}
-                className="text-[11px] shrink-0"
-                style={{ color: 'var(--text-muted)' }}
+                className="ui-btn ui-btn-ghost ui-btn-sm shrink-0"
               >
                 Changer
               </button>
@@ -409,39 +404,36 @@ export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPri
             // Libellé honnête : « ventes » seulement quand la donnée vient du vendu.
             const statsLabel = usingSold ? 'Médiane des ventes' : 'Médiane des annonces en cours';
             return (
-              <div className="flex flex-col gap-2">
-                <div
-                  className="rounded-xl py-3 text-center"
-                  style={{ background: 'rgba(59,130,246,0.08)' }}
-                >
-                  <div className="text-[10px] uppercase font-black tracking-wide" style={{ color: 'var(--text-muted)' }}>
-                    {statsLabel}
+              <div className="flex flex-col gap-3">
+                <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2 rounded-xl border border-[var(--border)] px-4 py-3">
+                  <div className="min-w-0">
+                    <div className="text-xs font-medium text-[var(--text-muted)]">{statsLabel}</div>
+                    <div className="tabular text-2xl font-semibold tracking-tight text-[var(--accent)]">${stats.median}</div>
                   </div>
-                  <div className="text-3xl font-black" style={{ color: 'var(--blue)' }}>
-                    ${stats.median}
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="rounded-xl py-2 text-center" style={{ background: 'rgba(34,197,94,0.08)' }}>
-                    <div className="text-[10px] uppercase font-black" style={{ color: 'var(--text-muted)' }}>Min</div>
-                    <div className="text-lg font-black" style={{ color: 'var(--green)' }}>${stats.min}</div>
-                  </div>
-                  <div className="rounded-xl py-2 text-center" style={{ background: 'rgba(239,68,68,0.08)' }}>
-                    <div className="text-[10px] uppercase font-black" style={{ color: 'var(--text-muted)' }}>Max</div>
-                    <div className="text-lg font-black" style={{ color: 'var(--red)' }}>${stats.max}</div>
-                  </div>
+                  <dl className="flex gap-5 text-right">
+                    <div>
+                      <dt className="text-[11px] text-[var(--text-muted)]">Min</dt>
+                      <dd className="tabular text-sm font-semibold text-[var(--text-primary)]">${stats.min}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[11px] text-[var(--text-muted)]">Max</dt>
+                      <dd className="tabular text-sm font-semibold text-[var(--text-primary)]">${stats.max}</dd>
+                    </div>
+                  </dl>
                 </div>
 
                 {/* Définir le prix de vente à partir de la médiane */}
                 {usingSold && onApplyPrice && (
-                  <div className="flex flex-col gap-2 pt-1">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] uppercase font-black tracking-wide" style={{ color: 'var(--text-muted)' }}>
-                        Définir le prix de vente
-                      </span>
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium text-[var(--text-secondary)]">Définir le prix de vente</span>
                       {(appliedPrice ?? currentPrice) != null && (
-                        <span className="text-[11px]" style={{ color: appliedPrice != null ? 'var(--green)' : 'var(--text-muted)' }}>
-                          {appliedPrice != null ? '✓ ' : 'Actuel : '}{appliedPrice ?? currentPrice} €
+                        <span
+                          className="tabular inline-flex items-center gap-1 text-xs"
+                          style={{ color: appliedPrice != null ? 'var(--green)' : 'var(--text-muted)' }}
+                        >
+                          {appliedPrice != null ? <Check size={12} /> : 'Actuel : '}
+                          {formatEuro((appliedPrice ?? currentPrice) as number)}
                         </span>
                       )}
                     </div>
@@ -456,11 +448,11 @@ export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPri
                           <button
                             key={label}
                             onClick={async () => { if (!onApplyPrice) return; setAppliedPrice(eur); await onApplyPrice(eur); }}
-                            className="flex flex-col items-center py-2 rounded-xl transition-all active:scale-95"
-                            style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)' }}
+                            data-active={appliedPrice === eur}
+                            className="ui-btn h-auto flex-col gap-0 py-1.5"
                           >
-                            <span className="text-[10px] font-bold" style={{ color: 'var(--text-muted)' }}>{label}</span>
-                            <span className="text-sm font-black" style={{ color: 'var(--accent)' }}>{eur} €</span>
+                            <span className="text-[11px] font-medium text-[var(--text-muted)]">{label}</span>
+                            <span className="tabular text-[13px] font-semibold text-[var(--accent)]">{formatEuro(eur)}</span>
                           </button>
                         );
                       })}
@@ -475,8 +467,7 @@ export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPri
                         placeholder="Autre prix (€)"
                         value={customPrice}
                         onChange={(e) => setCustomPrice(e.target.value)}
-                        className="flex-1 rounded-xl px-3 py-2 text-sm outline-none"
-                        style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                        className="ui-input tabular flex-1"
                       />
                       <button
                         disabled={!customPrice || !(Number(customPrice) > 0)}
@@ -488,10 +479,9 @@ export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPri
                           setCustomPrice('');
                           await onApplyPrice(v);
                         }}
-                        className="px-4 py-2 rounded-xl text-sm font-black transition-all active:scale-95 disabled:opacity-40"
-                        style={{ background: 'var(--accent)', color: '#09090B' }}
+                        className="ui-btn ui-btn-primary"
                       >
-                        OK
+                        Appliquer
                       </button>
                     </div>
                   </div>
@@ -501,24 +491,16 @@ export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPri
           })()}
 
           {/* Onglets */}
-          <div className="flex gap-2">
+          <div className="ui-segmented w-full">
             {(['sold', 'active'] as const).map((t) => {
               const d = t === 'sold' ? sold : active;
               const shownCount = t === 'sold' ? soldShown.length : activeShown.length;
               const label = t === 'sold' ? 'Vendues' : 'En vente';
               const n = d?.results ? shownCount : d?.count;
-              const isActive = tab === t;
               return (
-                <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className="flex-1 py-1.5 rounded-lg text-xs font-bold transition-all"
-                  style={{
-                    background: isActive ? 'var(--accent)' : 'var(--bg-primary)',
-                    color: isActive ? '#09090B' : 'var(--text-secondary)',
-                  }}
-                >
-                  {label}{n != null ? ` (${n})` : ''}
+                <button key={t} onClick={() => setTab(t)} data-active={tab === t} className="flex-1 justify-center">
+                  {label}
+                  {n != null && <span className="count">{n}</span>}
                 </button>
               );
             })}
@@ -526,17 +508,13 @@ export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPri
 
           {/* Filtre pertinence : info + bascule */}
           {(filteredOut || showAll) && currentRawCount > 0 && (
-            <div className="flex items-center justify-between">
-              <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+            <div className="flex items-center justify-between gap-2">
+              <span className="tabular text-xs text-[var(--text-muted)]">
                 {showAll
                   ? `Tout affiché (${currentRawCount})`
                   : `${currentShown.length} pertinentes sur ${currentRawCount}`}
               </span>
-              <button
-                onClick={() => setShowAll((v) => !v)}
-                className="text-[11px] font-semibold"
-                style={{ color: 'var(--accent)' }}
-              >
+              <button onClick={() => setShowAll((v) => !v)} className="ui-btn ui-btn-ghost ui-btn-sm text-[var(--accent)]">
                 {showAll ? 'Filtrer' : 'Voir tout'}
               </button>
             </div>
@@ -544,94 +522,72 @@ export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPri
 
           {/* Contenu onglet */}
           {current?.needs_approval ? (
-            <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-              ⏳ Les ventes réelles arrivent via l'API eBay Marketplace Insights,
-              en attente d'approbation de l'application par eBay. En attendant,
-              l'onglet « En vente » affiche les annonces en cours.
-            </p>
+            <Notice tone="info" icon={Clock}>
+              Les ventes réelles arrivent via l'API eBay Marketplace Insights, en attente d'approbation de
+              l'application par eBay. En attendant, l'onglet « En vente » affiche les annonces en cours.
+            </Notice>
           ) : current?.error ? (
-            <div className="flex flex-col gap-1">
-              <p className="text-xs" style={{ color: 'var(--red)' }}>{current.error}</p>
-              {current.detail && (
-                <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{current.detail}</p>
-              )}
-            </div>
+            <Notice tone="error">
+              <p>{current.error}</p>
+              {current.detail && <p className="mt-1 text-xs text-[var(--text-muted)]">{current.detail}</p>}
+            </Notice>
           ) : currentShown.length === 0 ? (
-            <div className="flex flex-col gap-1">
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+            <div className="rounded-xl border border-dashed border-[var(--border-strong)] px-4 py-6 text-center">
+              <p className="text-[13px] text-[var(--text-muted)]">
                 {filteredOut
                   ? 'Aucune vente correspondant exactement à cette carte. Essaie « Voir tout ».'
                   : 'Aucun résultat sur eBay.'}
               </p>
-              {current?.detail && (
-                <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{current.detail}</p>
-              )}
+              {current?.detail && <p className="mt-1 text-xs text-[var(--text-muted)]">{current.detail}</p>}
             </div>
           ) : (
             <div className="flex flex-col gap-2">
               {tab === 'sold' && (
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                    {sold?.cached ? 'Depuis le cache' : ''}
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs text-[var(--text-muted)]">
+                    {[sold?.cached ? 'Depuis le cache' : null, current?.source === 'scrape' ? 'Ventes réelles issues des annonces terminées eBay' : null]
+                      .filter(Boolean)
+                      .join(' · ')}
                   </span>
                   <button
                     onClick={() => fetchPrices(effectiveQuery, true)}
                     disabled={priceLoading}
-                    className="text-[11px] font-semibold flex items-center gap-1 disabled:opacity-40"
-                    style={{ color: 'var(--accent)' }}
+                    className="ui-btn ui-btn-ghost ui-btn-sm shrink-0"
                   >
-                    ↻ Actualiser
+                    <RefreshCw size={13} className={priceLoading ? 'animate-spin' : ''} /> Actualiser
                   </button>
                 </div>
               )}
               {tab === 'sold' && <SalesTrend sales={soldShown} />}
-              <div className="flex flex-col gap-1.5 max-h-80 overflow-y-auto">
-              {tab === 'sold' && current?.source === 'scrape' && (
-                <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                  Ventes réelles issues des annonces terminées eBay
-                </p>
-              )}
-              {currentShown.map((r, i) => (
-                <a
-                  key={i}
-                  href={r.url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="flex items-center gap-3 py-2.5 px-2 rounded-lg transition-colors hover:bg-white/5"
-                >
-                  {r.image && (
-                    <img src={r.image} alt="" className="w-12 h-16 object-cover rounded-lg shrink-0" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm leading-snug" style={{ color: 'var(--text-secondary)' }}>
-                      {r.title}
-                    </p>
-                    <div className="flex items-center gap-2 mt-1 flex-wrap">
-                      {r.condition && (
-                        <span className="text-[11px] px-1.5 py-0.5 rounded" style={{ background: 'var(--bg-primary)', color: 'var(--text-muted)' }}>
-                          {r.condition}
-                        </span>
-                      )}
-                      {r.sale_type && (
-                        <span className="text-[11px] px-1.5 py-0.5 rounded" style={{
-                          background: r.sale_type === 'Enchère' ? 'rgba(59,130,246,0.1)' : r.sale_type === 'Vendu' ? 'rgba(34,197,94,0.1)' : 'rgba(245,166,35,0.1)',
-                          color: r.sale_type === 'Enchère' ? 'var(--blue)' : r.sale_type === 'Vendu' ? 'var(--green)' : 'var(--accent)',
-                        }}>
-                          {r.sale_type}
-                        </span>
-                      )}
-                      {r.end_date && (
-                        <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                          {formatDate(r.end_date)}
-                        </span>
-                      )}
+              <div className="max-h-80 divide-y divide-[var(--border)] overflow-y-auto rounded-xl border border-[var(--border)]">
+                {currentShown.map((r, i) => (
+                  <a
+                    key={i}
+                    href={r.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-[var(--bg-elevated)]"
+                  >
+                    {r.image ? (
+                      <img src={r.image} alt="" loading="lazy" className="h-14 w-10 shrink-0 rounded-md object-cover" />
+                    ) : (
+                      <div className="h-14 w-10 shrink-0 rounded-md bg-[var(--bg-elevated)]" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="line-clamp-2 text-[13px] leading-snug text-[var(--text-secondary)]">{r.title}</p>
+                      <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                        {r.condition && <MetaTag>{r.condition}</MetaTag>}
+                        {r.sale_type && (
+                          <MetaTag color={r.sale_type === 'Enchère' ? 'var(--blue)' : r.sale_type === 'Vendu' ? 'var(--green)' : 'var(--accent)'}>
+                            {r.sale_type}
+                          </MetaTag>
+                        )}
+                        {r.end_date && <span className="tabular text-[11px] text-[var(--text-muted)]">{formatDate(r.end_date)}</span>}
+                      </div>
                     </div>
-                  </div>
-                  <span className="text-base font-bold shrink-0" style={{ color: 'var(--text-primary)' }}>
-                    ${r.price}
-                  </span>
-                </a>
-              ))}
+                    <span className="tabular shrink-0 text-sm font-semibold text-[var(--text-primary)]">${r.price}</span>
+                  </a>
+                ))}
               </div>
             </div>
           )}

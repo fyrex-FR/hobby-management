@@ -98,40 +98,41 @@ export function CornerCropEditor({ file, side, onDone, onCancel }: Props) {
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-black">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/10">
-        <button onClick={onCancel} className="flex items-center gap-1.5 text-sm font-bold text-[var(--text-secondary)] hover:text-white">
-          <X size={18} /> Annuler
+      {/* En-tête */}
+      <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-3 pb-2 pt-[calc(env(safe-area-inset-top)+0.5rem)]">
+        <button onClick={onCancel} className="ui-btn ui-btn-ghost">
+          <X size={16} /> Annuler
         </button>
-        <span className="text-xs font-black uppercase tracking-widest text-[var(--text-muted)]">
-          Ajuste les coins — {side === 'front' ? 'recto' : 'verso'}
-        </span>
+        <div className="min-w-0 text-center">
+          <p className="truncate text-sm font-semibold text-[var(--text-primary)]">Ajuste les coins</p>
+          <p className="text-xs text-[var(--text-muted)]">{side === 'front' ? 'Recto' : 'Verso'}</p>
+        </div>
         <button
           onClick={() => imgRef.current && runDetect(imgRef.current)}
           disabled={autoBusy}
-          className="flex items-center gap-1.5 text-sm font-bold text-[var(--accent)] disabled:opacity-40"
+          className="ui-btn"
           title="Relancer la détection auto"
         >
-          {autoBusy ? <Loader2 size={16} className="animate-spin" /> : <Wand2 size={16} />} Auto
+          {autoBusy ? <Loader2 size={15} className="animate-spin" /> : <Wand2 size={15} />} Auto
         </button>
       </div>
 
-      {/* Canvas */}
-      <div className="flex-1 min-h-0 flex items-center justify-center p-4 overflow-hidden">
-        <div className="relative max-w-full max-h-full" style={{ aspectRatio: dims ? `${dims.w} / ${dims.h}` : undefined }}>
+      {/* Zone d'édition */}
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden p-4">
+        <div className="relative max-h-full max-w-full" style={{ aspectRatio: dims ? `${dims.w} / ${dims.h}` : undefined }}>
           <img
             ref={imgRef}
             src={url}
             onLoad={onImgLoad}
             alt=""
-            className="block max-w-full max-h-full object-contain select-none"
+            className="block max-h-full max-w-full select-none object-contain"
             draggable={false}
           />
           {dims && corners && (
             <svg
               ref={svgRef}
               viewBox={`0 0 ${dims.w} ${dims.h}`}
-              className="absolute inset-0 w-full h-full touch-none"
+              className="absolute inset-0 h-full w-full touch-none"
               preserveAspectRatio="none"
             >
               <polygon points={poly} fill="rgba(245,166,35,0.12)" stroke="var(--accent)" strokeWidth={2} vectorEffect="non-scaling-stroke" />
@@ -146,16 +147,17 @@ export function CornerCropEditor({ file, side, onDone, onCancel }: Props) {
         </div>
       </div>
 
-      {/* Footer */}
-      <div className="px-4 py-4 border-t border-white/10 flex flex-col gap-2">
-        {note && <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>{note}</p>}
+      {/* Pied */}
+      <div className="flex shrink-0 flex-col gap-2 border-t border-[var(--border)] px-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] pt-3">
+        <p className="text-center text-xs text-[var(--text-muted)]">
+          {note || 'Fais glisser les quatre poignées sur les coins de la carte.'}
+        </p>
         <button
           onClick={validate}
           disabled={warping || !corners}
-          className="w-full py-3.5 rounded-2xl text-sm font-black flex items-center justify-center gap-2 transition-all active:scale-95 disabled:opacity-50"
-          style={{ background: 'var(--accent)', color: '#09090B' }}
+          className="ui-btn ui-btn-primary ui-btn-lg mx-auto w-full max-w-md"
         >
-          {warping ? <Loader2 size={18} className="animate-spin" /> : <Check size={18} strokeWidth={3} />}
+          {warping ? <Loader2 size={17} className="animate-spin" /> : <Check size={17} />}
           {warping ? 'Redressement…' : 'Valider le recadrage'}
         </button>
       </div>

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { X, Loader2, AlertCircle } from 'lucide-react';
+import { AlertCircle, Check, CheckCircle2, ImageOff, Loader2 } from 'lucide-react';
 import {
   matchShippingRule,
   useEbayAccountStatus,
@@ -13,6 +13,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { EbayLogo } from './EbayLogo';
 import { cdnImg } from '../../lib/cdn';
 import type { Card } from '../../types';
+import { Badge, Field, Modal, Notice } from '../ui';
 
 interface Props {
   cards: Card[];
@@ -124,123 +125,142 @@ export function EbayBulkPublishModal({ cards, onClose, onDone }: Props) {
   const failed = (results ?? []).filter((r) => r.status === 'error').length;
   const ineligibleCount = evaluated.length - eligibleCards.length;
 
+  const canPublish = connected && policiesConfigured;
+
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={onClose}>
-      <div
-        className="w-full max-w-lg rounded-3xl glass border-strong shadow-2xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <EbayLogo width={48} height={19} />
-            <span className="text-sm font-black uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-              Publier en masse
-            </span>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-white hover:bg-white/10 transition-all">
-            <X size={16} />
-          </button>
-        </div>
-
-        {!connected ? (
-          <div className="flex flex-col gap-2 py-2">
-            <AlertCircle size={20} style={{ color: 'var(--red)' }} />
-            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-              Connecte d’abord ton compte eBay depuis l’onglet « eBay » du menu.
-            </p>
-          </div>
-        ) : !policiesConfigured ? (
-          <div className="flex flex-col gap-2 py-2">
-            <AlertCircle size={20} style={{ color: 'var(--accent)' }} />
-            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-              Configure d’abord tes options de vente eBay (paiement, livraison, retours) dans le centre de contrôle eBay.
-            </p>
-          </div>
-        ) : (
+    <Modal
+      onClose={onClose}
+      icon={<EbayLogo width={48} height={19} />}
+      title="Publier en masse"
+      subtitle={`${cards.length} carte${cards.length > 1 ? 's' : ''} sélectionnée${cards.length > 1 ? 's' : ''}`}
+      size="lg"
+      dismissible={!publishing}
+      footer={
+        canPublish ? (
           <>
-            <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-              Titre, description, catégorie et mode d’envoi automatiques. Chaque carte part avec son prix déjà saisi. Décoche celles à ne pas publier.
-            </p>
+            <button onClick={onClose} disabled={publishing} className="ui-btn ui-btn-ghost">{results && !publishing ? 'Fermer' : 'Annuler'}</button>
+            <button onClick={publishSelected} disabled={publishing || selected.length === 0 || invalidPercent} className="ui-btn ui-btn-primary">
+              {publishing ? <Loader2 size={15} className="animate-spin" /> : <EbayLogo width={32} height={13} mono="#09090B" />}
+              {publishing
+                ? progress
+                  ? `Publication… ${progress.done}/${progress.total}`
+                  : 'Publication…'
+                : `Publier la sélection (${selected.length})`}
+            </button>
+          </>
+        ) : (
+          <button onClick={onClose} className="ui-btn">Fermer</button>
+        )
+      }
+    >
+      {!connected ? (
+        <Notice tone="error" icon={AlertCircle}>
+          Connecte d’abord ton compte eBay depuis l’onglet « eBay » du menu.
+        </Notice>
+      ) : !policiesConfigured ? (
+        <Notice tone="warning" icon={AlertCircle}>
+          Configure d’abord tes options de vente eBay (paiement, livraison, retours) dans le centre de contrôle eBay.
+        </Notice>
+      ) : (
+        <div className="space-y-4">
+          <p className="text-[13px] text-[var(--text-muted)]">
+            Titre, description, catégorie et mode d’envoi automatiques. Chaque carte part avec son prix déjà saisi. Décoche celles à ne pas publier.
+          </p>
 
-            <div className="flex flex-col gap-1 max-h-72 overflow-y-auto rounded-xl" style={{ background: 'rgba(255,255,255,0.02)' }}>
-              {evaluated.map(({ card, eligible, reason }) => {
-                const res = resultById.get(card.id);
-                const checked = eligible && !deselected.has(card.id);
-                return (
-                  <label
-                    key={card.id}
-                    className={`flex items-center gap-3 py-2 px-2.5 rounded-xl transition-colors ${eligible ? 'cursor-pointer hover:bg-white/5' : 'opacity-55'}`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      disabled={!eligible || publishing || res?.status === 'published'}
-                      onChange={() => toggle(card.id)}
-                      className="w-4 h-4 accent-[var(--accent)] shrink-0"
-                    />
-                    {card.image_front_url ? (
-                      <img src={cdnImg(card.image_front_url)} alt="" className="w-8 h-11 object-cover rounded-lg shrink-0" />
-                    ) : (
-                      <div className="w-8 h-11 rounded-lg shrink-0 flex items-center justify-center text-xs" style={{ background: 'var(--bg-elevated)' }}>🃏</div>
-                    )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-white truncate">{card.player ?? '—'}</p>
-                      <p className="text-[11px] truncate" style={{ color: 'var(--text-muted)' }}>
-                        {eligible ? [card.year, shippingName(card.ebay_price ?? card.price)].filter(Boolean).join(' · ') : reason}
-                      </p>
-                    </div>
-                    {res ? (
-                      <span
-                        className="text-[11px] font-bold shrink-0"
-                        style={{ color: res.status === 'published' ? 'var(--green)' : res.status === 'skipped' ? 'var(--text-muted)' : 'var(--red)' }}
-                      >
-                        {res.status === 'published' ? '✓ Publiée' : res.status === 'skipped' ? 'Ignorée' : 'Échec'}
-                      </span>
-                    ) : eligible ? (
-                      <span className="text-sm font-black shrink-0" style={{ color: 'var(--accent)' }}>{card.ebay_price ?? card.price} €</span>
-                    ) : (
-                      <span className="text-[11px] font-bold shrink-0" style={{ color: 'var(--text-muted)' }}>—</span>
-                    )}
-                  </label>
-                );
-              })}
+          {progress && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-[var(--text-muted)]">Publication en cours</span>
+                <span className="tabular font-medium text-[var(--text-primary)]">{progress.done} / {progress.total}</span>
+              </div>
+              <div className="h-1 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
+                <div className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-200" style={{ width: `${progress.total ? (progress.done / progress.total) * 100 : 0}%` }} />
+              </div>
             </div>
+          )}
 
-            {ineligibleCount > 0 && (
-              <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
-                {ineligibleCount} carte{ineligibleCount > 1 ? 's' : ''} non publiable{ineligibleCount > 1 ? 's' : ''} (déjà en ligne, sans photo ou sans prix) — ignorée{ineligibleCount > 1 ? 's' : ''}.
-              </p>
-            )}
+          <div className="max-h-72 divide-y divide-[var(--border)] overflow-y-auto rounded-xl border border-[var(--border)]">
+            {evaluated.map(({ card, eligible, reason }) => {
+              const res = resultById.get(card.id);
+              const checked = eligible && !deselected.has(card.id);
+              const cardPrice = card.ebay_price ?? card.price;
+              return (
+                <label
+                  key={card.id}
+                  className={`flex items-center gap-3 px-3 py-2 transition-colors ${eligible ? 'cursor-pointer hover:bg-[var(--bg-elevated)]' : 'opacity-55'}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={!eligible || publishing || res?.status === 'published'}
+                    onChange={() => toggle(card.id)}
+                    className="h-4 w-4 shrink-0 accent-[var(--accent)]"
+                  />
+                  {card.image_front_url ? (
+                    <img src={cdnImg(card.image_front_url)} alt="" className="h-11 w-8 shrink-0 rounded-md object-cover" />
+                  ) : (
+                    <div className="flex h-11 w-8 shrink-0 items-center justify-center rounded-md bg-[var(--bg-elevated)] text-[var(--text-muted)]">
+                      <ImageOff size={14} />
+                    </div>
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[13px] font-medium text-[var(--text-primary)]">{card.player ?? '—'}</p>
+                    <p className="truncate text-xs text-[var(--text-muted)]">
+                      {eligible ? [card.year, shippingName(cardPrice)].filter(Boolean).join(' · ') : reason}
+                    </p>
+                  </div>
+                  {res ? (
+                    <Badge tone={res.status === 'published' ? 'green' : res.status === 'skipped' ? 'neutral' : 'red'}>
+                      {res.status === 'published' ? <><Check size={11} /> Publiée</> : res.status === 'skipped' ? 'Ignorée' : 'Échec'}
+                    </Badge>
+                  ) : eligible ? (
+                    <span className="tabular shrink-0 text-[13px] font-semibold text-[var(--accent)]">{formatEuro(cardPrice)}</span>
+                  ) : (
+                    <span className="shrink-0 text-xs text-[var(--text-muted)]">—</span>
+                  )}
+                </label>
+              );
+            })}
+          </div>
 
+          {ineligibleCount > 0 && (
+            <p className="text-xs text-[var(--text-muted)]">
+              {ineligibleCount} carte{ineligibleCount > 1 ? 's' : ''} non publiable{ineligibleCount > 1 ? 's' : ''} (déjà en ligne, sans photo ou sans prix) — ignorée{ineligibleCount > 1 ? 's' : ''}.
+            </p>
+          )}
+
+          <div className="space-y-2">
             {hasImage && (
-              <label className="flex items-center gap-3 rounded-xl px-3 py-2.5" style={{ background: 'rgba(255,255,255,0.04)' }}>
+              <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2.5">
                 <input
                   type="checkbox"
                   checked={includeImage}
                   disabled={publishing}
                   onChange={(e) => setIncludeImage(e.target.checked)}
-                  className="w-4 h-4 accent-[var(--accent)]"
+                  className="h-4 w-4 accent-[var(--accent)]"
                 />
-                <span className="text-sm font-medium text-white">Ajouter mon image d’annonce (3e photo)</span>
+                <span className="text-[13px] font-medium text-[var(--text-primary)]">Ajouter mon image d’annonce (3e photo)</span>
               </label>
             )}
 
-            <div className="rounded-xl px-3 py-2.5 flex flex-col gap-2.5" style={{ background: 'rgba(255,255,255,0.04)' }}>
-              <label className="flex items-center gap-3">
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2.5">
+              <label className="flex cursor-pointer items-center gap-3">
                 <input
                   type="checkbox"
                   checked={allowOffers}
                   disabled={publishing}
                   onChange={(e) => setAllowOffers(e.target.checked)}
-                  className="w-4 h-4 accent-[var(--accent)]"
+                  className="h-4 w-4 accent-[var(--accent)]"
                 />
-                <span className="text-sm font-medium text-white">Autoriser les offres</span>
+                <span className="text-[13px] font-medium text-[var(--text-primary)]">Autoriser les offres</span>
               </label>
               {allowOffers && (
-                <div className="flex flex-col gap-1.5 pl-7">
-                  <label className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-                    Refuser automatiquement sous (% du prix)
-                  </label>
+                <Field
+                  className="mt-3 pl-7"
+                  label="Refuser automatiquement sous (% du prix)"
+                  error={invalidPercent ? 'Indique un pourcentage entre 1 et 99.' : undefined}
+                  hint={`Les cartes du lot ayant des prix différents, le seuil est calculé sur le prix de chacune (ex. une carte à 50 € refusera sous ${(50 * parsedPercent / 100).toFixed(2)} €).`}
+                >
                   <div className="flex items-center gap-2">
                     <input
                       type="number"
@@ -250,57 +270,42 @@ export function EbayBulkPublishModal({ cards, onClose, onDone }: Props) {
                       value={minOfferPercent}
                       disabled={publishing}
                       onChange={(e) => setMinOfferPercent(e.target.value)}
-                      className="w-24 rounded-xl px-3 py-2 text-sm outline-none"
-                      style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                      className="ui-input tabular w-24"
                     />
-                    <span className="text-sm font-bold" style={{ color: 'var(--text-muted)' }}>%</span>
+                    <span className="text-[13px] text-[var(--text-muted)]">%</span>
                   </div>
-                  <p className="text-[11px] leading-relaxed" style={{ color: invalidPercent ? 'var(--red)' : 'var(--text-muted)' }}>
-                    {invalidPercent
-                      ? 'Indique un pourcentage entre 1 et 99.'
-                      : `Les cartes du lot ayant des prix différents, le seuil est calculé sur le prix de chacune (ex. une carte à 50 € refusera sous ${(50 * parsedPercent / 100).toFixed(2)} €).`}
-                  </p>
-                </div>
+                </Field>
               )}
             </div>
+          </div>
 
-            {error && <p className="text-xs" style={{ color: 'var(--red)' }}>{error}</p>}
+          {error && <Notice tone="error" icon={AlertCircle}>{error}</Notice>}
 
-            {results && !publishing && (
-              <div className="flex flex-col gap-1.5">
-                <p className="text-xs font-bold" style={{ color: 'var(--green)' }}>
-                  ✅ {published} publiée{published > 1 ? 's' : ''}
-                  {skipped > 0 ? ` · ${skipped} ignorée${skipped > 1 ? 's' : ''}` : ''}
-                  {failed > 0 ? ` · ${failed} échec${failed > 1 ? 's' : ''}` : ''}
-                </p>
-                {failed > 0 && (
-                  <ul className="flex flex-col gap-0.5 max-h-32 overflow-y-auto rounded-lg px-2 py-1.5" style={{ background: 'rgba(239,68,68,0.06)' }}>
-                    {(results ?? []).filter((r) => r.status === 'error').map((r) => (
-                      <li key={r.card_id} className="text-[11px]" style={{ color: 'var(--red)' }}>
-                        {(r.title || r.card_id)} — {r.message}
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            )}
-
-            <button
-              onClick={publishSelected}
-              disabled={publishing || selected.length === 0 || invalidPercent}
-              className="py-3.5 rounded-2xl text-sm font-black transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
-              style={{ background: 'var(--accent)', color: '#09090B' }}
-            >
-              {publishing ? <Loader2 size={16} className="animate-spin" /> : <EbayLogo width={32} height={13} mono="#09090B" />}
-              {publishing
-                ? progress
-                  ? `Publication… ${progress.done}/${progress.total}`
-                  : 'Publication…'
-                : `Publier la sélection (${selected.length})`}
-            </button>
-          </>
-        )}
-      </div>
-    </div>
+          {results && !publishing && (
+            <div className="space-y-2">
+              <Notice tone={failed > 0 ? 'warning' : 'success'} icon={failed > 0 ? AlertCircle : CheckCircle2}>
+                {published} publiée{published > 1 ? 's' : ''}
+                {skipped > 0 ? ` · ${skipped} ignorée${skipped > 1 ? 's' : ''}` : ''}
+                {failed > 0 ? ` · ${failed} échec${failed > 1 ? 's' : ''}` : ''}
+              </Notice>
+              {failed > 0 && (
+                <ul className="max-h-32 space-y-0.5 overflow-y-auto rounded-lg border border-[var(--border)] px-3 py-2">
+                  {(results ?? []).filter((r) => r.status === 'error').map((r) => (
+                    <li key={r.card_id} className="text-xs text-[var(--red)]">
+                      {(r.title || r.card_id)} — {r.message}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </Modal>
   );
+}
+
+const euro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2, minimumFractionDigits: 0 });
+function formatEuro(v: number | null | undefined): string {
+  return v == null ? '—' : euro.format(v);
 }

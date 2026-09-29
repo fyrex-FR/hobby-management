@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
-import { X, Loader2, ExternalLink, CheckCircle2, AlertCircle, Truck } from 'lucide-react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { Loader2, ExternalLink, CheckCircle2, AlertCircle, Truck } from 'lucide-react';
 import { apiFetch } from '../../api/client';
 import { EbayLogo } from './EbayLogo';
 import { cdnImg } from '../../lib/cdn';
 import { matchShippingRule } from '../../hooks/useEbayAccount';
 import type { EbayShippingRule } from '../../hooks/useEbayAccount';
 import type { Card } from '../../types';
+import { Field, Modal, Notice, Spinner } from '../ui';
 
 interface PreviewData {
   connected: boolean;
@@ -136,16 +137,12 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
     options: PolicyOption[] = [],
   ) {
     return (
-      <label className="flex flex-col gap-1.5">
-        <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-          {label}
-        </span>
+      <Field label={label}>
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}
           disabled={options.length === 0}
-          className="w-full rounded-xl px-3 py-2 text-sm outline-none disabled:opacity-50"
-          style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+          className="ui-select disabled:opacity-50"
         >
           {options.length === 0 ? (
             <option value="">Aucune option trouvée</option>
@@ -157,165 +154,160 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
             ))
           )}
         </select>
-      </label>
+      </Field>
+    );
+  }
+
+  const canPublish = !(publishing || missingPolicies.length > 0 || missingPolicySelection || invalidMinimumOffer || !title.trim() || !description.trim() || !(parsedPrice > 0));
+
+  let footer: ReactNode = null;
+  if (result) {
+    footer = (
+      <>
+        <button onClick={onClose} className="ui-btn ui-btn-ghost">Fermer</button>
+        <a href={result.ebay_url} target="_blank" rel="noreferrer" className="ui-btn ui-btn-primary">
+          <ExternalLink size={14} />
+          Voir l'annonce
+        </a>
+      </>
+    );
+  } else if (!loading && !preview?.connected) {
+    footer = <button onClick={onClose} className="ui-btn">Fermer</button>;
+  } else if (!loading) {
+    footer = (
+      <>
+        <button onClick={onClose} disabled={publishing} className="ui-btn ui-btn-ghost">Annuler</button>
+        <button onClick={publish} disabled={!canPublish} className="ui-btn ui-btn-primary">
+          {publishing ? <Loader2 size={15} className="animate-spin" /> : <EbayLogo width={32} height={13} mono="#09090B" />}
+          {publishing ? 'Publication…' : 'Publier sur eBay'}
+        </button>
+      </>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={onClose}>
-      <div
-        className="w-full max-w-lg rounded-3xl glass border-strong shadow-2xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <EbayLogo width={48} height={19} />
-            <span className="text-sm font-black uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-              Publier l'annonce
-            </span>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-white hover:bg-white/10 transition-all">
-            <X size={16} />
-          </button>
+    <Modal
+      onClose={onClose}
+      icon={<EbayLogo width={48} height={19} />}
+      title="Publier l'annonce"
+      subtitle={[card.player, card.year, card.set_name].filter(Boolean).join(' · ') || undefined}
+      size="lg"
+      dismissible={!publishing}
+      footer={footer}
+    >
+      {loading ? (
+        <Spinner label="Préparation de l'annonce…" />
+      ) : result ? (
+        <div className="flex flex-col items-center gap-3 py-8 text-center">
+          <CheckCircle2 size={36} className="text-[var(--green)]" />
+          <p className="text-sm font-medium text-[var(--text-primary)]">Annonce publiée sur eBay</p>
+          <p className="text-[13px] text-[var(--text-muted)]">Le lien de l'annonce est enregistré sur la carte.</p>
         </div>
+      ) : !preview?.connected ? (
+        <div className="space-y-3">
+          <Notice tone="error" icon={AlertCircle}>
+            Connecte d'abord ton compte eBay depuis l'onglet « eBay » du menu.
+          </Notice>
+          {error && <Notice tone="error">{error}</Notice>}
+        </div>
+      ) : (
+        <div className="space-y-5">
+          {missingPolicies.length > 0 && (
+            <Notice tone="error" icon={AlertCircle}>
+              Configure d'abord tes options de vente sur eBay (paiement/retour/livraison manquant : {missingPolicies.join(', ')}) avant de pouvoir publier.
+            </Notice>
+          )}
 
-        {loading ? (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 size={22} className="animate-spin text-[var(--text-muted)]" />
-          </div>
-        ) : result ? (
-          <div className="flex flex-col items-center gap-3 py-4 text-center">
-            <CheckCircle2 size={40} style={{ color: 'var(--green)' }} />
-            <p className="text-sm font-bold text-white">Annonce publiée sur eBay !</p>
-            <a
-              href={result.ebay_url}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95"
-              style={{ background: 'var(--accent)', color: '#09090B' }}
-            >
-              <ExternalLink size={14} />
-              Voir l'annonce
-            </a>
-            <button onClick={onClose} className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Fermer</button>
-          </div>
-        ) : !preview?.connected ? (
-          <div className="flex flex-col gap-2 py-2">
-            <AlertCircle size={20} style={{ color: 'var(--red)' }} />
-            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-              Connecte d'abord ton compte eBay depuis l'onglet « eBay » du menu.
-            </p>
-          </div>
-        ) : (
-          <>
-            {missingPolicies.length > 0 && (
-              <div className="rounded-xl px-3 py-2.5 text-xs leading-relaxed" style={{ background: 'rgba(239,68,68,0.1)', color: 'var(--red)' }}>
-                Configure d'abord tes options de vente sur eBay (paiement/retour/livraison manquant : {missingPolicies.join(', ')}) avant de pouvoir publier.
-              </div>
-            )}
+          <Field
+            label={<span className="flex justify-between"><span>Titre</span><span className="tabular text-[var(--text-muted)]">{title.length}/80</span></span>}
+            hint={preview.category ? <>Catégorie eBay : <span className="text-[var(--text-secondary)]">{preview.category.name}</span></> : undefined}
+          >
+            <textarea
+              value={title}
+              onChange={(e) => setTitle(e.target.value.slice(0, 80))}
+              rows={2}
+              className="ui-textarea min-h-0 resize-none"
+            />
+          </Field>
 
-            <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-                Titre ({title.length}/80)
-              </label>
-              <textarea
-                value={title}
-                onChange={(e) => setTitle(e.target.value.slice(0, 80))}
-                rows={2}
-                className="w-full rounded-xl px-3 py-2 text-sm outline-none resize-none"
-                style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
-              />
-            </div>
-
-            {preview.category && (
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                Catégorie eBay : <span style={{ color: 'var(--text-secondary)' }}>{preview.category.name}</span>
-              </p>
-            )}
-
-            {preview.policies?.configured && (
-              <div className="rounded-2xl p-3 flex flex-col gap-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
-                <div className="flex flex-col gap-1">
-                  <p className="text-xs font-black text-white">Conditions eBay</p>
-                  <p className="text-[11px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-                    Choisis les policies du compte vendeur pour cette annonce.
-                  </p>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                  {renderPolicySelect('Paiement', paymentPolicyId, setPaymentPolicyId, policyOptions?.payment)}
-                  {renderPolicySelect(
-                    'Livraison',
-                    fulfillmentPolicyId,
-                    (v) => { setFulfillmentAuto(false); setFulfillmentPolicyId(v); },
-                    policyOptions?.fulfillment,
-                  )}
-                  {renderPolicySelect('Retours', returnPolicyId, setReturnPolicyId, policyOptions?.return)}
-                </div>
-                {shippingRules.length > 0 && fulfillmentAuto && autoMatchedFulfillment && (
-                  <p className="flex items-center gap-1.5 text-[11px] font-medium" style={{ color: 'var(--green)' }}>
-                    <Truck size={12} />
-                    Livraison choisie automatiquement selon le prix
-                  </p>
-                )}
-              </div>
-            )}
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-                Description ({description.length}/5000)
-              </label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value.slice(0, 5000))}
-                rows={11}
-                className="w-full rounded-xl px-3 py-2 text-sm leading-relaxed outline-none resize-y min-h-[220px]"
-                style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <label className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-                Prix (€)
-              </label>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <Field label="Prix (€)">
               <input
                 type="number"
                 inputMode="decimal"
                 min={0}
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
-                className="w-full rounded-xl px-3 py-2 text-sm outline-none"
-                style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                className="ui-input tabular"
               />
-            </div>
+            </Field>
+          </div>
 
+          {preview.policies?.configured && (
+            <section className="space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold text-[var(--text-primary)]">Conditions eBay</h3>
+                <p className="text-xs text-[var(--text-muted)]">Choisis les policies du compte vendeur pour cette annonce.</p>
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                {renderPolicySelect('Paiement', paymentPolicyId, setPaymentPolicyId, policyOptions?.payment)}
+                {renderPolicySelect(
+                  'Livraison',
+                  fulfillmentPolicyId,
+                  (v) => { setFulfillmentAuto(false); setFulfillmentPolicyId(v); },
+                  policyOptions?.fulfillment,
+                )}
+                {renderPolicySelect('Retours', returnPolicyId, setReturnPolicyId, policyOptions?.return)}
+              </div>
+              {shippingRules.length > 0 && fulfillmentAuto && autoMatchedFulfillment && (
+                <p className="flex items-center gap-1.5 text-xs text-[var(--green)]">
+                  <Truck size={13} />
+                  Livraison choisie automatiquement selon le prix
+                </p>
+              )}
+            </section>
+          )}
+
+          <Field label={<span className="flex justify-between"><span>Description</span><span className="tabular text-[var(--text-muted)]">{description.length}/5000</span></span>}>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value.slice(0, 5000))}
+              rows={11}
+              className="ui-textarea min-h-[220px]"
+            />
+          </Field>
+
+          <div className="space-y-2">
             {preview.extra_image_url && (
-              <label className="flex items-center gap-3 rounded-2xl p-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
+              <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2.5">
                 <input
                   type="checkbox"
                   checked={includeExtraImage}
                   onChange={(e) => setIncludeExtraImage(e.target.checked)}
-                  className="w-4 h-4 accent-[var(--accent)]"
+                  className="h-4 w-4 accent-[var(--accent)]"
                 />
-                <img src={cdnImg(preview.extra_image_url)} alt="" className="w-6 h-6 rounded-md object-cover shrink-0" />
-                <span className="text-sm font-bold text-white">Ajouter mon image d'annonce (3e photo)</span>
+                <img src={cdnImg(preview.extra_image_url)} alt="" className="h-7 w-7 shrink-0 rounded-md object-cover" />
+                <span className="text-[13px] font-medium text-[var(--text-primary)]">Ajouter mon image d'annonce (3e photo)</span>
               </label>
             )}
 
-            <div className="rounded-2xl p-3 flex flex-col gap-3" style={{ background: 'rgba(255,255,255,0.04)' }}>
-              <label className="flex items-center gap-3">
+            <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-2.5">
+              <label className="flex cursor-pointer items-center gap-3">
                 <input
                   type="checkbox"
                   checked={allowOffers}
                   onChange={(e) => setAllowOffers(e.target.checked)}
-                  className="w-4 h-4 accent-[var(--accent)]"
+                  className="h-4 w-4 accent-[var(--accent)]"
                 />
-                <span className="text-sm font-bold text-white">Autoriser les offres</span>
+                <span className="text-[13px] font-medium text-[var(--text-primary)]">Autoriser les offres</span>
               </label>
               {allowOffers && (
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold uppercase tracking-widest" style={{ color: 'var(--text-muted)' }}>
-                    Offre minimum (€)
-                  </label>
+                <Field
+                  className="mt-3"
+                  label="Offre minimum (€)"
+                  error={invalidMinimumOffer ? 'eBay refusera automatiquement les offres sous ce montant. Le minimum doit rester inférieur au prix.' : undefined}
+                  hint="eBay refusera automatiquement les offres sous ce montant. Le minimum doit rester inférieur au prix."
+                >
                   <input
                     type="number"
                     inputMode="decimal"
@@ -323,32 +315,16 @@ export function EbayPublishModal({ card, onClose, onPublished }: Props) {
                     required={allowOffers}
                     value={minimumOfferPrice}
                     onChange={(e) => setMinimumOfferPrice(e.target.value)}
-                    className="w-full rounded-xl px-3 py-2 text-sm outline-none"
-                    style={{ background: 'var(--bg-primary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+                    className="ui-input tabular"
                   />
-                  <p className="text-[11px] leading-relaxed" style={{ color: invalidMinimumOffer ? 'var(--red)' : 'var(--text-muted)' }}>
-                    eBay refusera automatiquement les offres sous ce montant. Le minimum doit rester inférieur au prix.
-                  </p>
-                </div>
+                </Field>
               )}
             </div>
+          </div>
 
-            {error && (
-              <p className="text-xs" style={{ color: 'var(--red)' }}>{error}</p>
-            )}
-
-            <button
-              onClick={publish}
-              disabled={publishing || missingPolicies.length > 0 || missingPolicySelection || invalidMinimumOffer || !title.trim() || !description.trim() || !(parsedPrice > 0)}
-              className="py-3.5 rounded-2xl text-sm font-black transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
-              style={{ background: 'var(--accent)', color: '#09090B' }}
-            >
-              {publishing ? <Loader2 size={16} className="animate-spin" /> : <EbayLogo width={32} height={13} mono="#09090B" />}
-              {publishing ? 'Publication…' : 'Publier sur eBay'}
-            </button>
-          </>
-        )}
-      </div>
-    </div>
+          {error && <Notice tone="error" icon={AlertCircle}>{error}</Notice>}
+        </div>
+      )}
+    </Modal>
   );
 }
