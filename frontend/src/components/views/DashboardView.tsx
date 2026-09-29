@@ -1,5 +1,4 @@
 import { useMemo } from 'react';
-import { motion } from 'framer-motion';
 import {
   Trophy,
   Tag,
@@ -8,7 +7,14 @@ import {
   Euro,
   Clock,
   Star,
-  ChevronRight
+  ChevronRight,
+  Users,
+  Shield,
+  Layers,
+  CalendarDays,
+  PieChart,
+  Library,
+  type LucideIcon,
 } from 'lucide-react';
 import { useCards } from '../../hooks/useCards';
 import { useAppStore } from '../../stores/appStore';
@@ -16,66 +22,37 @@ import type { Card } from '../../types';
 import { cdnImg } from '../../lib/cdn';
 import { GradingBadge } from '../shared/GradingBadge';
 import { RookieBadge } from '../shared/RookieBadge';
+import { Badge, EmptyState, Page, PageHeader, Panel, Spinner, StatTile } from '../ui';
 
-/* ── tiny helpers ─────────────────────────────────────────── */
-
-function Pill({ children, accent }: { children: React.ReactNode; accent?: boolean }) {
-  return (
-    <span
-      className="text-[10px] font-bold px-2 py-0.5 rounded-lg shrink-0 flex items-center justify-center transition-all"
-      style={
-        accent
-          ? { background: 'var(--accent-glow)', color: 'var(--accent)', border: '1px solid var(--border-accent)' }
-          : { background: 'var(--bg-elevated)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }
-      }
-    >
-      {children}
-    </span>
-  );
-}
+const euro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+const int = new Intl.NumberFormat('fr-FR');
 
 /* ── KPI strip ────────────────────────────────────────────── */
 
-function KpiStrip({ stats }: { stats: ReturnType<typeof buildStats> }) {
-  const kpis = [
-    { label: 'Cartes', value: stats.total, icon: Trophy, accent: false },
-    { label: 'À vendre', value: stats.aVendre, icon: Tag, accent: stats.aVendre > 0 },
-    { label: 'Numérotés', value: stats.numbered, icon: Hash, accent: stats.numbered > 0 },
-    { label: 'Autos', value: stats.autos, icon: PenTool, accent: stats.autos > 0 },
-    { label: 'Valeur est.', value: stats.totalValue > 0 ? `${stats.totalValue}€` : '—', icon: Euro, accent: false },
-  ];
-
+function KpiStrip({ stats, onOpenCollection, onOpenSales }: { stats: ReturnType<typeof buildStats>; onOpenCollection: () => void; onOpenSales: () => void }) {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-      {kpis.map(({ label, value, icon: Icon, accent }, i) => (
-        <motion.div
-          key={label}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: i * 0.05 }}
-          className="glass rounded-2xl p-4 flex flex-col items-start gap-3 group relative overflow-hidden"
-        >
-          <div className={`p-2 rounded-xl transition-colors ${accent ? 'bg-[var(--accent-glow)]' : 'bg-white/5'}`}>
-            <Icon size={18} className={accent ? 'text-[var(--accent)]' : 'text-[var(--text-secondary)]'} />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold tracking-wider text-[var(--text-muted)] uppercase">
-              {label}
-            </span>
-            <span
-              className="text-2xl font-black tabular-nums tracking-tight mt-0.5"
-              style={{
-                color: accent ? 'var(--accent)' : 'var(--text-primary)',
-              }}
-            >
-              {value}
-            </span>
-          </div>
-          {accent && (
-            <div className="absolute top-0 right-0 w-12 h-12 bg-[var(--accent)] opacity-[0.03] blur-2xl rounded-full" />
-          )}
-        </motion.div>
-      ))}
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="col-span-2 lg:col-span-1 [&>*]:h-full">
+        <StatTile
+          label="Valeur estimée"
+          value={stats.totalValue > 0 ? euro.format(stats.totalValue) : '—'}
+          hint={stats.totalValue > 0 ? 'Somme des prix renseignés' : 'Aucun prix renseigné'}
+          icon={Euro}
+          accent={stats.totalValue > 0}
+        />
+      </div>
+      <div className="[&>*]:h-full">
+        <StatTile label="Cartes" value={int.format(stats.total)} icon={Trophy} onClick={onOpenCollection} />
+      </div>
+      <div className="[&>*]:h-full">
+        <StatTile label="À vendre" value={int.format(stats.aVendre)} icon={Tag} onClick={onOpenSales} />
+      </div>
+      <div className="[&>*]:h-full">
+        <StatTile label="Numérotées" value={int.format(stats.numbered)} icon={Hash} />
+      </div>
+      <div className="[&>*]:h-full">
+        <StatTile label="Autos" value={int.format(stats.autos)} icon={PenTool} />
+      </div>
     </div>
   );
 }
@@ -87,47 +64,39 @@ function StatusBar({ cards }: { cards: Card[] }) {
   if (total === 0) return null;
 
   const segments = [
-    { key: 'collection', color: '#71717A', label: 'Collection', count: cards.filter((c) => c.status === 'collection').length },
+    { key: 'collection', color: 'var(--text-muted)', label: 'Collection', count: cards.filter((c) => c.status === 'collection').length },
     { key: 'a_vendre', color: 'var(--accent)', label: 'À vendre', count: cards.filter((c) => c.status === 'a_vendre').length },
-    { key: 'reserve', color: '#3B82F6', label: 'Réservé', count: cards.filter((c) => c.status === 'reserve').length },
-    { key: 'vendu', color: '#10B981', label: 'Vendu', count: cards.filter((c) => c.status === 'vendu').length },
+    { key: 'reserve', color: 'var(--blue)', label: 'Réservé', count: cards.filter((c) => c.status === 'reserve').length },
+    { key: 'vendu', color: 'var(--green)', label: 'Vendu', count: cards.filter((c) => c.status === 'vendu').length },
   ].filter((s) => s.count > 0);
 
   return (
-    <div className="glass rounded-3xl p-6 border-strong relative overflow-hidden">
-      <div className="flex items-center justify-between mb-5 relative z-10">
-        <div className="flex items-center gap-2">
-          <div className="w-1 h-3 rounded-full bg-[var(--accent)]" />
-          <h3 className="text-sm font-bold tracking-tight text-white">Répartition</h3>
-        </div>
-        <span className="text-xs font-medium text-[var(--text-secondary)] bg-white/5 px-2.5 py-1 rounded-full">
-          {total} cartes au total
-        </span>
-      </div>
-
-      <div className="flex rounded-full overflow-hidden h-2.5 mb-6 gap-0.5 bg-white/5 p-0.5">
+    <Panel
+      title="Répartition par statut"
+      icon={PieChart}
+      action={<span className="tabular text-xs text-[var(--text-muted)]">{int.format(total)} cartes</span>}
+    >
+      <div className="flex h-2 gap-0.5 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
         {segments.map((s) => (
-          <motion.div
+          <div
             key={s.key}
-            initial={{ width: 0 }}
-            animate={{ width: `${(s.count / total) * 100}%` }}
-            transition={{ duration: 0.8, ease: "circOut" }}
-            style={{ background: s.color }}
-            className="h-full rounded-full"
+            className="h-full first:rounded-l-full last:rounded-r-full"
+            style={{ width: `${(s.count / total) * 100}%`, background: s.color }}
+            title={`${s.label} : ${s.count}`}
           />
         ))}
       </div>
-
-      <div className="flex flex-wrap gap-x-6 gap-y-3 relative z-10">
+      <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
         {segments.map((s) => (
-          <div key={s.key} className="flex items-center gap-2 group transition-opacity hover:opacity-100 opacity-80">
-            <div className="w-1.5 h-1.5 rounded-full" style={{ background: s.color }} />
-            <span className="text-xs font-medium text-[var(--text-secondary)]">{s.label}</span>
-            <span className="text-xs font-bold text-white ml-0.5">{s.count}</span>
+          <div key={s.key} className="flex items-center gap-2 text-[13px]">
+            <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: s.color }} />
+            <span className="text-[var(--text-secondary)]">{s.label}</span>
+            <span className="tabular font-medium text-[var(--text-primary)]">{int.format(s.count)}</span>
+            <span className="tabular text-xs text-[var(--text-muted)]">{Math.round((s.count / total) * 100)} %</span>
           </div>
         ))}
       </div>
-    </div>
+    </Panel>
   );
 }
 
@@ -135,115 +104,93 @@ function StatusBar({ cards }: { cards: Card[] }) {
 
 function TopList({
   title,
+  icon,
   items,
   onSelect,
 }: {
   title: string;
+  icon: LucideIcon;
   items: { label: string; count: number; img?: string | null }[];
   onSelect: (label: string) => void;
 }) {
-  if (items.length === 0) return null;
+  const top = items.slice(0, 5);
+  const max = top[0]?.count ?? 1;
 
   return (
-    <div className="glass rounded-3xl overflow-hidden flex flex-col border-strong">
-      <div className="px-5 pt-5 pb-3">
-        <h3 className="text-[11px] font-bold tracking-widest uppercase text-[var(--text-muted)] flex items-center gap-2">
-          <Star size={12} className="text-[var(--accent)]" />
-          {title}
-        </h3>
-      </div>
-      <div className="flex flex-col p-1.5">
-        {items.slice(0, 5).map(({ label, count }, i) => (
-          <button
-            key={label}
-            onClick={() => onSelect(label)}
-            className="flex items-center gap-3 w-full px-3.5 py-2.5 text-left rounded-2xl transition-all hover:bg-white/5 group relative"
-          >
-            <span
-              className={`w-5 h-5 rounded-lg flex items-center justify-center text-[10px] font-black shrink-0 ${i === 0 ? 'bg-[var(--accent)] text-black' : 'bg-white/5 text-[var(--text-muted)]'
-                }`}
-            >
-              {i + 1}
-            </span>
-            <span className="flex-1 text-sm font-semibold truncate text-[var(--text-primary)] group-hover:text-white">
-              {label}
-            </span>
-            <span className="text-[11px] font-bold px-2 py-0.5 rounded-lg bg-white/5 text-[var(--text-secondary)] group-hover:text-[var(--accent)] group-hover:bg-[var(--accent-glow)] transition-colors">
-              {count}
-            </span>
-          </button>
-        ))}
-      </div>
-    </div>
+    <Panel title={title} icon={icon} padded={false}>
+      {top.length === 0 ? (
+        <p className="px-4 py-6 text-center text-[13px] text-[var(--text-muted)]">Pas encore de données</p>
+      ) : (
+        <ul className="p-1.5">
+          {top.map(({ label, count }, i) => (
+            <li key={label}>
+              <button
+                onClick={() => onSelect(label)}
+                className="group flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-[var(--bg-elevated)]"
+                title={`Voir les cartes : ${label}`}
+              >
+                <span className="tabular w-4 shrink-0 text-right text-xs text-[var(--text-muted)]">{i + 1}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[13px] font-medium text-[var(--text-primary)]">{label}</span>
+                  <span className="mt-1 block h-1 overflow-hidden rounded-full bg-[var(--bg-elevated)] group-hover:bg-[var(--bg-hover)]">
+                    <span className="block h-full rounded-full bg-[var(--accent)] opacity-70" style={{ width: `${(count / max) * 100}%` }} />
+                  </span>
+                </span>
+                <span className="tabular shrink-0 text-xs text-[var(--text-secondary)] group-hover:text-[var(--accent)]">{count}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
   );
 }
 
 /* ── Card row (rare / recent) ─────────────────────────────── */
 
 function CardRow({ card, onClick }: { card: Card; onClick: () => void }) {
-  const sub = [card.brand, card.set_name, card.parallel_name !== 'Base' ? card.parallel_name : null]
+  const sub = [card.year, card.brand, card.set_name, card.parallel_name !== 'Base' ? card.parallel_name : null]
     .filter(Boolean)
     .join(' · ');
+  const isAuto = card.card_type === 'auto' || card.card_type === 'auto_patch';
 
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-4 w-full px-4 py-3 text-left rounded-2xl transition-all hover:bg-white/5 group relative"
+      className="group flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-[var(--bg-elevated)]"
     >
-      <div className="relative shrink-0">
-        {card.image_front_url ? (
-          <img src={cdnImg(card.image_front_url)} alt="" loading="lazy" decoding="async" className="w-9 h-12 object-cover rounded-lg shadow-2xl transition-transform group-hover:scale-110 group-hover:-rotate-2" />
-        ) : (
-          <div className="w-9 h-12 rounded-lg shrink-0 flex items-center justify-center text-lg bg-[var(--bg-elevated)] border border-white/5">
-            🃏
-          </div>
-        )}
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-bold truncate text-[var(--text-primary)] group-hover:text-white transition-colors">
-          {card.player ?? '—'}
-        </p>
-        <p className="text-[11px] font-medium truncate mt-0.5 text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]">{sub}</p>
-      </div>
-
-      <div className="flex items-center gap-2 shrink-0">
-        {card.is_rookie && <RookieBadge compact />}
-        {card.grading_company && <GradingBadge card={card} compact />}
-        <div className="flex gap-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
-          {card.numbered && <Pill accent>{card.numbered}</Pill>}
-          {(card.card_type === 'auto' || card.card_type === 'auto_patch') && <Pill>AUTO</Pill>}
+      {card.image_front_url ? (
+        <img
+          src={cdnImg(card.image_front_url)}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          className="h-12 w-9 shrink-0 rounded-md border border-[var(--border)] object-cover"
+        />
+      ) : (
+        <div className="flex h-12 w-9 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-muted)]">
+          <Library size={14} />
         </div>
-        <ChevronRight size={14} className="text-[var(--text-muted)] group-hover:text-white group-hover:translate-x-0.5 transition-all" />
+      )}
+
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-[var(--text-primary)]">{card.player ?? '—'}</p>
+        <p className="mt-0.5 truncate text-xs text-[var(--text-muted)]">{sub || '—'}</p>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-1.5">
+        <span className="hidden items-center gap-1.5 sm:flex">
+          {card.is_rookie && <RookieBadge compact />}
+          {card.grading_company && <GradingBadge card={card} compact />}
+          {isAuto && <Badge tone="green">Auto</Badge>}
+        </span>
+        {card.numbered && <Badge tone="accent" className="tabular">{card.numbered}</Badge>}
+        {card.price != null && card.price > 0 && (
+          <span className="tabular hidden w-16 text-right text-[13px] font-medium text-[var(--accent)] sm:inline">{euro.format(card.price)}</span>
+        )}
+        <ChevronRight size={15} className="text-[var(--text-muted)] group-hover:text-[var(--text-primary)]" />
       </div>
     </button>
-  );
-}
-
-/* ── Panel wrapper ────────────────────────────────────────── */
-
-function Panel({ title, badge, icon: Icon, children }: { title: string; badge?: number; icon: React.ComponentType<{ size?: number }>; children: React.ReactNode }) {
-  return (
-    <div className="glass rounded-3xl overflow-hidden flex flex-col border-strong">
-      <div className="px-6 pt-5 pb-3 flex items-center justify-between border-b border-white/5">
-        <div className="flex items-center gap-2.5">
-          <div className="p-1.5 rounded-lg bg-white/5 text-[var(--text-secondary)]">
-            <Icon size={14} />
-          </div>
-          <h3 className="text-xs font-bold tracking-wider uppercase text-[var(--text-secondary)]">
-            {title}
-          </h3>
-        </div>
-        {badge !== undefined && badge > 0 && (
-          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-[var(--accent-glow)] text-[var(--accent)] border border-[var(--border-accent)]">
-            {badge}
-          </span>
-        )}
-      </div>
-      <div className="p-2 flex flex-col gap-0.5">
-        {children}
-      </div>
-    </div>
   );
 }
 
@@ -308,96 +255,95 @@ export function DashboardView() {
 
   if (isLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
-          <span className="text-xs font-medium text-[var(--text-muted)]">Chargement…</span>
-        </div>
-      </div>
+      <Page>
+        <PageHeader title="Vue d'ensemble" />
+        <Spinner label="Chargement…" className="py-24" />
+      </Page>
     );
   }
 
   if (stats.total === 0) {
     return (
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="flex-1 flex flex-col items-center justify-center gap-6 text-center px-6"
-      >
-        <div className="relative">
-          <div className="w-24 h-24 rounded-[40px] flex items-center justify-center text-4xl glass border-strong shadow-2xl rotate-12">
-            🏀
-          </div>
-          <motion.div
-            animate={{ y: [0, -10, 0] }}
-            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-            className="absolute -top-4 -right-4 w-12 h-12 rounded-2xl glass border-strong flex items-center justify-center text-xl shadow-xl -rotate-12"
-          >
-            💎
-          </motion.div>
+      <Page>
+        <PageHeader title="Vue d'ensemble" />
+        <div className="ui-card">
+          <EmptyState
+            icon={Trophy}
+            title="Ta collection est vide"
+            description="Ajoute tes premières cartes une par une, ou importe tout un lot de photos d'un coup."
+            action={
+              <div className="mt-1 flex flex-col gap-2 sm:flex-row">
+                <button onClick={() => setActiveView('add_card')} className="ui-btn ui-btn-primary">
+                  Ajouter une carte
+                </button>
+                <button onClick={() => setActiveView('batch')} className="ui-btn">
+                  Import en lot
+                </button>
+              </div>
+            }
+          />
         </div>
-
-        <div className="max-w-xs">
-          <h2 className="text-2xl font-black text-white tracking-tight mb-2">Votre sanctuaire est prêt</h2>
-          <p className="text-sm font-medium text-[var(--text-secondary)] leading-relaxed">
-            Commencez à bâtir votre héritage en ajoutant vos premières pépites à la collection.
-          </p>
-        </div>
-
-        <div className="flex flex-col sm:flex-row gap-3 mt-4">
-          <button
-            onClick={() => setActiveView('add_card')}
-            className="px-8 py-3.5 rounded-2xl text-sm font-bold transition-all bg-[var(--accent)] text-black hover:scale-105 active:scale-95 shadow-xl shadow-[var(--accent-glow)]"
-          >
-            + Ajouter mon premier hit
-          </button>
-          <button
-            onClick={() => setActiveView('batch')}
-            className="px-8 py-3.5 rounded-2xl text-sm font-bold transition-all glass border-strong hover:bg-white/5 active:scale-95"
-          >
-            Import en lot
-          </button>
-        </div>
-      </motion.div>
+      </Page>
     );
   }
 
   return (
-    <div className="flex-1 overflow-auto bg-[radial-gradient(ellipse_at_top,_var(--accent-dim)_0%,_transparent_50%)]">
-      <div className="max-w-6xl mx-auto px-6 py-8 space-y-8 animate-in">
+    <Page>
+      <PageHeader
+        title="Vue d'ensemble"
+        subtitle={
+          <span className="tabular">
+            {int.format(stats.total)} cartes{stats.totalValue > 0 && <> · {euro.format(stats.totalValue)} estimés</>}
+          </span>
+        }
+        actions={
+          <button onClick={() => setActiveView('collection')} className="ui-btn">
+            <Library size={15} />
+            Ouvrir la collection
+          </button>
+        }
+      />
 
-        {/* KPI strip */}
-        <KpiStrip stats={stats} />
+      <KpiStrip stats={stats} onOpenCollection={() => setActiveView('collection')} onOpenSales={() => setActiveView('sales')} />
 
-        {/* Status bar */}
-        <StatusBar cards={cards.filter((c) => c.status !== 'draft')} />
+      <StatusBar cards={cards.filter((c) => c.status !== 'draft')} />
 
-        {/* Top lists */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <TopList title="Top joueurs" items={stats.topPlayers} onSelect={drillPlayer} />
-          <TopList title="Équipes" items={stats.topTeams} onSelect={drillTeam} />
-          <TopList title="Collections" items={stats.topSets} onSelect={drillSet} />
-          <TopList title="Années" items={stats.topYears} onSelect={(y) => { setDrillFilter({ year: y }); setActiveView('collection'); }} />
-        </div>
+      {/* Top lists : un clic ouvre la collection filtrée */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
+        <TopList title="Joueurs" icon={Users} items={stats.topPlayers} onSelect={drillPlayer} />
+        <TopList title="Équipes" icon={Shield} items={stats.topTeams} onSelect={drillTeam} />
+        <TopList title="Sets" icon={Layers} items={stats.topSets} onSelect={drillSet} />
+        <TopList title="Années" icon={CalendarDays} items={stats.topYears} onSelect={(y) => { setDrillFilter({ year: y }); setActiveView('collection'); }} />
+      </div>
 
-        {/* Rare pieces + Recent additions */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-10">
-          {stats.rare.length > 0 && (
-            <Panel title="Raretés" badge={stats.rare.length} icon={Star}>
-              {stats.rare.map((card) => (
-                <CardRow key={card.id} card={card} onClick={() => setActiveView('collection')} />
-              ))}
-            </Panel>
-          )}
-
-          <Panel title="Dernières acquisitions" icon={Clock}>
+      <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2">
+        <Panel title="Dernières acquisitions" icon={Clock} padded={false}>
+          <div className="p-1.5">
             {stats.recent.map((card) => (
               <CardRow key={card.id} card={card} onClick={() => setActiveView('collection')} />
             ))}
-          </Panel>
-        </div>
+          </div>
+        </Panel>
 
+        <Panel
+          title="Raretés"
+          icon={Star}
+          padded={false}
+          action={stats.rare.length > 0 ? <span className="text-xs text-[var(--text-muted)]">Autos, patchs, numérotées</span> : undefined}
+        >
+          {stats.rare.length > 0 ? (
+            <div className="p-1.5">
+              {stats.rare.map((card) => (
+                <CardRow key={card.id} card={card} onClick={() => setActiveView('collection')} />
+              ))}
+            </div>
+          ) : (
+            <p className="px-4 py-8 text-center text-[13px] text-[var(--text-muted)]">
+              Aucune auto, patch ou carte numérotée pour l'instant.
+            </p>
+          )}
+        </Panel>
       </div>
-    </div>
+    </Page>
   );
 }

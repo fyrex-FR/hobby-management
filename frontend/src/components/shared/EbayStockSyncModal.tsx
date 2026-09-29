@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { X, Loader2, CheckCircle2, RefreshCcw, PackageCheck } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Loader2, PackageCheck, RefreshCcw } from 'lucide-react';
 import { useEbaySyncStock } from '../../hooks/useEbayAccount';
 import type { EbayStockSyncError } from '../../hooks/useEbayAccount';
+import { Modal, Notice } from '../ui';
 
 interface Props {
   onClose: () => void;
@@ -93,72 +94,68 @@ export function EbayStockSyncModal({ onClose, cardIds }: Props) {
   const failedIds = summary?.errors.map((e) => e.card_id) ?? [];
 
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={running ? undefined : onClose}>
-      <div
-        className="w-full max-w-lg rounded-3xl glass border-strong shadow-2xl p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <PackageCheck size={18} style={{ color: 'var(--accent)' }} />
-            <span className="text-sm font-black uppercase tracking-widest text-white">
-              {cardIds ? 'Mettre à jour les annonces' : 'Pousser les stocks'}
-            </span>
-          </div>
-          <button
-            onClick={onClose}
-            disabled={running}
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-[var(--text-muted)] hover:text-white hover:bg-white/10 transition-all disabled:opacity-40"
-          >
-            <X size={16} />
+    <Modal
+      onClose={onClose}
+      icon={<PackageCheck size={18} className="text-[var(--accent)]" />}
+      title={cardIds ? 'Mettre à jour les annonces' : 'Pousser les stocks'}
+      subtitle={cardIds ? `${cardIds.length} carte${cardIds.length > 1 ? 's' : ''} sélectionnée${cardIds.length > 1 ? 's' : ''}` : 'Toutes les annonces eBay en ligne'}
+      dismissible={!running}
+      footer={
+        <>
+          <button onClick={onClose} disabled={running} className="ui-btn ui-btn-ghost">
+            {running ? 'Patiente…' : 'Fermer'}
           </button>
-        </div>
-
-        <p className="text-xs leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+          {!running && failedIds.length > 0 && (
+            <button onClick={() => run(failedIds)} className="ui-btn ui-btn-primary">
+              <RefreshCcw size={15} />
+              Réessayer les échecs ({failedIds.length})
+            </button>
+          )}
+          {!running && summary && failedIds.length === 0 && (
+            <button onClick={() => run(cardIds)} className="ui-btn">
+              <RefreshCcw size={15} />
+              Relancer
+            </button>
+          )}
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-[13px] text-[var(--text-muted)]">
           Aligne le prix et la quantité de tes annonces eBay sur celles de l’app
           {cardIds ? ` (${cardIds.length} carte${cardIds.length > 1 ? 's' : ''} sélectionnée${cardIds.length > 1 ? 's' : ''}).` : '.'}
           {' '}Les annonces déjà à jour sont ignorées, et les cartes non publiées sont simplement sautées.
         </p>
 
         {running && (
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between text-xs font-bold">
-              <span className="flex items-center gap-2 text-white">
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="flex items-center gap-2 font-medium text-[var(--text-primary)]">
                 <Loader2 size={14} className="animate-spin" />
                 Traitement en cours…
               </span>
-              {progress && (
-                <span style={{ color: 'var(--text-muted)' }}>{progress.done}/{progress.total}</span>
-              )}
+              {progress && <span className="tabular text-[var(--text-muted)]">{progress.done} / {progress.total}</span>}
             </div>
-            <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
-              <div
-                className="h-full rounded-full transition-all duration-300"
-                style={{ width: `${pct}%`, background: 'var(--accent)' }}
-              />
+            <div className="h-1 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
+              <div className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-300" style={{ width: `${pct}%` }} />
             </div>
           </div>
         )}
 
-        {error && <p className="text-xs" style={{ color: 'var(--red)' }}>{error}</p>}
+        {error && <Notice tone="error" icon={AlertCircle}>{error}</Notice>}
 
         {summary && !running && (
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2 text-sm font-bold">
-              <CheckCircle2 size={16} style={{ color: 'var(--green)' }} />
-              <span style={{ color: 'var(--green)' }}>
-                {summary.updated} mise{summary.updated > 1 ? 's' : ''} à jour
-              </span>
-              <span style={{ color: 'var(--text-muted)' }}>
-                · {summary.unchanged} déjà à jour
-                {summary.errors.length > 0 ? ` · ${summary.errors.length} échec${summary.errors.length > 1 ? 's' : ''}` : ''}
-              </span>
-            </div>
+          <div className="space-y-2">
+            <Notice tone={summary.errors.length > 0 ? 'warning' : 'success'} icon={CheckCircle2}>
+              <span className="font-medium">{summary.updated} mise{summary.updated > 1 ? 's' : ''} à jour</span>
+              {' '}· {summary.unchanged} déjà à jour
+              {summary.errors.length > 0 ? ` · ${summary.errors.length} échec${summary.errors.length > 1 ? 's' : ''}` : ''}
+            </Notice>
 
             {summary.errors.length > 0 && (
-              <ul className="flex flex-col gap-0.5 max-h-40 overflow-y-auto rounded-lg px-2 py-1.5" style={{ background: 'rgba(239,68,68,0.06)' }}>
+              <ul className="max-h-40 space-y-0.5 overflow-y-auto rounded-lg border border-[var(--border)] px-3 py-2">
                 {summary.errors.map((e, i) => (
-                  <li key={`${e.card_id}-${i}`} className="text-[11px]" style={{ color: 'var(--red)' }}>
+                  <li key={`${e.card_id}-${i}`} className="text-xs text-[var(--red)]">
                     {(e.player || e.card_id)} — {e.message}
                   </li>
                 ))}
@@ -166,39 +163,7 @@ export function EbayStockSyncModal({ onClose, cardIds }: Props) {
             )}
           </div>
         )}
-
-        <div className="flex items-center gap-2">
-          {!running && failedIds.length > 0 && (
-            <button
-              onClick={() => run(failedIds)}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95"
-              style={{ background: 'var(--accent)', color: '#09090B' }}
-            >
-              <RefreshCcw size={15} />
-              Réessayer les échecs ({failedIds.length})
-            </button>
-          )}
-          {!running && summary && failedIds.length === 0 && (
-            <button
-              onClick={() => run(cardIds)}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold transition-all active:scale-95"
-              style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)' }}
-            >
-              <RefreshCcw size={15} />
-              Relancer
-            </button>
-          )}
-          <div className="flex-1" />
-          <button
-            onClick={onClose}
-            disabled={running}
-            className="px-4 py-2.5 rounded-xl text-sm font-bold transition-all disabled:opacity-40"
-            style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)' }}
-          >
-            {running ? 'Patiente…' : 'Fermer'}
-          </button>
-        </div>
       </div>
-    </div>
+    </Modal>
   );
 }

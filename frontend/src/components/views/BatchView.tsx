@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowRight, CheckCircle2, ChevronLeft, Clock3, FileStack, Layers, RefreshCw, SplitSquareHorizontal, Upload } from 'lucide-react';
+import { AlertCircle, ArrowRight, CheckCircle2, ChevronLeft, ChevronRight, Clock3, FileStack, Layers, RefreshCw, Sparkles, SplitSquareHorizontal, Upload } from 'lucide-react';
 import { apiFetch } from '../../api/client';
 import { compressImage } from '../../lib/storage';
 import { useAppStore } from '../../stores/appStore';
 import type { ImportBatch, ImportClassification, ImportItem } from '../../types';
+import { Badge, Notice, Page, PageHeader, Panel } from '../ui';
 
 interface LocalItem { front: File; back?: File }
 type PairMode = 'sequential' | 'halves' | 'suffix';
@@ -16,6 +17,10 @@ const BACK_SUFFIXES = ['verso', 'back', 'dos', 'v'];
 const LABELS: Record<ImportClassification, string> = {
   processing: 'Analyse…', match: 'Déjà en collection', probable: 'À vérifier', new: 'Nouvelle carte',
   insufficient: 'Identification insuffisante', error: 'Erreur',
+};
+
+const TONES: Record<ImportClassification, 'neutral' | 'accent' | 'green' | 'red' | 'blue'> = {
+  processing: 'neutral', match: 'blue', probable: 'accent', new: 'green', insufficient: 'neutral', error: 'red',
 };
 
 async function fileToBase64(file: File): Promise<string> {
@@ -31,6 +36,7 @@ async function fileToBase64(file: File): Promise<string> {
 
 export function BatchView() {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
   const setActiveView = useAppStore((state) => state.setActiveView);
   const setImportBatchId = useAppStore((state) => state.setImportBatchId);
   const allFiles = useRef<File[]>([]);
@@ -143,60 +149,196 @@ export function BatchView() {
     setActiveView('import_review');
   }
 
+  const percent = items.length ? Math.round((processedCount / items.length) * 100) : 0;
+
   return (
-    <div className="max-w-5xl mx-auto p-6 sm:p-10 space-y-8">
-      <div className="flex items-center gap-4">
-        <button onClick={() => setActiveView('collection')} className="p-3 rounded-xl bg-white/5"><ChevronLeft size={18} /></button>
-        <div><h1 className="text-2xl font-black">Sas d’import</h1><p className="text-sm text-[var(--text-muted)]">Identifier et trier avant d’ajouter à la collection</p></div>
-      </div>
+    <Page>
+      <PageHeader
+        title="Sas d’import"
+        subtitle="Identifier et trier avant d’ajouter à la collection"
+        actions={
+          <button onClick={() => setActiveView('collection')} className="ui-btn ui-btn-ghost">
+            <ChevronLeft size={16} /> Collection
+          </button>
+        }
+      />
 
-      <div className="panel rounded-3xl p-6 space-y-5">
-        <label className="flex items-center gap-3 text-sm">
-          <input type="checkbox" checked={frontOnly} onChange={(event) => { const checked = event.target.checked; setFrontOnly(checked); if (allFiles.current.length) selectFiles(allFiles.current, pairMode, checked); }} />
-          Photos recto uniquement <span className="text-[var(--text-muted)]">(confiance réduite)</span>
-        </label>
-        {!frontOnly && <div className="grid sm:grid-cols-3 gap-2">
-          {([
-            ['sequential', 'Consécutif', '1-2, 3-4, 5-6…', FileStack],
-            ['halves', 'Moitiés', 'Tous rectos, puis tous versos', SplitSquareHorizontal],
-            ['suffix', 'Suffixes', '_recto / _verso', Layers],
-          ] as const).map(([id, label, description, Icon]) => <button key={id} disabled={running} onClick={() => { setPairMode(id); if (allFiles.current.length) selectFiles(allFiles.current, id, false); }} className="p-3 rounded-2xl text-left" style={{ background: pairMode === id ? 'var(--accent-dim)' : 'var(--bg-elevated)', border: pairMode === id ? '1px solid var(--border-accent)' : '1px solid var(--border)' }}>
-            <span className="flex items-center gap-2 font-bold text-sm"><Icon size={16} /> {label}</span><small className="text-[var(--text-muted)]">{description}</small>
-          </button>)}
-        </div>}
-        <button onClick={() => inputRef.current?.click()} disabled={running} className="w-full min-h-48 rounded-3xl border-2 border-dashed border-white/15 flex flex-col items-center justify-center gap-3 hover:border-[var(--accent)]">
-          <Upload size={32} /><strong>{items.length ? `${items.length} carte(s) prête(s)` : 'Choisir les photos'}</strong>
-          <span className="text-xs text-[var(--text-muted)]">{frontOnly ? 'Une photo par carte' : 'Ordre attendu : recto 1, verso 1, recto 2, verso 2…'}</span>
-        </button>
-        <input ref={inputRef} hidden type="file" accept="image/*" multiple onChange={(event) => selectFiles(Array.from(event.target.files || []), pairMode, frontOnly)} />
-        {error && <p className="text-sm text-red-400">{error}</p>}
-        {items.length > 0 && <div className="space-y-2">
-          <div className="flex justify-between text-xs text-[var(--text-muted)]"><span>Traitement carte par carte</span><span>{processedCount} / {items.length}</span></div>
-          <div className="h-2 rounded-full bg-white/5 overflow-hidden"><div className="h-full bg-[var(--accent)] transition-all" style={{ width: `${items.length ? Math.round((processedCount / items.length) * 100) : 0}%` }} /></div>
-          <div className="max-h-80 overflow-y-auto rounded-2xl border border-white/5 divide-y divide-white/5">
-            {items.map((item, index) => <div key={`${item.front.name}-${index}`} className="p-3 flex items-center gap-3" style={{ background: currentIndex === index ? 'var(--accent-dim)' : undefined }}>
-              <span className="w-7 text-xs text-[var(--text-muted)]">{index + 1}</span>
-              <span className="min-w-0 flex-1"><strong className="block text-sm truncate">{item.front.name}{item.back ? ` + ${item.back.name}` : ''}</strong><small className={progress[index]?.state === 'error' ? 'text-red-400' : 'text-[var(--text-muted)]'}>{progress[index]?.error || progress[index]?.step || (results[index] ? LABELS[results[index]!.classification] : 'En attente')}</small></span>
-              {progress[index]?.state === 'running' ? <RefreshCw size={16} className="animate-spin text-[var(--accent)]" /> : progress[index]?.state === 'done' ? <CheckCircle2 size={17} className="text-green-400" /> : <span className="text-xs uppercase text-[var(--text-muted)]">{progress[index]?.state}</span>}
-            </div>)}
+      <Panel title="1. Choisir les photos" icon={Upload}>
+        <div className="space-y-4">
+          <label className="flex w-fit cursor-pointer items-center gap-2.5 text-[13px] text-[var(--text-primary)]">
+            <input
+              type="checkbox"
+              className="h-4 w-4 accent-[var(--accent)]"
+              checked={frontOnly}
+              onChange={(event) => { const checked = event.target.checked; setFrontOnly(checked); if (allFiles.current.length) selectFiles(allFiles.current, pairMode, checked); }}
+            />
+            Photos recto uniquement <span className="text-[var(--text-muted)]">(confiance réduite)</span>
+          </label>
+
+          {!frontOnly && (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-[var(--text-secondary)]">Appairage recto / verso</p>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {([
+                  ['sequential', 'Consécutif', '1-2, 3-4, 5-6…', FileStack],
+                  ['halves', 'Moitiés', 'Tous rectos, puis tous versos', SplitSquareHorizontal],
+                  ['suffix', 'Suffixes', '_recto / _verso', Layers],
+                ] as const).map(([id, label, description, Icon]) => {
+                  const active = pairMode === id;
+                  return (
+                    <button
+                      key={id}
+                      disabled={running}
+                      onClick={() => { setPairMode(id); if (allFiles.current.length) selectFiles(allFiles.current, id, false); }}
+                      aria-pressed={active}
+                      className={`flex flex-col gap-0.5 rounded-lg border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                        active
+                          ? 'border-[var(--border-accent)] bg-[var(--accent-dim)]'
+                          : 'border-[var(--border)] bg-[var(--bg-elevated)] hover:border-[var(--border-strong)]'
+                      }`}
+                    >
+                      <span className={`flex items-center gap-2 text-[13px] font-medium ${active ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'}`}>
+                        <Icon size={15} /> {label}
+                      </span>
+                      <span className="text-xs text-[var(--text-muted)]">{description}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <button
+            onClick={() => inputRef.current?.click()}
+            disabled={running}
+            onDragOver={(e) => { if (running) return; e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              if (running) return;
+              selectFiles(Array.from(e.dataTransfer.files), pairMode, frontOnly);
+            }}
+            className={`group flex min-h-48 w-full flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors hover:border-[var(--border-accent)] hover:bg-[var(--bg-elevated)] disabled:cursor-not-allowed disabled:opacity-50 ${
+              dragging ? 'border-[var(--accent)] bg-[var(--accent-dim)]' : 'border-[var(--border-strong)] bg-[var(--bg-secondary)]'
+            }`}
+          >
+            <span className={`flex h-12 w-12 items-center justify-center rounded-full ${items.length ? 'bg-[var(--accent-dim)] text-[var(--accent)]' : 'bg-[var(--bg-elevated)] text-[var(--text-muted)] group-hover:text-[var(--accent)]'}`}>
+              {items.length ? <CheckCircle2 size={22} /> : <Upload size={22} />}
+            </span>
+            <span className="text-sm font-medium text-[var(--text-primary)]">
+              {dragging ? 'Dépose les photos ici' : items.length ? `${items.length} carte(s) prête(s)` : 'Glisse tes photos ici ou clique pour choisir'}
+            </span>
+            <span className="text-xs text-[var(--text-muted)]">
+              {frontOnly ? 'Une photo par carte' : 'Ordre attendu : recto 1, verso 1, recto 2, verso 2…'}
+            </span>
+            {items.length > 0 && !running && <span className="text-xs text-[var(--text-secondary)] underline-offset-2 group-hover:underline">Changer la sélection</span>}
+          </button>
+          <input ref={inputRef} hidden type="file" accept="image/*" multiple onChange={(event) => selectFiles(Array.from(event.target.files || []), pairMode, frontOnly)} />
+
+          {error && (
+            <Notice tone={error.startsWith('Photos non appairées') ? 'warning' : 'error'} icon={AlertCircle}>
+              {error}
+            </Notice>
+          )}
+        </div>
+      </Panel>
+
+      {items.length > 0 && (
+        <Panel
+          title="2. Analyse IA"
+          icon={Sparkles}
+          action={<span className="tabular text-xs text-[var(--text-muted)]">{processedCount} / {items.length}</span>}
+          padded={false}
+        >
+          <div className="space-y-3 p-4">
+            <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
+              <span>{running && currentIndex !== null ? `Analyse de la carte ${currentIndex + 1} sur ${items.length}…` : completedBatchId ? 'Analyse terminée' : 'Traitement carte par carte'}</span>
+              <span className="tabular">{percent} %</span>
+            </div>
+            <div className="h-1.5 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
+              <div className="h-full rounded-full bg-[var(--accent)] transition-all" style={{ width: `${percent}%` }} />
+            </div>
+            {Object.entries(counts).length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {Object.entries(counts).map(([key, value]) => (
+                  <Badge key={key} tone={TONES[key as ImportClassification]}>
+                    {LABELS[key as ImportClassification]} <span className="tabular">· {value}</span>
+                  </Badge>
+                ))}
+              </div>
+            )}
           </div>
-        </div>}
-        {items.length > 0 && !completedBatchId && <button onClick={run} disabled={running} className="w-full py-4 rounded-2xl bg-[var(--accent)] text-black font-black flex justify-center gap-2">
-          {running && currentIndex !== null ? `Analyse ${currentIndex + 1}/${items.length}` : 'Créer le sas et analyser'} <ArrowRight size={18} />
-        </button>}
-        {completedBatchId && <button onClick={() => { setImportBatchId(completedBatchId); setActiveView('import_review'); }} className="w-full py-4 rounded-2xl bg-white text-black font-black flex justify-center gap-2">Revoir les rapprochements <ArrowRight size={18} /></button>}
-        {Object.entries(counts).length > 0 && <div className="flex flex-wrap gap-2">{Object.entries(counts).map(([key, value]) =>
-          <span key={key} className="px-3 py-1.5 rounded-full bg-white/5 text-xs">{LABELS[key as ImportClassification]} · {value}</span>,
-        )}</div>}
-      </div>
 
-      {history.length > 0 && <div className="space-y-3">
-        <h2 className="text-sm font-bold flex items-center gap-2"><Clock3 size={16} /> Imports récents</h2>
-        {history.slice(0, 8).map((batch) => <button key={batch.id} onClick={() => resume(batch.id)} className="panel w-full p-4 rounded-2xl flex justify-between text-left">
-          <span><strong>{batch.name}</strong><small className="block text-[var(--text-muted)]">{new Date(batch.created_at).toLocaleString('fr-FR')}</small></span>
-          <CheckCircle2 size={18} className="text-[var(--accent)]" />
-        </button>)}
-      </div>}
-    </div>
+          <div className="max-h-80 divide-y divide-[var(--border)] overflow-y-auto border-t border-[var(--border)]">
+            {items.map((item, index) => {
+              const row = progress[index];
+              const result = results[index];
+              return (
+                <div
+                  key={`${item.front.name}-${index}`}
+                  className={`flex items-center gap-3 px-4 py-2.5 ${currentIndex === index ? 'bg-[var(--accent-dim)]' : ''}`}
+                >
+                  <span className="tabular w-6 shrink-0 text-xs text-[var(--text-muted)]">{index + 1}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] font-medium text-[var(--text-primary)]">
+                      {item.front.name}{item.back ? ` + ${item.back.name}` : ''}
+                    </span>
+                    <span className={`block truncate text-xs ${row?.state === 'error' ? 'text-[var(--red)]' : 'text-[var(--text-muted)]'}`}>
+                      {row?.error || row?.step || (result ? LABELS[result.classification] : 'En attente')}
+                    </span>
+                  </span>
+                  {row?.state === 'running' ? (
+                    <RefreshCw size={15} className="shrink-0 animate-spin text-[var(--accent)]" />
+                  ) : row?.state === 'done' ? (
+                    result ? <Badge tone={TONES[result.classification]}>{LABELS[result.classification]}</Badge> : <CheckCircle2 size={16} className="shrink-0 text-[var(--green)]" />
+                  ) : row?.state === 'error' ? (
+                    <Badge tone="red">Erreur</Badge>
+                  ) : (
+                    <Badge>En attente</Badge>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="border-t border-[var(--border)] p-4">
+            {!completedBatchId ? (
+              <button onClick={run} disabled={running} className="ui-btn ui-btn-primary ui-btn-lg w-full">
+                {running && currentIndex !== null ? (
+                  <><RefreshCw size={16} className="animate-spin" /> Analyse {currentIndex + 1}/{items.length}</>
+                ) : (
+                  <>Créer le sas et analyser <ArrowRight size={16} /></>
+                )}
+              </button>
+            ) : (
+              <button onClick={() => { setImportBatchId(completedBatchId); setActiveView('import_review'); }} className="ui-btn ui-btn-primary ui-btn-lg w-full">
+                3. Revoir les rapprochements <ArrowRight size={16} />
+              </button>
+            )}
+          </div>
+        </Panel>
+      )}
+
+      {history.length > 0 && (
+        <Panel title="Imports récents" icon={Clock3} padded={false}>
+          <div className="divide-y divide-[var(--border)]">
+            {history.slice(0, 8).map((batch) => (
+              <button
+                key={batch.id}
+                onClick={() => resume(batch.id)}
+                className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-[var(--bg-elevated)]"
+              >
+                <span className="min-w-0">
+                  <span className="block truncate text-[13px] font-medium text-[var(--text-primary)]">{batch.name}</span>
+                  <span className="block text-xs text-[var(--text-muted)]">{new Date(batch.created_at).toLocaleString('fr-FR')}</span>
+                </span>
+                <ChevronRight size={16} className="shrink-0 text-[var(--text-muted)]" />
+              </button>
+            ))}
+          </div>
+        </Panel>
+      )}
+    </Page>
   );
 }

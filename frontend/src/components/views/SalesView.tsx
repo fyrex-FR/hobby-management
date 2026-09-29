@@ -1,90 +1,83 @@
 import { useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
   TrendingUp,
-  DollarSign,
   CheckCircle2,
   ShoppingBag,
-  ArrowUpRight,
-  ArrowDownRight,
   BarChart3,
   Tag,
   Target,
-  LineChart,
   PackageCheck,
   PackageOpen,
-  Filter,
   Check,
-  RefreshCw
+  Globe,
+  Pencil,
+  Euro,
+  Wallet,
+  type LucideIcon,
 } from 'lucide-react';
 import { useCards, useUpdateCard } from '../../hooks/useCards';
 import type { Card } from '../../types';
 import { CardDetail } from '../shared/CardDetail';
 import { cdnImg } from '../../lib/cdn';
+import { EmptyState, Page, PageHeader, Panel, Spinner, StatTile } from '../ui';
 
 type SalesTab = 'stats' | 'a_traiter' | 'pret' | 'en_ligne' | 'vendu';
 
-const TABS: { key: SalesTab; label: string; icon: any; description: string }[] = [
-  { key: 'stats', label: 'Monitor', icon: BarChart3, description: 'Tableau de bord financier' },
-  { key: 'a_traiter', label: 'Listing', icon: Tag, description: 'Cartes à préparer pour la vente' },
-  { key: 'pret', label: 'Prêtes', icon: PackageCheck, description: 'Prêtes à être postées' },
-  { key: 'en_ligne', label: 'Live', icon: Globe, description: 'Actuellement sur le marché' },
-  { key: 'vendu', label: 'Vendu', icon: ShoppingBag, description: 'Historique des ventes' },
+const TABS: { key: SalesTab; label: string; icon: LucideIcon; description: string; empty: string }[] = [
+  { key: 'stats', label: 'Aperçu', icon: BarChart3, description: 'Tableau de bord financier', empty: '' },
+  {
+    key: 'a_traiter',
+    label: 'À préparer',
+    icon: Tag,
+    description: 'Fixe un prix puis valide chaque carte pour la préparer à la vente.',
+    empty: 'Passe des cartes au statut « À vendre » depuis la collection pour les préparer ici.',
+  },
+  {
+    key: 'pret',
+    label: 'Prêtes',
+    icon: PackageCheck,
+    description: 'Cartes validées, prêtes à être mises en ligne.',
+    empty: 'Valide des cartes dans l’onglet « À préparer » pour les retrouver ici.',
+  },
+  {
+    key: 'en_ligne',
+    label: 'En ligne',
+    icon: Globe,
+    description: 'Annonces actuellement en ligne. Marque-les vendues dès qu’elles partent.',
+    empty: 'Aucune annonce en ligne pour le moment.',
+  },
+  {
+    key: 'vendu',
+    label: 'Vendues',
+    icon: ShoppingBag,
+    description: 'Historique des ventes.',
+    empty: 'Tes ventes apparaîtront ici.',
+  },
 ];
 
-function Globe({ size, className }: { size?: number, className?: string }) {
-  return <ShoppingBag size={size} className={className} />; // Shim
-}
+const euro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2, minimumFractionDigits: 0 });
+const euro0 = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
 
 function fmt(n: number) {
-  return n.toFixed(2).replace('.', ',') + ' €';
+  return euro.format(n);
 }
 
-function KpiCard({
-  label, value, sub, icon: Icon, accent, positive,
-}: {
-  label: string; value: string; sub?: string; icon: any; accent?: boolean; positive?: boolean;
-}) {
-  return (
-    <div className="panel p-5 rounded-[32px] bg-white/[0.02] border border-white/5 space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="w-10 h-10 rounded-2xl bg-white/5 border border-white/5 flex items-center justify-center text-white/20">
-          <Icon size={18} />
-        </div>
-        {positive !== undefined && (
-          <div className={`flex items-center gap-1 text-[10px] font-black ${positive ? 'text-green-400' : 'text-red-400'}`}>
-            {positive ? <ArrowUpRight size={12} /> : <ArrowDownRight size={12} />}
-            {positive ? 'PROFIT' : 'LOSS'}
-          </div>
-        )}
-      </div>
-      <div>
-        <div className="text-[9px] font-black uppercase tracking-[0.2em] text-white/30 mb-1">{label}</div>
-        <div className={`text-2xl font-black tracking-tighter ${accent ? 'text-[var(--accent)] text-glow' : 'text-white'}`}>{value}</div>
-        {sub && <div className="text-[10px] font-bold text-white/20 mt-1 uppercase tracking-wider">{sub}</div>}
-      </div>
-    </div>
-  );
-}
-
-function FunnelStage({ label, count, total, color, icon: Icon }: { label: string; count: number; total: number; color: string; icon: any }) {
+function FunnelStage({ label, count, total, color, icon: Icon }: { label: string; count: number; total: number; color: string; icon: LucideIcon }) {
   const pct = total > 0 ? (count / total) * 100 : 0;
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between px-1">
-        <div className="flex items-center gap-2">
-          <Icon size={10} className="text-white/20" />
-          <span className="text-[9px] font-black uppercase tracking-widest text-white/30">{label}</span>
-        </div>
-        <span className="text-[10px] font-black text-white">{count}</span>
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2 text-[13px]">
+        <span className="flex items-center gap-2 text-[var(--text-secondary)]">
+          <Icon size={14} className="text-[var(--text-muted)]" />
+          {label}
+        </span>
+        <span className="tabular">
+          <span className="font-medium text-[var(--text-primary)]">{count}</span>
+          <span className="ml-2 text-xs text-[var(--text-muted)]">{Math.round(pct)} %</span>
+        </span>
       </div>
-      <div className="h-1.5 rounded-full bg-white/5 overflow-hidden">
-        <motion.div
-          initial={{ width: 0 }}
-          animate={{ width: `${pct}%` }}
-          className="h-full rounded-full transition-all duration-1000"
-          style={{ background: color }}
-        />
+      <div className="h-1.5 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
+        <div className="h-full rounded-full transition-[width] duration-500" style={{ width: `${pct}%`, background: color }} />
       </div>
     </div>
   );
@@ -130,69 +123,73 @@ function SalesDashboard({ cards }: { cards: Card[] }) {
   }, [cards]);
 
   const maxMonth = Math.max(...stats.months.map((m) => m.total), 1);
+  const sixMonthsTotal = stats.months.reduce((s, m) => s + m.total, 0);
+  const marginColor = stats.margeReelle >= 0 ? 'var(--green)' : 'var(--red)';
+  const listingCount = stats.aVendre + stats.enLigne;
 
   return (
-    <div className="space-y-8">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <KpiCard label="Total Encaissé" value={fmt(stats.encaisse)} sub={`${stats.vendues} ventes`} icon={DollarSign} accent />
-        <KpiCard
-          label="Marge Réelle"
-          value={stats.hasInvest ? fmt(stats.margeReelle) : '—'}
-          sub={stats.roi !== null ? `ROI ${stats.roi.toFixed(0)}%` : 'Inv. Inconnu'}
-          icon={TrendingUp}
-          positive={stats.hasInvest ? stats.margeReelle >= 0 : undefined}
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <StatTile
+          label="Total encaissé"
+          value={fmt(stats.encaisse)}
+          hint={`${stats.vendues} vente${stats.vendues > 1 ? 's' : ''}`}
+          icon={Wallet}
+          accent
         />
-        <KpiCard
-          label="Valeur Listing"
+        <StatTile
+          label="Marge réelle"
+          value={stats.hasInvest ? <span style={{ color: marginColor }}>{stats.margeReelle > 0 ? '+' : ''}{fmt(stats.margeReelle)}</span> : '—'}
+          hint={stats.roi !== null ? `ROI ${stats.roi > 0 ? '+' : ''}${stats.roi.toFixed(0)} %` : 'Prix d’achat non renseignés'}
+          icon={TrendingUp}
+        />
+        <StatTile
+          label="Valeur en vente"
           value={fmt(stats.valeurEstimee)}
-          sub={`Sur ${stats.aVendre + stats.enLigne} cartes`}
+          hint={
+            `${listingCount} carte${listingCount > 1 ? 's' : ''}` +
+            (stats.hasInvest ? ` · marge potentielle ${stats.margePotentielle > 0 ? '+' : ''}${euro0.format(stats.margePotentielle)}` : '')
+          }
           icon={Target}
         />
       </div>
 
-      <div className="grid lg:grid-cols-2 gap-8">
-        <div className="panel p-8 rounded-[40px] bg-white/[0.02] border border-white/5 space-y-6">
-          <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30">Pipeline de Vente</h3>
-          <div className="space-y-5">
-            <FunnelStage label="Collection" count={stats.collection} total={stats.totalCards} color="rgba(255,255,255,0.1)" icon={PackageOpen} />
-            <FunnelStage label="En Préparation" count={stats.aVendre} total={stats.totalCards} color="var(--accent)" icon={Tag} />
-            <FunnelStage label="Live" count={stats.enLigne} total={stats.totalCards} color="#6366f1" icon={Globe} />
-            <FunnelStage label="Vendu" count={stats.vendues} total={stats.totalCards} color="#10b981" icon={CheckCircle2} />
+      <div className="grid gap-3 sm:gap-4 lg:grid-cols-2">
+        <Panel title="Pipeline de vente" icon={PackageOpen}>
+          <div className="space-y-4">
+            <FunnelStage label="Collection" count={stats.collection} total={stats.totalCards} color="var(--text-muted)" icon={PackageOpen} />
+            <FunnelStage label="À vendre" count={stats.aVendre} total={stats.totalCards} color="var(--accent)" icon={Tag} />
+            <FunnelStage label="En ligne" count={stats.enLigne} total={stats.totalCards} color="var(--blue)" icon={Globe} />
+            <FunnelStage label="Vendues" count={stats.vendues} total={stats.totalCards} color="var(--green)" icon={CheckCircle2} />
           </div>
-        </div>
+        </Panel>
 
-        <div className="panel p-8 rounded-[40px] bg-white/[0.02] border border-white/5 flex flex-col justify-between">
-          <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30 mb-8">Performance Mensuelle</h3>
-          <div className="flex items-end gap-3 h-32 flex-1 mb-4">
+        <Panel
+          title="Ventes des 6 derniers mois"
+          icon={BarChart3}
+          action={<span className="tabular text-[13px] font-medium text-[var(--accent)]">{euro0.format(sixMonthsTotal)}</span>}
+        >
+          <div className="flex h-44 items-stretch gap-2 sm:gap-3">
             {stats.months.map((m) => (
-              <div key={m.label} className="flex-1 flex flex-col items-center gap-4 h-full justify-end group">
-                <div className="w-full relative">
-                  <AnimatePresence>
-                    {m.total > 0 && (
-                      <motion.div
-                        initial={{ opacity: 0, y: 10 }}
-                        whileHover={{ opacity: 1, y: 0 }}
-                        className="absolute -top-8 left-1/2 -translate-x-1/2 px-2 py-1 rounded bg-white text-black text-[9px] font-black whitespace-nowrap opacity-0 transition-opacity"
-                      >
-                        {m.total.toFixed(0)}€
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                  <motion.div
-                    initial={{ height: 0 }}
-                    animate={{ height: `${(m.total / maxMonth) * 100}%` }}
-                    className={`w-full rounded-2xl transition-all ${m.total > 0 ? 'bg-[var(--accent)]' : 'bg-white/5'}`}
+              <div
+                key={m.label}
+                className="flex min-w-0 flex-1 flex-col items-center gap-1.5"
+                title={`${m.label} : ${euro.format(m.total)} · ${m.count} vente${m.count > 1 ? 's' : ''}`}
+              >
+                <div className="flex w-full flex-1 flex-col items-center justify-end gap-1">
+                  {m.total > 0 && (
+                    <span className="tabular text-[11px] text-[var(--text-secondary)]">{euro0.format(m.total)}</span>
+                  )}
+                  <div
+                    className={`w-full max-w-10 rounded-md ${m.total > 0 ? 'bg-[var(--accent)]' : 'bg-[var(--bg-elevated)]'}`}
+                    style={{ height: m.total > 0 ? `${Math.max((m.total / maxMonth) * 75, 3)}%` : 3 }}
                   />
                 </div>
-                <span className="text-[9px] font-black uppercase tracking-widest text-white/20 group-hover:text-white transition-colors">{m.label}</span>
+                <span className="text-xs capitalize text-[var(--text-muted)]">{m.label.replace('.', '')}</span>
               </div>
             ))}
           </div>
-          <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/5 border border-white/5 text-[9px] font-black uppercase tracking-widest text-white/40">
-            <LineChart size={12} />
-            Données synchronisées live
-          </div>
-        </div>
+        </Panel>
       </div>
     </div>
   );
@@ -206,9 +203,12 @@ function PriceInput({ card, onSave }: { card: Card; onSave: (price: number) => v
     return (
       <button
         onClick={() => setEditing(true)}
-        className="px-3 py-1.5 rounded-xl bg-[var(--accent-dim)] border border-[var(--border-accent)] text-[var(--accent)] text-xs font-black"
+        className="ui-btn ui-btn-sm tabular"
+        data-active
+        title="Modifier le prix"
       >
-        {card.price} €
+        {card.price != null ? fmt(card.price) : '—'}
+        <Pencil size={12} />
       </button>
     );
   }
@@ -222,14 +222,22 @@ function PriceInput({ card, onSave }: { card: Card; onSave: (price: number) => v
       }}
       className="flex items-center gap-1"
     >
-      <input
-        autoFocus
-        type="number"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        className="w-20 rounded-xl px-3 py-1.5 text-xs font-black bg-white/5 border border-white/10 text-white outline-none focus:border-[var(--accent)]"
-      />
-      <button type="submit" className="p-1.5 rounded-xl bg-[var(--accent)] text-black">
+      <div className="relative">
+        <input
+          autoFocus
+          type="number"
+          inputMode="decimal"
+          step="0.01"
+          min="0"
+          placeholder="Prix"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          className="ui-input tabular h-8 w-24 pr-6"
+          aria-label="Prix de vente"
+        />
+        <Euro size={12} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+      </div>
+      <button type="submit" className="ui-btn ui-btn-sm ui-btn-icon ui-btn-primary" aria-label="Enregistrer le prix">
         <Check size={14} />
       </button>
     </form>
@@ -237,66 +245,73 @@ function PriceInput({ card, onSave }: { card: Card; onSave: (price: number) => v
 }
 
 function SalesCard({ card, tab, onUpdate, onClick }: { card: Card; tab: SalesTab; onUpdate: (id: string, fields: Partial<Card>) => void; onClick: () => void }) {
+  const sub = [card.year, card.brand, card.set_name].filter(Boolean).join(' · ');
+
   return (
-    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="panel p-4 rounded-[32px] bg-white/[0.02] border border-white/5 hover:bg-white/[0.05] hover:border-white/10 transition-all group active:scale-[0.99] flex items-center gap-5">
-      <button onClick={onClick} className="w-16 h-20 rounded-2xl bg-white/5 border border-white/5 overflow-hidden shrink-0 relative">
-        {card.image_front_url ? (
-          <img src={cdnImg(card.image_front_url)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center opacity-20"><PackageOpen size={24} /></div>
-        )}
+    <div className="ui-card flex items-center gap-3 p-3">
+      <button onClick={onClick} className="group flex min-w-0 flex-1 items-center gap-3 text-left" title="Ouvrir la fiche">
+        <div className="h-16 w-12 shrink-0 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--bg-elevated)]">
+          {card.image_front_url ? (
+            <img src={cdnImg(card.image_front_url)} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-[var(--text-muted)]"><PackageOpen size={18} /></div>
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-sm font-medium text-[var(--text-primary)] group-hover:underline">{card.player ?? 'Joueur inconnu'}</h3>
+          <p className="mt-0.5 truncate text-xs text-[var(--text-muted)]">{sub || '—'}</p>
+        </div>
       </button>
 
-      <div onClick={onClick} className="flex-1 min-w-0 cursor-pointer">
-        <h3 className="text-sm font-black text-white tracking-tight truncate mb-1">{card.player ?? 'Anonyme'}</h3>
-        <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest truncate">
-          {[card.year, card.brand, card.set_name].filter(Boolean).slice(0, 2).join(' · ')}
-        </p>
-      </div>
-
-      <div className="flex items-center gap-4 shrink-0">
+      <div className="flex shrink-0 flex-col items-end gap-1.5 sm:flex-row sm:items-center sm:gap-2">
         {tab === 'a_traiter' && (
           <>
             <PriceInput card={card} onSave={(price) => onUpdate(card.id, { price })} />
             <button
               onClick={() => onUpdate(card.id, { listing_validated: true })}
               disabled={card.price == null}
-              className="w-10 h-10 rounded-xl bg-white/5 border border-white/10 text-white/60 hover:text-white flex items-center justify-center disabled:opacity-20 active:scale-90 transition-all"
+              className="ui-btn ui-btn-sm"
+              title={card.price == null ? 'Fixe un prix avant de valider' : 'Valider pour la vente'}
             >
-              <ArrowUpRight size={18} />
+              <Check size={14} />
+              Valider
             </button>
           </>
         )}
 
         {tab === 'pret' && (
           <>
-            <div className="text-right">
-              <div className="text-sm font-black text-[var(--accent)] tracking-tighter">{card.price}€</div>
-              <div className="text-[9px] font-black text-white/20 uppercase tracking-widest mt-1">Générer Listing</div>
-            </div>
+            <span className="tabular text-sm font-medium text-[var(--accent)]">{card.price != null ? fmt(card.price) : '—'}</span>
             <button
               onClick={() => onUpdate(card.id, { is_listed: true })}
-              className="w-10 h-10 rounded-xl bg-[var(--accent)] text-black flex items-center justify-center shadow-lg shadow-[var(--accent-glow)] active:scale-90 transition-all"
+              className="ui-btn ui-btn-sm ui-btn-primary"
+              title="Marquer comme en ligne"
             >
-              <Check size={18} />
+              <Globe size={14} />
+              En ligne
             </button>
           </>
         )}
 
-        {(tab === 'en_ligne' || tab === 'vendu') && (
-          <div className="text-right">
-            <div className={`text-base font-black tracking-tighter ${tab === 'vendu' ? 'text-green-400' : 'text-white'}`}>
-              {card.price}€
-            </div>
-            {tab === 'en_ligne' ? (
-              <button onClick={() => onUpdate(card.id, { status: 'vendu', is_listed: false })} className="text-[9px] font-black text-[var(--accent)] uppercase tracking-widest mt-1 hover:brightness-125">Déclarer Vendu</button>
-            ) : (
-              <div className="text-[9px] font-black text-white/20 uppercase tracking-widest mt-1">Archivé</div>
-            )}
-          </div>
+        {tab === 'en_ligne' && (
+          <>
+            <span className="tabular text-sm font-medium text-[var(--text-primary)]">{card.price != null ? fmt(card.price) : '—'}</span>
+            <button
+              onClick={() => onUpdate(card.id, { status: 'vendu', is_listed: false })}
+              className="ui-btn ui-btn-sm ui-btn-success"
+              title="Déclarer la carte vendue"
+            >
+              <CheckCircle2 size={14} />
+              Vendue
+            </button>
+          </>
+        )}
+
+        {tab === 'vendu' && (
+          <span className="tabular text-sm font-medium text-[var(--green)]">{card.price != null ? fmt(card.price) : '—'}</span>
         )}
       </div>
-    </motion.div>
+    </div>
   );
 }
 
@@ -314,82 +329,63 @@ export function SalesView() {
   }), [cards]);
 
   const totalAVendre = byTab.a_traiter.length + byTab.pret.length + byTab.en_ligne.length;
+  const current = TABS.find((t) => t.key === tab);
 
-  if (isLoading) return <div className="flex-1 flex items-center justify-center opacity-20"><RefreshCw className="animate-spin" /></div>;
+  if (isLoading) {
+    return (
+      <Page>
+        <PageHeader title="Ventes" />
+        <Spinner label="Chargement…" className="py-24" />
+      </Page>
+    );
+  }
 
   return (
-    <div className="flex-1 overflow-auto bg-[radial-gradient(circle_at_50%_-20%,_var(--accent-dim)_0%,_transparent_70%)]">
-      <div className="max-w-5xl mx-auto px-6 py-10">
-        <div className="flex items-center justify-between mb-10">
-          <div>
-            <h2 className="text-2xl font-black text-white tracking-tight">Finances & Marché</h2>
-            <p className="text-sm text-[var(--text-muted)] font-medium">{totalAVendre} cartes actives en flux de vente</p>
-          </div>
-          <div className="flex p-1 rounded-2xl bg-white/5 border border-white/10">
-            <button className="p-2 text-white/40 hover:text-white transition-colors"><Filter size={16} /></button>
-          </div>
-        </div>
+    <Page>
+      <PageHeader
+        title="Ventes"
+        subtitle={<span className="tabular">{totalAVendre} carte{totalAVendre > 1 ? 's' : ''} en cours de vente</span>}
+      />
 
-        <div className="flex gap-2 p-1 rounded-[24px] bg-white/[0.04] border border-white/5 mb-10">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`flex-1 group flex flex-col items-center py-3 rounded-2xl transition-all relative ${tab === t.key ? 'bg-white/10 shadow-xl' : 'hover:bg-white/5'
-                }`}
-            >
-              <div className={`mb-1 transition-colors ${tab === t.key ? 'text-[var(--accent)]' : 'text-white/20'}`}>
-                <t.icon size={16} />
-              </div>
-              <span className={`text-[10px] font-black uppercase tracking-widest ${tab === t.key ? 'text-white' : 'text-white/30'}`}>
-                {t.label}
-              </span>
-              {t.key !== 'stats' && byTab[t.key as keyof typeof byTab].length > 0 && (
-                <div className="absolute -top-1 -right-1 px-1.5 py-0.5 rounded-md bg-[var(--accent)] text-[8px] font-black text-black">
-                  {byTab[t.key as keyof typeof byTab].length}
-                </div>
-              )}
+      <div className="ui-segmented max-w-full overflow-x-auto no-scrollbar" role="tablist" aria-label="Étapes de vente">
+        {TABS.map((t) => {
+          const count = t.key !== 'stats' ? byTab[t.key as keyof typeof byTab].length : null;
+          return (
+            <button key={t.key} role="tab" aria-selected={tab === t.key} data-active={tab === t.key} onClick={() => setTab(t.key)}>
+              <t.icon size={14} className="hidden sm:block" />
+              {t.label}
+              {count != null && count > 0 && <span className="count">{count}</span>}
             </button>
-          ))}
-        </div>
-
-        <motion.div key={tab} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.3 }}>
-          {tab === 'stats' && <SalesDashboard cards={cards} />}
-
-          {tab !== 'stats' && (
-            <div className="space-y-4">
-              <div className="flex items-center justify-between px-4 mb-4">
-                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-white/30">{TABS.find(t => t.key === tab)?.description}</h3>
-              </div>
-              {byTab[tab as keyof typeof byTab].length === 0 ? (
-                <div className="panel p-20 rounded-[40px] bg-white/[0.02] border border-white/5 flex flex-col items-center text-center">
-                  <div className="w-16 h-16 rounded-[24px] bg-white/5 flex items-center justify-center text-white/10 mb-6">
-                    <ShoppingBag size={32} />
-                  </div>
-                  <h3 className="text-lg font-black text-white/40 uppercase tracking-widest">File d'attente vide</h3>
-                  <p className="text-sm text-white/20 mt-2">Aucune carte ne correspond à ce statut actuellement.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                  {byTab[tab as keyof typeof byTab].map(card => (
-                    <SalesCard
-                      key={card.id}
-                      card={card}
-                      tab={tab}
-                      onUpdate={(id, f) => updateCard.mutateAsync({ id, ...f })}
-                      onClick={() => setSelectedCard(card)}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </motion.div>
+          );
+        })}
       </div>
 
-      <AnimatePresence>
-        {selectedCard && <CardDetail card={selectedCard} onClose={() => setSelectedCard(null)} />}
-      </AnimatePresence>
-    </div>
+      {tab === 'stats' && <SalesDashboard cards={cards} />}
+
+      {tab !== 'stats' && (
+        <div className="space-y-3">
+          <p className="text-[13px] text-[var(--text-muted)]">{current?.description}</p>
+          {byTab[tab as keyof typeof byTab].length === 0 ? (
+            <div className="ui-card">
+              <EmptyState icon={current?.icon ?? ShoppingBag} title="Rien pour l’instant" description={current?.empty} />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 gap-2 lg:grid-cols-2 lg:gap-3">
+              {byTab[tab as keyof typeof byTab].map(card => (
+                <SalesCard
+                  key={card.id}
+                  card={card}
+                  tab={tab}
+                  onUpdate={(id, f) => updateCard.mutateAsync({ id, ...f })}
+                  onClick={() => setSelectedCard(card)}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {selectedCard && <CardDetail card={selectedCard} onClose={() => setSelectedCard(null)} />}
+    </Page>
   );
 }

@@ -1,45 +1,46 @@
 import { useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
   Trophy,
   Clock,
-  Edit3,
-  X,
+  Pencil,
   CreditCard,
-  Building,
-  RefreshCw
+  Loader2,
+  Hourglass,
+  CheckCircle2,
+  Star,
+  Euro,
+  Award,
 } from 'lucide-react';
 import { useCards, useUpdateCard } from '../../hooks/useCards';
 import type { Card, GradingCompany, GradingStatus } from '../../types';
 import { CardDetail } from '../shared/CardDetail';
 import { cdnImg } from '../../lib/cdn';
+import { Badge, EmptyState, Field, Modal, Page, PageHeader, Spinner, StatTile } from '../ui';
 
 const GRADING_COMPANIES: GradingCompany[] = ['PSA', 'BGS', 'SGC', 'CGC', 'HGA'];
 
-const STATUS_CONFIG: Record<GradingStatus, { label: string; color: string; bg: string }> = {
-  submitted: { label: 'Envoyée', color: '#6366f1', bg: 'rgba(99,102,241,0.12)' },
-  received: { label: 'Reçue', color: 'var(--accent)', bg: 'var(--accent-dim)' },
-  graded: { label: 'Notée', color: '#10b981', bg: 'rgba(16,185,129,0.12)' },
-  returned: { label: 'Retournée', color: '#A1A1AA', bg: 'white/5' },
+const STATUS_CONFIG: Record<GradingStatus, { label: string; tone: 'blue' | 'accent' | 'green' | 'neutral' }> = {
+  submitted: { label: 'Envoyée', tone: 'blue' },
+  received: { label: 'Reçue', tone: 'accent' },
+  graded: { label: 'Notée', tone: 'green' },
+  returned: { label: 'Retournée', tone: 'neutral' },
 };
+
+const euro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2, minimumFractionDigits: 0 });
+const gradeFmt = new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
 function gradeColor(grade: string | null): string {
   if (!grade) return 'var(--text-muted)';
   const n = parseFloat(grade);
-  if (n >= 9.5) return '#10b981';
-  if (n >= 9) return '#60a5fa';
+  if (n >= 9.5) return 'var(--green)';
+  if (n >= 9) return 'var(--blue)';
   if (n >= 8) return 'var(--accent)';
-  return '#A1A1AA';
+  return 'var(--text-secondary)';
 }
 
 function StatusBadge({ status }: { status: GradingStatus }) {
   const cfg = STATUS_CONFIG[status];
-  return (
-    <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md border border-white/5"
-      style={{ background: cfg.bg, color: cfg.color }}>
-      {cfg.label}
-    </span>
-  );
+  return <Badge tone={cfg.tone}>{cfg.label}</Badge>;
 }
 
 function daysSince(dateStr: string | null): number | null {
@@ -58,74 +59,67 @@ function GradingRow({
   onOpenCard: (card: Card) => void;
 }) {
   const days = daysSince(card.grading_submitted_at);
+  const waitingDays = days != null && !card.grading_returned_at ? days : null;
+  const late = waitingDays != null && waitingDays > 60;
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="group flex items-center gap-5 p-4 rounded-3xl bg-white/[0.02] border border-white/5 hover:bg-white/[0.05] hover:border-white/10 transition-all active:scale-[0.99]"
-    >
-      <div
-        className="w-16 h-20 rounded-2xl bg-white/5 border border-white/5 overflow-hidden cursor-pointer relative shrink-0"
+    <div className="flex items-center gap-3 px-3 py-3 sm:px-4">
+      <button
         onClick={() => onOpenCard(card)}
+        className="group flex min-w-0 flex-1 items-center gap-3 text-left"
+        title="Ouvrir la fiche"
       >
-        {card.image_front_url ? (
-          <img src={cdnImg(card.image_front_url)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center opacity-20"><CreditCard size={20} /></div>
-        )}
-      </div>
+        <div className="h-16 w-12 shrink-0 overflow-hidden rounded-md border border-[var(--border)] bg-[var(--bg-elevated)]">
+          {card.image_front_url ? (
+            <img src={cdnImg(card.image_front_url)} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-[var(--text-muted)]"><CreditCard size={18} /></div>
+          )}
+        </div>
 
-      <div className="flex-1 min-w-0 py-1">
-        <div className="flex items-center gap-2 mb-1.5">
-          <p className="font-black text-white tracking-tight truncate flex-1">
-            {card.player || '—'}
-          </p>
-          <div className="flex items-center gap-1.5 shrink-0">
+        <div className="min-w-0 flex-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="truncate text-sm font-medium text-[var(--text-primary)] group-hover:underline">{card.player || '—'}</p>
             {card.grading_status && <StatusBadge status={card.grading_status} />}
           </div>
+          <p className="mt-0.5 truncate text-xs text-[var(--text-muted)]">
+            {[card.year, card.brand, card.set_name].filter(Boolean).join(' · ') || '—'}
+          </p>
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--text-secondary)]">
+            {card.grading_company && <Badge>{card.grading_company}</Badge>}
+            {card.grading_cert && <span className="tabular text-[var(--text-muted)]">Cert. {card.grading_cert}</span>}
+            {waitingDays != null && (
+              <span
+                className={`tabular inline-flex items-center gap-1 ${late ? 'text-[var(--red)]' : 'text-[var(--text-muted)]'}`}
+                title={`Envoyée il y a ${waitingDays} jour${waitingDays > 1 ? 's' : ''}`}
+              >
+                <Clock size={12} />
+                {waitingDays} j
+              </span>
+            )}
+          </div>
         </div>
+      </button>
 
-        <p className="text-[11px] font-bold text-[var(--text-muted)] uppercase tracking-wide truncate">
-          {[card.year, card.brand, card.set_name].filter(Boolean).join(' · ')}
-        </p>
-
-        <div className="flex items-center gap-3 mt-3 flex-wrap">
-          {card.grading_company && (
-            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-black text-white/40 border border-white/5 text-[9px] font-black tracking-widest">
-              <Building size={10} />
-              {card.grading_company}
-            </div>
-          )}
-          {card.grading_cert && (
-            <span className="text-[10px] font-medium text-white/30">#{card.grading_cert}</span>
-          )}
-          {days != null && !card.grading_returned_at && (
-            <div className={`flex items-center gap-1 text-[10px] font-bold ${days > 60 ? 'text-red-400' : 'text-white/30'}`}>
-              <Clock size={12} strokeWidth={2.5} />
-              {days}j
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="flex items-center gap-4 shrink-0">
+      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
         {card.grading_grade && (
           <div className="text-right">
-            <div className="text-2xl font-black italic tracking-tighter" style={{ color: gradeColor(card.grading_grade) }}>
+            <div className="tabular text-xl font-semibold leading-none" style={{ color: gradeColor(card.grading_grade) }}>
               {card.grading_grade}
             </div>
-            <div className="text-[8px] font-black text-white/20 uppercase tracking-widest">{card.grading_company}</div>
+            {card.grading_company && <div className="mt-1 text-[11px] text-[var(--text-muted)]">{card.grading_company}</div>}
           </div>
         )}
         <button
           onClick={() => onEdit(card)}
-          className="w-10 h-10 flex items-center justify-center rounded-xl bg-white/5 border border-white/5 text-[var(--text-muted)] hover:text-white hover:bg-white/10 transition-all active:scale-90"
+          className="ui-btn ui-btn-ghost ui-btn-icon"
+          aria-label="Modifier le grading"
+          title="Modifier le grading"
         >
-          <Edit3 size={16} />
+          <Pencil size={15} />
         </button>
       </div>
-    </motion.div>
+    </div>
   );
 }
 
@@ -169,75 +163,63 @@ function GradingModal({
     onClose();
   }
 
-  const inputCls = 'w-full rounded-xl px-3 py-2 text-sm outline-none transition-all bg-white/5 border border-white/10 focus:border-[var(--accent)]/50 focus:bg-white/10 text-white';
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-xl" onClick={onClose}>
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="panel w-full max-w-sm rounded-[32px] overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="p-6 border-b border-white/5">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-lg font-black text-white">Détails grading</h3>
-            <button onClick={onClose} className="text-white/40 hover:text-white"><X size={20} /></button>
-          </div>
-          <p className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-widest truncate">
-            {card.player} · {card.year}
-          </p>
+    <Modal
+      onClose={onClose}
+      size="md"
+      title="Détails du grading"
+      subtitle={[card.player, card.year].filter(Boolean).join(' · ') || undefined}
+      icon={
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--accent-dim)] text-[var(--accent)]">
+          <Award size={18} />
         </div>
-
-        <div className="p-6 space-y-5">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black uppercase tracking-widest text-[#52525B]">SOCIÉTÉ</label>
-              <select className={inputCls} value={form.grading_company} onChange={(e) => set('grading_company', e.target.value)}>
-                <option value="">—</option>
-                {GRADING_COMPANIES.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black uppercase tracking-widest text-[#52525B]">STATUT</label>
-              <select className={inputCls} value={form.grading_status} onChange={(e) => set('grading_status', e.target.value)}>
-                {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
-                  <option key={key} value={key}>{cfg.label}</option>
-                ))}
-              </select>
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black uppercase tracking-widest text-[#52525B]">ENVOYÉE LE</label>
-              <input type="date" className={inputCls} value={form.grading_submitted_at} onChange={(e) => set('grading_submitted_at', e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black uppercase tracking-widest text-[#52525B]">RETOUR LE</label>
-              <input type="date" className={inputCls} value={form.grading_returned_at} onChange={(e) => set('grading_returned_at', e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black uppercase tracking-widest text-[#52525B]">NOTE</label>
-              <input className={inputCls} placeholder="ex: 10" value={form.grading_grade} onChange={(e) => set('grading_grade', e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <label className="text-[10px] font-black uppercase tracking-widest text-[#52525B]">CERTIFICAT</label>
-              <input className={inputCls} placeholder="ex: 1234..." value={form.grading_cert} onChange={(e) => set('grading_cert', e.target.value)} />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <label className="text-[10px] font-black uppercase tracking-widest text-[#52525B]">COÛT (€)</label>
-            <input type="number" className={inputCls} placeholder="0.00" value={form.grading_cost} onChange={(e) => set('grading_cost', e.target.value)} />
-          </div>
-
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="w-full py-4 rounded-2xl bg-[var(--accent)] border border-[var(--border-accent)] text-[#09090B] text-xs font-black uppercase tracking-widest shadow-xl shadow-[var(--accent-glow)] hover:brightness-110 active:scale-[0.98] mt-2 transition-all"
-          >
-            {saving ? 'SAUVEGARDE…' : 'SAUVEGARDER'}
+      }
+      footer={
+        <>
+          <button onClick={onClose} className="ui-btn" disabled={saving}>Annuler</button>
+          <button onClick={handleSave} disabled={saving} className="ui-btn ui-btn-primary">
+            {saving && <Loader2 size={15} className="animate-spin" />}
+            {saving ? 'Enregistrement…' : 'Enregistrer'}
           </button>
-        </div>
-      </motion.div>
-    </div>
+        </>
+      }
+    >
+      <form
+        className="grid grid-cols-2 gap-3"
+        onSubmit={(e) => { e.preventDefault(); if (!saving) handleSave(); }}
+      >
+        <Field label="Société">
+          <select className="ui-select" value={form.grading_company} onChange={(e) => set('grading_company', e.target.value)}>
+            <option value="">—</option>
+            {GRADING_COMPANIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </Field>
+        <Field label="Statut">
+          <select className="ui-select" value={form.grading_status} onChange={(e) => set('grading_status', e.target.value)}>
+            {Object.entries(STATUS_CONFIG).map(([key, cfg]) => (
+              <option key={key} value={key}>{cfg.label}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Envoyée le">
+          <input type="date" className="ui-input" value={form.grading_submitted_at} onChange={(e) => set('grading_submitted_at', e.target.value)} />
+        </Field>
+        <Field label="Retour le">
+          <input type="date" className="ui-input" value={form.grading_returned_at} onChange={(e) => set('grading_returned_at', e.target.value)} />
+        </Field>
+        <Field label="Note">
+          <input className="ui-input tabular" placeholder="ex. 10" value={form.grading_grade} onChange={(e) => set('grading_grade', e.target.value)} />
+        </Field>
+        <Field label="N° de certificat">
+          <input className="ui-input tabular" placeholder="ex. 12345678" value={form.grading_cert} onChange={(e) => set('grading_cert', e.target.value)} />
+        </Field>
+        <Field label="Coût (€)" className="col-span-2">
+          <input type="number" inputMode="decimal" step="0.01" min="0" className="ui-input tabular" placeholder="0,00" value={form.grading_cost} onChange={(e) => set('grading_cost', e.target.value)} />
+        </Field>
+        {/* Entrée dans un champ = Enregistrer */}
+        <button type="submit" hidden />
+      </form>
+    </Modal>
   );
 }
 
@@ -275,75 +257,61 @@ export function GradingView() {
     return { totalCost, avgGrade, graded: graded.length };
   }, [gradingCards]);
 
+  const inProgress = (counts.submitted ?? 0) + (counts.received ?? 0);
+
   if (isLoading) {
     return (
-      <div className="flex-1 flex items-center justify-center">
-        <RefreshCw size={40} className="text-[var(--accent)] animate-spin opacity-20" />
-      </div>
+      <Page>
+        <PageHeader title="Grading" />
+        <Spinner label="Chargement…" className="py-24" />
+      </Page>
     );
   }
 
   return (
-    <div className="flex-1 overflow-auto bg-[radial-gradient(circle_at_50%_-20%,_var(--accent-dim)_0%,_transparent_70%)]">
-      <div className="max-w-4xl mx-auto px-6 py-10">
-        <div className="flex items-center justify-between mb-10">
-          <div>
-            <h2 className="text-2xl font-black text-white tracking-tight">Grading</h2>
-            <p className="text-sm text-white/30 font-medium">Suivi des soumissions et certifications</p>
-          </div>
-          {gradingCards.length > 0 && (
-            <div className="flex gap-3">
-              <div className="panel px-4 py-2 rounded-2xl bg-white/[0.02] border border-white/10 text-center">
-                <div className="text-[10px] font-black text-white/30 uppercase tracking-[0.1em] mb-0.5">Note moy.</div>
-                <div className="text-sm font-black text-white tracking-tighter" style={{ color: stats.avgGrade ? gradeColor(stats.avgGrade.toFixed(1)) : 'white' }}>
-                  {stats.avgGrade ? stats.avgGrade.toFixed(1) : '—'}
-                </div>
-              </div>
-              <div className="panel px-4 py-2 rounded-2xl bg-white/[0.02] border border-white/10 text-center">
-                <div className="text-[10px] font-black text-white/30 uppercase tracking-[0.1em] mb-0.5">Investi</div>
-                <div className="text-sm font-black text-[var(--accent)] tracking-tighter">
-                  {stats.totalCost.toFixed(0)}€
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
+    <Page>
+      <PageHeader title="Grading" subtitle="Suivi des soumissions, des notes et des certificats" />
 
-        <div className="flex items-center gap-1.5 p-1 rounded-2xl bg-white/5 border border-white/5 w-fit mb-8">
-          <button
-            onClick={() => setStatusFilter('all')}
-            className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${statusFilter === 'all' ? 'bg-white/10 text-white border border-white/10 shadow-sm' : 'text-white/40 hover:text-white/60'
-              }`}
-          >
-            Tout ({counts.all})
-          </button>
-          {(Object.keys(STATUS_CONFIG) as GradingStatus[]).map((s) => (
-            counts[s] > 0 && (
-              <button
-                key={s}
-                onClick={() => setStatusFilter(s)}
-                className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${statusFilter === s ? 'bg-white/10 text-white border border-white/10 shadow-sm' : 'text-white/40 hover:text-white/60'
-                  }`}
-              >
-                {STATUS_CONFIG[s].label} ({counts[s]})
-              </button>
-            )
-          ))}
+      {gradingCards.length === 0 ? (
+        <div className="ui-card">
+          <EmptyState
+            icon={Trophy}
+            title="Aucune carte en grading"
+            description="Renseigne la société de grading depuis la fiche d'une carte pour suivre sa soumission ici."
+          />
         </div>
-
-        {gradingCards.length === 0 ? (
-          <div className="panel p-12 rounded-[40px] bg-white/[0.02] border border-white/5 flex flex-col items-center text-center">
-            <div className="w-16 h-16 rounded-[24px] bg-white/5 border border-white/10 flex items-center justify-center text-white/20 mb-6">
-              <Trophy size={32} />
-            </div>
-            <h3 className="text-xl font-black text-white mb-2">Aucune carte en grading</h3>
-            <p className="text-sm text-[var(--text-muted)] max-w-xs mx-auto leading-relaxed">
-              Ajoutez des détails de grading à vos cartes depuis leur fiche détaillée pour les suivre ici.
-            </p>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <StatTile label="En cours" value={inProgress} hint="Envoyées ou reçues" icon={Hourglass} />
+            <StatTile label="Notées" value={stats.graded} hint="Notées ou retournées" icon={CheckCircle2} />
+            <StatTile
+              label="Note moyenne"
+              value={stats.avgGrade ? <span style={{ color: gradeColor(stats.avgGrade.toFixed(1)) }}>{gradeFmt.format(stats.avgGrade)}</span> : '—'}
+              icon={Star}
+            />
+            <StatTile label="Investi" value={euro.format(stats.totalCost)} hint="Frais de grading" icon={Euro} accent={stats.totalCost > 0} />
           </div>
-        ) : (
-          <div className="space-y-3">
-            <AnimatePresence mode="popLayout">
+
+          <div className="ui-segmented max-w-full overflow-x-auto no-scrollbar" role="tablist" aria-label="Filtrer par statut">
+            <button role="tab" aria-selected={statusFilter === 'all'} data-active={statusFilter === 'all'} onClick={() => setStatusFilter('all')}>
+              Toutes <span className="count">{counts.all}</span>
+            </button>
+            {(Object.keys(STATUS_CONFIG) as GradingStatus[]).map((s) => (
+              counts[s] > 0 && (
+                <button key={s} role="tab" aria-selected={statusFilter === s} data-active={statusFilter === s} onClick={() => setStatusFilter(s)}>
+                  {STATUS_CONFIG[s].label} <span className="count">{counts[s]}</span>
+                </button>
+              )
+            ))}
+          </div>
+
+          {filtered.length === 0 ? (
+            <div className="ui-card">
+              <EmptyState icon={Trophy} title="Aucune carte dans ce statut" />
+            </div>
+          ) : (
+            <div className="ui-card divide-y divide-[var(--border)] overflow-hidden">
               {filtered.map((card) => (
                 <GradingRow
                   key={card.id}
@@ -352,15 +320,13 @@ export function GradingView() {
                   onOpenCard={setOpenCard}
                 />
               ))}
-            </AnimatePresence>
-          </div>
-        )}
-      </div>
+            </div>
+          )}
+        </>
+      )}
 
-      <AnimatePresence>
-        {editCard && <GradingModal card={editCard} onClose={() => setEditCard(null)} />}
-        {openCard && <CardDetail card={openCard} onClose={() => setOpenCard(null)} />}
-      </AnimatePresence>
-    </div>
+      {editCard && <GradingModal card={editCard} onClose={() => setEditCard(null)} />}
+      {openCard && <CardDetail card={openCard} onClose={() => setOpenCard(null)} />}
+    </Page>
   );
 }

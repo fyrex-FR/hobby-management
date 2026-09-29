@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
 import {
   Archive,
   Camera,
@@ -15,6 +14,7 @@ import {
   Sparkles,
   Trash2,
   Upload,
+  X,
 } from 'lucide-react';
 import { compressImage } from '../../lib/storage';
 import { DEFAULT_CROP_RECT, clampNormRect, type NormRect } from '../../lib/guideCrop';
@@ -31,6 +31,7 @@ import {
   updateStudioSession,
 } from '../../lib/studioSessions';
 import type { CardType } from '../../types';
+import { Badge, EmptyState, Notice, Page, PageHeader, Panel } from '../ui';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
@@ -136,26 +137,25 @@ function PreviewCard({
 
   return (
     <div
-      className={`relative overflow-hidden rounded-2xl border ${active ? 'border-[var(--accent)]/60 bg-[var(--accent-dim)]' : 'border-white/10 bg-white/[0.03]'}`}
+      className={`relative overflow-hidden rounded-lg border ${active ? 'border-[var(--border-accent)] bg-[var(--accent-dim)]' : 'border-[var(--border)] bg-[var(--bg-elevated)]'}`}
       style={{ aspectRatio: '2/3' }}
     >
       {previewUrl ? (
         <img src={previewUrl} alt={label} className="h-full w-full object-cover" />
       ) : (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center px-4">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/10 bg-white/5 text-[var(--accent)]">
-            <ImagePlus size={22} />
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-center">
+          <div className={`flex h-10 w-10 items-center justify-center rounded-full bg-[var(--bg-hover)] ${active ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
+            <ImagePlus size={18} />
           </div>
-          <div>
-            <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[var(--text-muted)]">{label}</div>
-            <div className="mt-1 text-xs text-white/40">{active ? 'Prochaine capture' : 'En attente'}</div>
+          <div className={`text-xs ${active ? 'font-medium text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
+            {active ? 'Prochaine capture' : 'En attente'}
           </div>
         </div>
       )}
 
-      <div className="absolute left-3 top-3 rounded-full border border-white/10 bg-black/50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-white/80 backdrop-blur-xl">
-        {label}
-      </div>
+      <span className="absolute left-2 top-2">
+        <Badge tone={active ? 'accent' : 'neutral'}>{label}</Badge>
+      </span>
     </div>
   );
 }
@@ -964,489 +964,455 @@ export function StudioView() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [capturedPairs, isBusy, primaryDisabled, primaryAction, step, captureMode]);
 
+  const processDisabled = capturedPairs.length === 0 || isBusy || (captureMode === 'halves' && !halvesBackDone);
+  const cameraLabel = selectedDeviceId
+    ? (devices.find((d) => d.deviceId === selectedDeviceId)?.label || 'Caméra choisie')
+    : facingMode === 'environment' ? 'Caméra arrière' : 'Caméra avant';
+  const barHint = step === 'saving' && saveMessage
+    ? saveMessage
+    : captureMode === 'halves'
+      ? halvesPhase === 'front'
+        ? 'Phase recto : capture tous les recto.'
+        : halvesBackDone
+          ? 'Verso terminés : traite le lot.'
+          : 'Phase verso : suis le guide recto.'
+      : 'Bluetooth : recto, verso, enregistrement.';
+
   return (
-    <div className="flex-1 overflow-auto bg-[radial-gradient(circle_at_50%_-20%,_var(--accent-dim)_0%,_transparent_70%)]">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="mx-auto max-w-7xl px-4 sm:px-6 py-5 sm:py-10 pb-36"
-      >
-        <div className="mb-4 sm:mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
-          <div className="flex items-start gap-3 sm:items-center sm:gap-4">
+    <Page width="wide">
+      <PageHeader
+        title="Studio photo"
+        subtitle="Mode trépied : capture les cartes en série, l’IA les identifie ensuite."
+        actions={
+          <button onClick={() => setActiveView('collection')} className="ui-btn ui-btn-ghost">
+            <ChevronLeft size={16} /> Collection
+          </button>
+        }
+      />
+
+      {/* Réglages de capture et caméra */}
+      <div className="ui-card flex flex-wrap items-center gap-2 p-3">
+        <div
+          className="ui-segmented"
+          title={sessionStarted ? 'Termine ou réinitialise le lot pour changer de mode' : undefined}
+        >
+          {([
+            { id: 'per_card', label: 'Carte par carte' },
+            { id: 'halves', label: 'Recto puis verso' },
+          ] as { id: CaptureMode; label: string }[]).map((opt) => (
             <button
-              onClick={() => setActiveView('collection')}
-              className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-[var(--text-muted)] transition-all hover:bg-white/10 hover:text-white active:scale-90"
+              key={opt.id}
+              onClick={() => switchMode(opt.id)}
+              disabled={sessionStarted || isBusy}
+              data-active={captureMode === opt.id}
+              className="disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <ChevronLeft size={20} />
+              {opt.label}
             </button>
-            <div className="min-w-0">
-              <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white">Studio photo</h2>
-              <p className="text-xs sm:text-sm font-medium text-[var(--text-muted)]">
-                Mode trépied.
-              </p>
-            </div>
-          </div>
-
-          <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
-            <div
-              className="inline-flex rounded-xl border border-white/10 bg-white/5 p-1"
-              title={sessionStarted ? 'Termine ou réinitialise le lot pour changer de mode' : undefined}
-            >
-              {([
-                { id: 'per_card', label: 'Carte par carte' },
-                { id: 'halves', label: 'Recto puis verso' },
-              ] as { id: CaptureMode; label: string }[]).map((opt) => (
-                <button
-                  key={opt.id}
-                  onClick={() => switchMode(opt.id)}
-                  disabled={sessionStarted || isBusy}
-                  className={`rounded-lg px-3 py-2 text-xs font-bold transition-all disabled:cursor-not-allowed ${
-                    captureMode === opt.id
-                      ? 'bg-[var(--accent)] text-[#0d0c0b]'
-                      : 'text-white/60 hover:text-white disabled:opacity-40'
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-
-            <div
-              className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-1"
-              hidden={!AUTO_CROP_AVAILABLE}
-              title={sessionStarted ? 'Réinitialise le lot pour changer le rognage' : 'Détecte les bords et rogne automatiquement (serveur)'}
-            >
-              <button
-                onClick={() => setAutoCropEnabled((v) => { const nv = !v; if (nv) setCornerScan(false); return nv; })}
-                disabled={sessionStarted || isBusy}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
-                  autoCropEnabled
-                    ? 'bg-[var(--accent)] text-[#0d0c0b]'
-                    : 'text-white/60 hover:text-white'
-                }`}
-              >
-                <ScanLine size={14} />
-                Cadre fixe {autoCropEnabled ? 'ON' : 'OFF'}
-              </button>
-            </div>
-
-            <div
-              className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-1"
-              title={sessionStarted ? 'Réinitialise le lot pour changer le mode' : 'Détecte les coins de la carte et redresse en perspective'}
-            >
-              <button
-                onClick={() => setCornerScan((v) => { const nv = !v; if (nv) setAutoCropEnabled(false); return nv; })}
-                disabled={sessionStarted || isBusy || captureMode === 'halves'}
-                className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
-                  cornerScan ? 'bg-[var(--accent)] text-[#0d0c0b]' : 'text-white/60 hover:text-white'
-                }`}
-              >
-                <Crop size={14} />
-                Détection coins {cornerScan ? 'ON' : 'OFF'}
-              </button>
-            </div>
-
-            {autoCropEnabled && (
-              <div className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
-                <button
-                  onClick={() => setAdjustingFrame((v) => !v)}
-                  disabled={isBusy}
-                  title="Régler la zone de rognage pour ton support de scan (mémorisé)"
-                  className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold transition-all disabled:cursor-not-allowed disabled:opacity-40 ${
-                    adjustingFrame ? 'bg-[var(--accent)] text-[#0d0c0b]' : 'text-white/60 hover:text-white'
-                  }`}
-                >
-                  <Crop size={14} />
-                  {adjustingFrame ? 'Terminer le réglage' : 'Ajuster le cadre'}
-                </button>
-                {adjustingFrame && (
-                  <button
-                    onClick={() => setCropRect(cardCropRect())}
-                    title="Cadre centré au format carte (2.5×3.5)"
-                    className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold text-white/60 transition-all hover:text-white"
-                  >
-                    <RotateCcw size={14} />
-                    Format carte
-                  </button>
-                )}
-              </div>
-            )}
-
-            {devices.length > 1 && (
-              <select
-                value={selectedDeviceId ?? activeDeviceId ?? ''}
-                onChange={(e) => setSelectedDeviceId(e.target.value || null)}
-                disabled={isBusy}
-                title="Choisir la caméra (ex. iPhone via Continuity Camera)"
-                className="max-w-[220px] truncate rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm font-semibold text-white outline-none transition-all hover:bg-white/10 disabled:opacity-40"
-              >
-                {devices.map((d, i) => (
-                  <option key={d.deviceId || i} value={d.deviceId} className="bg-[#1a1a1d] text-white">
-                    {d.label || `Caméra ${i + 1}`}
-                  </option>
-                ))}
-              </select>
-            )}
-
-            <button
-              onClick={() => { setSelectedDeviceId(null); setFacingMode((value) => (value === 'environment' ? 'user' : 'environment')); }}
-              className="inline-flex items-center justify-center gap-2 self-start sm:self-auto rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-white/10"
-              disabled={isBusy}
-            >
-              <RefreshCw size={16} />
-              Avant / Arrière
-            </button>
-
-            <button
-              onClick={() => setRotation((r) => (r + 90) % 360)}
-              className="inline-flex items-center justify-center gap-2 self-start sm:self-auto rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-semibold text-white transition-all hover:bg-white/10"
-              disabled={isBusy}
-              title="Tourne l'aperçu et la photo de 90° (support de scan en travers)"
-            >
-              <RotateCw size={16} />
-              Pivoter 90°{rotation ? ` (${rotation}°)` : ''}
-            </button>
-          </div>
+          ))}
         </div>
 
-        <div className="mb-6 grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_380px]">
-          <section className="relative overflow-hidden rounded-[2rem] border border-white/10 bg-black/30 shadow-2xl">
-            <div className="flex items-center justify-between gap-3 border-b border-white/5 px-4 sm:px-5 py-3 sm:py-4">
-              <div className="flex items-center gap-3">
-                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Studio</div>
-                {lotCount > 0 && (
-                  <div className="rounded-full border border-[var(--accent)]/20 bg-[var(--accent-dim)] px-3 py-1 text-[11px] font-black text-[var(--accent)]">
-                    {lotCount} en lot
-                  </div>
-                )}
-              </div>
-              <div className="shrink-0 max-w-[200px] truncate rounded-full border border-white/10 bg-white/5 px-3 py-1 text-[11px] sm:text-xs font-bold text-white/70">
-                {selectedDeviceId
-                  ? (devices.find((d) => d.deviceId === selectedDeviceId)?.label || 'Caméra choisie')
-                  : facingMode === 'environment' ? 'Caméra arrière' : 'Caméra avant'}
-              </div>
-            </div>
+        <button
+          hidden={!AUTO_CROP_AVAILABLE}
+          onClick={() => setAutoCropEnabled((v) => { const nv = !v; if (nv) setCornerScan(false); return nv; })}
+          disabled={sessionStarted || isBusy}
+          data-active={autoCropEnabled}
+          aria-pressed={autoCropEnabled}
+          title={sessionStarted ? 'Réinitialise le lot pour changer le rognage' : 'Détecte les bords et rogne automatiquement (serveur)'}
+          className="ui-btn"
+        >
+          <ScanLine size={15} />
+          Cadre fixe
+        </button>
 
-            <div className="relative min-h-[46vh] sm:min-h-0 sm:aspect-[4/3] bg-[#0b0c10]">
-              {cameraError ? (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-8 text-center">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-3xl border border-red-500/20 bg-red-500/10 text-red-400">
-                    <CameraOff size={28} />
-                  </div>
-                  <div>
-                    <div className="text-base font-bold text-white">Caméra indisponible</div>
-                    <div className="mt-2 text-sm text-white/55">{cameraError}</div>
-                  </div>
-                </div>
-              ) : (
-                <>
-                  <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_bottom,rgba(0,0,0,0.30),transparent_20%,transparent_80%,rgba(0,0,0,0.35))]" />
-                  <div className="absolute inset-0 flex items-center justify-center p-3 sm:p-5">
-                    <div
-                      ref={frameBoxRef}
-                      className="relative overflow-hidden rounded-[1.75rem] border border-white/10 bg-black shadow-2xl"
-                      style={{ height: '100%', maxWidth: '100%', aspectRatio: rotated90 ? 1 / videoAspect : videoAspect, containerType: 'size' }}
-                    >
-                      <video
-                        ref={videoRef}
-                        className="absolute left-1/2 top-1/2 object-contain transition-transform"
+        <button
+          onClick={() => setCornerScan((v) => { const nv = !v; if (nv) setAutoCropEnabled(false); return nv; })}
+          disabled={sessionStarted || isBusy || captureMode === 'halves'}
+          data-active={cornerScan}
+          aria-pressed={cornerScan}
+          title={sessionStarted ? 'Réinitialise le lot pour changer le mode' : 'Détecte les coins de la carte et redresse en perspective'}
+          className="ui-btn"
+        >
+          <Crop size={15} />
+          Détection coins
+        </button>
+
+        {autoCropEnabled && (
+          <>
+            <button
+              onClick={() => setAdjustingFrame((v) => !v)}
+              disabled={isBusy}
+              data-active={adjustingFrame}
+              title="Régler la zone de rognage pour ton support de scan (mémorisé)"
+              className="ui-btn"
+            >
+              <Crop size={15} />
+              {adjustingFrame ? 'Terminer le réglage' : 'Ajuster le cadre'}
+            </button>
+            {adjustingFrame && (
+              <button
+                onClick={() => setCropRect(cardCropRect())}
+                title="Cadre centré au format carte (2.5×3.5)"
+                className="ui-btn ui-btn-ghost"
+              >
+                <RotateCcw size={15} />
+                Format carte
+              </button>
+            )}
+          </>
+        )}
+
+        <div className="hidden h-6 w-px bg-[var(--border-strong)] sm:block" />
+
+        {devices.length > 1 && (
+          <select
+            value={selectedDeviceId ?? activeDeviceId ?? ''}
+            onChange={(e) => setSelectedDeviceId(e.target.value || null)}
+            disabled={isBusy}
+            title="Choisir la caméra (ex. iPhone via Continuity Camera)"
+            className="ui-select w-auto max-w-[220px] truncate disabled:opacity-40"
+          >
+            {devices.map((d, i) => (
+              <option key={d.deviceId || i} value={d.deviceId}>
+                {d.label || `Caméra ${i + 1}`}
+              </option>
+            ))}
+          </select>
+        )}
+
+        <button
+          onClick={() => { setSelectedDeviceId(null); setFacingMode((value) => (value === 'environment' ? 'user' : 'environment')); }}
+          className="ui-btn"
+          disabled={isBusy}
+        >
+          <RefreshCw size={15} />
+          Avant / Arrière
+        </button>
+
+        <button
+          onClick={() => setRotation((r) => (r + 90) % 360)}
+          className="ui-btn"
+          disabled={isBusy}
+          data-active={rotation !== 0}
+          title="Tourne l'aperçu et la photo de 90° (support de scan en travers)"
+        >
+          <RotateCw size={15} />
+          Pivoter 90°{rotation ? ` (${rotation}°)` : ''}
+        </button>
+      </div>
+
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(0,1.5fr)_380px]">
+        <section className="ui-card relative overflow-hidden">
+          <header className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
+            <div className="flex items-center gap-2">
+              <Camera size={16} className="text-[var(--text-muted)]" />
+              <h2 className="text-sm font-semibold text-[var(--text-primary)]">Caméra</h2>
+              {lotCount > 0 && <Badge tone="accent" className="tabular">{lotCount} en lot</Badge>}
+            </div>
+            <Badge className="max-w-[200px] truncate">{cameraLabel}</Badge>
+          </header>
+
+          <div className="relative min-h-[46vh] bg-black sm:aspect-[4/3] sm:min-h-0">
+            {cameraError ? (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <EmptyState icon={CameraOff} title="Caméra indisponible" description={cameraError} />
+              </div>
+            ) : (
+              <>
+                <div className="absolute inset-0 flex items-center justify-center p-3 sm:p-4">
+                  <div
+                    ref={frameBoxRef}
+                    className="relative overflow-hidden rounded-lg border border-[var(--border)] bg-black"
+                    style={{ height: '100%', maxWidth: '100%', aspectRatio: rotated90 ? 1 / videoAspect : videoAspect, containerType: 'size' }}
+                  >
+                    <video
+                      ref={videoRef}
+                      className="absolute left-1/2 top-1/2 object-contain transition-transform"
+                      style={{
+                        width: rotated90 ? '100cqh' : '100cqw',
+                        height: rotated90 ? '100cqw' : '100cqh',
+                        transform: `translate(-50%, -50%) rotate(${rotation}deg) scale(${zoom})`,
+                        transformOrigin: 'center',
+                      }}
+                      autoPlay
+                      muted
+                      playsInline
+                      onLoadedMetadata={(e) => {
+                        const v = e.currentTarget;
+                        if (v.videoWidth && v.videoHeight) setVideoAspect(v.videoWidth / v.videoHeight);
+                      }}
+                    />
+                    <div className="absolute inset-0">
+                      <div
+                        className={`absolute rounded-[0.35rem] border-2 border-[var(--accent)] shadow-[0_0_0_2px_rgba(0,0,0,0.65),0_0_0_9999px_rgba(0,0,0,0.5)] ${adjustingFrame ? 'cursor-move touch-none' : 'pointer-events-none'}`}
                         style={{
-                          width: rotated90 ? '100cqh' : '100cqw',
-                          height: rotated90 ? '100cqw' : '100cqh',
-                          transform: `translate(-50%, -50%) rotate(${rotation}deg) scale(${zoom})`,
-                          transformOrigin: 'center',
+                          left: `${(0.5 + (cropRect.x - 0.5) * zoom) * 100}%`,
+                          top: `${(0.5 + (cropRect.y - 0.5) * zoom) * 100}%`,
+                          width: `${cropRect.w * zoom * 100}%`,
+                          height: `${cropRect.h * zoom * 100}%`,
                         }}
-                        autoPlay
-                        muted
-                        playsInline
-                        onLoadedMetadata={(e) => {
-                          const v = e.currentTarget;
-                          if (v.videoWidth && v.videoHeight) setVideoAspect(v.videoWidth / v.videoHeight);
-                        }}
-                      />
-                      <div className="absolute inset-0">
-                        <div
-                          className={`absolute rounded-[0.35rem] border-2 border-[var(--accent)] shadow-[0_0_0_2px_rgba(0,0,0,0.65),0_0_0_9999px_rgba(0,0,0,0.5)] ${adjustingFrame ? 'cursor-move touch-none' : 'pointer-events-none'}`}
-                          style={{
-                            left: `${(0.5 + (cropRect.x - 0.5) * zoom) * 100}%`,
-                            top: `${(0.5 + (cropRect.y - 0.5) * zoom) * 100}%`,
-                            width: `${cropRect.w * zoom * 100}%`,
-                            height: `${cropRect.h * zoom * 100}%`,
-                          }}
-                          onPointerDown={adjustingFrame ? (e) => startFrameDrag(e, 'move') : undefined}
-                        >
-                          {[
-                            'left-1.5 top-1.5 border-l-[3px] border-t-[3px] rounded-tl-[0.2rem]',
-                            'right-1.5 top-1.5 border-r-[3px] border-t-[3px] rounded-tr-[0.2rem]',
-                            'left-1.5 bottom-1.5 border-l-[3px] border-b-[3px] rounded-bl-[0.2rem]',
-                            'right-1.5 bottom-1.5 border-r-[3px] border-b-[3px] rounded-br-[0.2rem]',
-                          ].map((c) => (
-                            <div
-                              key={c}
-                              className={`absolute h-6 w-6 border-[var(--accent)] drop-shadow-[0_0_2px_rgba(0,0,0,0.9)] ${c}`}
-                            />
-                          ))}
-                          {adjustingFrame && ([
-                            ['nw', '-left-2.5 -top-2.5 cursor-nwse-resize'],
-                            ['ne', '-right-2.5 -top-2.5 cursor-nesw-resize'],
-                            ['sw', '-left-2.5 -bottom-2.5 cursor-nesw-resize'],
-                            ['se', '-right-2.5 -bottom-2.5 cursor-nwse-resize'],
-                          ] as const).map(([pos, cls]) => (
-                            <div
-                              key={pos}
-                              onPointerDown={(e) => startFrameDrag(e, pos)}
-                              className={`absolute h-5 w-5 touch-none rounded-full border-2 border-black bg-[var(--accent)] shadow-lg ${cls}`}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  {autoCropEnabled && (
-                    <div className="pointer-events-none absolute inset-x-0 bottom-16 sm:bottom-20 flex justify-center px-4">
-                      <div className="rounded-full border border-[var(--accent)]/30 bg-black/60 px-4 py-1.5 text-[10px] sm:text-xs font-bold text-[var(--accent)] backdrop-blur-xl">
-                        {adjustingFrame
-                          ? 'Déplace le cadre et tire les coins pour matcher ta carte'
-                          : 'Cadre fixe (format carte) — aligne ta carte dedans'}
-                      </div>
-                    </div>
-                  )}
-                  <div className="pointer-events-none absolute inset-x-0 top-5 sm:top-6 flex justify-center px-4">
-                    <div className="rounded-full border border-white/10 bg-black/60 px-5 py-2.5 sm:px-7 sm:py-3 text-lg sm:text-2xl font-black tracking-[0.25em] text-white shadow-2xl backdrop-blur-xl">
-                      {stepLabel}
-                    </div>
-                  </div>
-                  <div className="absolute bottom-3 sm:bottom-5 left-1/2 flex w-[calc(100%-1.5rem)] sm:w-auto -translate-x-1/2 flex-col items-center gap-2">
-                    {!cameraReady && (
-                      <div className="rounded-full border border-white/10 bg-black/55 px-4 py-2 text-[11px] sm:text-xs font-semibold text-white/60 backdrop-blur-xl">
-                        Initialisation caméra…
-                      </div>
-                    )}
-                    {cameraReady && (
-                      <div className="flex items-center gap-3 rounded-full border border-white/10 bg-black/55 px-4 py-2 backdrop-blur-xl">
-                        <span className="text-[10px] font-black uppercase tracking-widest text-white/60">Zoom</span>
-                        <input
-                          type="range"
-                          min={1}
-                          max={3}
-                          step={0.1}
-                          value={zoom}
-                          onChange={(e) => setZoom(Number(e.target.value))}
-                          className="h-1 w-32 sm:w-44 cursor-pointer accent-[var(--accent)]"
-                        />
-                        <span className="w-9 text-right text-xs font-bold text-white tabular-nums">{zoom.toFixed(1)}×</span>
-                        {zoom > 1 && (
-                          <button
-                            onClick={() => setZoom(1)}
-                            className="rounded-full border border-white/10 bg-white/10 px-2 py-0.5 text-[10px] font-bold text-white/70 hover:text-white"
-                          >
-                            Reset
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-          </section>
-
-          <aside className="space-y-4 sm:space-y-5">
-            <div className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-4 sm:p-5">
-              {captureMode === 'per_card' ? (
-                <>
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Paire</div>
-                      <div className="mt-1 text-sm font-semibold text-white">
-                        Recto / Verso {capturedPairs.length > 0 ? `• ${capturedPairs.length} en lot` : ''}
-                      </div>
-                    </div>
-                    {(frontFile || backFile) && (
-                      <button
-                        onClick={resetCurrentPair}
-                        disabled={isBusy}
-                        className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] sm:text-xs font-bold text-white/75 transition-all hover:bg-white/10"
+                        onPointerDown={adjustingFrame ? (e) => startFrameDrag(e, 'move') : undefined}
                       >
-                        <RotateCcw size={14} />
-                        Reset paire
-                      </button>
-                    )}
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <PreviewCard label="Recto" file={frontFile} active={step === 'front'} />
-                    <PreviewCard label="Verso" file={backFile} active={step === 'back'} />
-                  </div>
-
-                  <div className="mt-3 flex gap-3">
-                    {frontFile && (
-                      <button
-                        onClick={() => recapture('front')}
-                        disabled={isBusy}
-                        className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs sm:text-sm font-semibold text-white/80 transition-all hover:bg-white/10"
-                      >
-                        Reprendre recto
-                      </button>
-                    )}
-                    {backFile && (
-                      <button
-                        onClick={() => recapture('back')}
-                        disabled={isBusy}
-                        className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs sm:text-sm font-semibold text-white/80 transition-all hover:bg-white/10"
-                      >
-                        Reprendre verso
-                      </button>
-                    )}
-                  </div>
-                </>
-              ) : halvesPhase === 'front' ? (
-                <>
-                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Phase 1 — Recto</div>
-                  <div className="mt-1 text-sm font-semibold text-white">
-                    {frontStack.length} recto capturé{frontStack.length > 1 ? 's' : ''}
-                  </div>
-                  <p className="mt-2 text-xs text-white/45">
-                    Photographie tous les recto dans l'ordre, puis passe aux verso.
-                  </p>
-                  {frontStack.length > 0 && (
-                    <div className="mt-3">
-                      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-white/40">
-                        Aperçu — touche pour vérifier la netteté
-                      </div>
-                      <div className="mt-2 grid grid-cols-4 gap-2">
-                        {frontStack.map((item, i) => (
-                          <button
-                            key={item.cardId}
-                            onClick={() => setPreviewUrl(item.imageFrontUrl)}
-                            className="relative overflow-hidden rounded-lg border border-white/10 bg-black"
-                            style={{ aspectRatio: '2/3' }}
-                          >
-                            <img src={item.imageFrontUrl} alt={`Recto ${i + 1}`} className="h-full w-full object-cover" />
-                            <span className="absolute left-1 top-1 rounded bg-black/60 px-1 text-[9px] font-bold text-white/80">{i + 1}</span>
-                          </button>
+                        {[
+                          'left-1.5 top-1.5 border-l-[3px] border-t-[3px] rounded-tl-[0.2rem]',
+                          'right-1.5 top-1.5 border-r-[3px] border-t-[3px] rounded-tr-[0.2rem]',
+                          'left-1.5 bottom-1.5 border-l-[3px] border-b-[3px] rounded-bl-[0.2rem]',
+                          'right-1.5 bottom-1.5 border-r-[3px] border-b-[3px] rounded-br-[0.2rem]',
+                        ].map((c) => (
+                          <div
+                            key={c}
+                            className={`absolute h-6 w-6 border-[var(--accent)] drop-shadow-[0_0_2px_rgba(0,0,0,0.9)] ${c}`}
+                          />
+                        ))}
+                        {adjustingFrame && ([
+                          ['nw', '-left-2.5 -top-2.5 cursor-nwse-resize'],
+                          ['ne', '-right-2.5 -top-2.5 cursor-nesw-resize'],
+                          ['sw', '-left-2.5 -bottom-2.5 cursor-nesw-resize'],
+                          ['se', '-right-2.5 -bottom-2.5 cursor-nwse-resize'],
+                        ] as const).map(([pos, cls]) => (
+                          <div
+                            key={pos}
+                            onPointerDown={(e) => startFrameDrag(e, pos)}
+                            className={`absolute h-5 w-5 touch-none rounded-full border-2 border-black bg-[var(--accent)] ${cls}`}
+                          />
                         ))}
                       </div>
                     </div>
-                  )}
-                  <button
-                    onClick={goToBackPhase}
-                    disabled={frontStack.length === 0 || isBusy}
-                    className="mt-4 w-full rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent-dim)] px-4 py-3 text-sm font-bold text-[var(--accent)] transition-all hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Passer aux verso ({frontStack.length})
-                  </button>
-                  {frontStack.length > 0 && (
-                    <button
-                      onClick={removeLastFront}
-                      disabled={isBusy}
-                      className="mt-2 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-red-500/20 bg-red-500/10 px-3 py-2.5 text-xs font-bold text-red-300 transition-all hover:bg-red-500/15 disabled:opacity-50"
-                    >
-                      <Trash2 size={14} />
-                      Retirer le dernier recto
-                    </button>
-                  )}
-                </>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Phase 2 — Verso</div>
-                      <div className="mt-1 text-sm font-semibold text-white">
-                        {halvesBackDone ? 'Tous les verso capturés' : `Verso ${backIndex + 1} / ${frontStack.length}`}
-                      </div>
+                  </div>
+                </div>
+
+                {/* Étape en cours, lisible de loin (mode trépied) */}
+                <div className="pointer-events-none absolute inset-x-0 top-4 flex justify-center px-4 sm:top-6">
+                  <div className="rounded-lg border border-[var(--border-strong)] bg-black/75 px-4 py-2 text-lg font-semibold tracking-wide text-[var(--text-primary)] sm:px-6 sm:text-2xl">
+                    {stepLabel}
+                  </div>
+                </div>
+
+                {autoCropEnabled && (
+                  <div className="pointer-events-none absolute inset-x-0 bottom-16 flex justify-center px-4 sm:bottom-20">
+                    <div className="rounded-md border border-[var(--border-accent)] bg-black/75 px-3 py-1.5 text-xs font-medium text-[var(--accent)]">
+                      {adjustingFrame
+                        ? 'Déplace le cadre et tire les coins pour matcher ta carte'
+                        : 'Cadre fixe (format carte) — aligne ta carte dedans'}
                     </div>
                   </div>
+                )}
 
-                  {!halvesBackDone && (
-                    <>
-                      <div className="mt-3 text-[10px] font-black uppercase tracking-[0.18em] text-white/40">
-                        Recto à apparier (carte {backIndex + 1})
-                      </div>
-                      <div
-                        className="mt-2 overflow-hidden rounded-2xl border border-[var(--accent)]/40 bg-black"
-                        style={{ aspectRatio: '2/3' }}
-                      >
-                        <img
-                          src={frontStack[backIndex].imageFrontUrl}
-                          alt={`Recto carte ${backIndex + 1}`}
-                          className="h-full w-full object-cover"
-                        />
-                      </div>
-                      <p className="mt-2 text-xs text-white/45">
-                        Place le verso correspondant à ce recto, puis capture.
-                      </p>
-                    </>
+                <div className="absolute bottom-3 left-1/2 flex w-[calc(100%-1.5rem)] -translate-x-1/2 flex-col items-center gap-2 sm:bottom-5 sm:w-auto">
+                  {!cameraReady && (
+                    <div className="flex items-center gap-2 rounded-lg border border-[var(--border-strong)] bg-black/75 px-3 py-2 text-xs text-[var(--text-secondary)]">
+                      <RefreshCw size={13} className="animate-spin" />
+                      Initialisation caméra…
+                    </div>
                   )}
+                  {cameraReady && (
+                    <div className="flex h-10 items-center gap-3 rounded-lg border border-[var(--border-strong)] bg-black/75 px-3">
+                      <span className="text-xs font-medium text-[var(--text-secondary)]">Zoom</span>
+                      <input
+                        type="range"
+                        min={1}
+                        max={3}
+                        step={0.1}
+                        value={zoom}
+                        onChange={(e) => setZoom(Number(e.target.value))}
+                        className="h-1 w-32 cursor-pointer accent-[var(--accent)] sm:w-44"
+                        aria-label="Zoom"
+                      />
+                      <span className="tabular w-9 text-right text-xs font-medium text-[var(--text-primary)]">{zoom.toFixed(1)}×</span>
+                      {zoom > 1 && (
+                        <button onClick={() => setZoom(1)} className="ui-btn ui-btn-sm h-7">
+                          Reset
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        </section>
 
-                  {backIndex > 0 && !halvesBackDone && (
-                    <button
-                      onClick={undoLastBack}
-                      disabled={isBusy}
-                      className="mt-3 inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs font-bold text-white/75 transition-all hover:bg-white/10 disabled:opacity-50"
-                    >
-                      <RotateCcw size={14} />
-                      Annuler le dernier verso
+        <aside className="space-y-4">
+          {captureMode === 'per_card' ? (
+            <Panel
+              title={`Recto / Verso${capturedPairs.length > 0 ? ` · ${capturedPairs.length} en lot` : ''}`}
+              icon={ImagePlus}
+              action={(frontFile || backFile) ? (
+                <button onClick={resetCurrentPair} disabled={isBusy} className="ui-btn ui-btn-ghost ui-btn-sm">
+                  <RotateCcw size={14} />
+                  Reset paire
+                </button>
+              ) : undefined}
+            >
+              <div className="grid grid-cols-2 gap-3">
+                <PreviewCard label="Recto" file={frontFile} active={step === 'front'} />
+                <PreviewCard label="Verso" file={backFile} active={step === 'back'} />
+              </div>
+
+              {(frontFile || backFile) && (
+                <div className="mt-3 flex gap-2">
+                  {frontFile && (
+                    <button onClick={() => recapture('front')} disabled={isBusy} className="ui-btn flex-1">
+                      Reprendre recto
                     </button>
                   )}
-                </>
+                  {backFile && (
+                    <button onClick={() => recapture('back')} disabled={isBusy} className="ui-btn flex-1">
+                      Reprendre verso
+                    </button>
+                  )}
+                </div>
               )}
-            </div>
-
-            <div className="rounded-[2rem] border border-white/10 bg-white/[0.03] p-4 sm:p-5 space-y-4">
-              {currentSession && (
-                <div className="rounded-2xl border border-[var(--accent)]/15 bg-[var(--accent-dim)] px-4 py-3">
-                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Session active</div>
-                  <div className="mt-1 text-sm font-semibold text-white">{currentSession.tag}</div>
-                  <div className="mt-1 text-xs text-white/55">
-                    {currentSession.capturedCount} carte{currentSession.capturedCount > 1 ? 's' : ''} • {formatStudioDuration(currentSession.startedAt)}
+            </Panel>
+          ) : halvesPhase === 'front' ? (
+            <Panel
+              title="Phase 1 — Recto"
+              icon={ImagePlus}
+              action={<Badge tone={frontStack.length ? 'accent' : 'neutral'} className="tabular">{frontStack.length} capturé{frontStack.length > 1 ? 's' : ''}</Badge>}
+            >
+              <p className="text-[13px] text-[var(--text-muted)]">
+                Photographie tous les recto dans l'ordre, puis passe aux verso.
+              </p>
+              {frontStack.length > 0 && (
+                <div className="mt-3">
+                  <p className="text-xs text-[var(--text-muted)]">Touche une vignette pour vérifier la netteté.</p>
+                  <div className="mt-2 grid grid-cols-4 gap-2">
+                    {frontStack.map((item, i) => (
+                      <button
+                        key={item.cardId}
+                        onClick={() => setPreviewUrl(item.imageFrontUrl)}
+                        className="relative overflow-hidden rounded-md border border-[var(--border)] bg-black transition-colors hover:border-[var(--border-strong)]"
+                        style={{ aspectRatio: '2/3' }}
+                      >
+                        <img src={item.imageFrontUrl} alt={`Recto ${i + 1}`} className="h-full w-full object-cover" />
+                        <span className="tabular absolute left-1 top-1 rounded bg-black/70 px-1 text-[10px] font-medium text-[var(--text-primary)]">{i + 1}</span>
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}
+              <div className="mt-4 space-y-2">
+                <button
+                  onClick={goToBackPhase}
+                  disabled={frontStack.length === 0 || isBusy}
+                  data-active={frontStack.length > 0}
+                  className="ui-btn w-full"
+                >
+                  Passer aux verso ({frontStack.length})
+                </button>
+                {frontStack.length > 0 && (
+                  <button onClick={removeLastFront} disabled={isBusy} className="ui-btn ui-btn-danger ui-btn-sm w-full">
+                    <Trash2 size={14} />
+                    Retirer le dernier recto
+                  </button>
+                )}
+              </div>
+            </Panel>
+          ) : (
+            <Panel
+              title="Phase 2 — Verso"
+              icon={ImagePlus}
+              action={<Badge tone={halvesBackDone ? 'green' : 'accent'} className="tabular">{halvesBackDone ? 'Terminé' : `${backIndex + 1} / ${frontStack.length}`}</Badge>}
+            >
+              {halvesBackDone ? (
+                <Notice tone="success" icon={CheckCircle2}>Tous les verso capturés.</Notice>
+              ) : (
+                <>
+                  <p className="text-xs font-medium text-[var(--text-secondary)]">
+                    Recto à apparier (carte {backIndex + 1})
+                  </p>
+                  <div
+                    className="mt-2 overflow-hidden rounded-lg border border-[var(--border-accent)] bg-black"
+                    style={{ aspectRatio: '2/3' }}
+                  >
+                    <img
+                      src={frontStack[backIndex].imageFrontUrl}
+                      alt={`Recto carte ${backIndex + 1}`}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                  <p className="mt-2 text-xs text-[var(--text-muted)]">
+                    Place le verso correspondant à ce recto, puis capture.
+                  </p>
+                </>
+              )}
 
-              <div>
-                <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Lot</div>
-                <div className="mt-1 text-xs sm:text-sm font-semibold text-white">
-                  Traitement après capture.
+              {backIndex > 0 && !halvesBackDone && (
+                <button onClick={undoLastBack} disabled={isBusy} className="ui-btn ui-btn-sm mt-3 w-full">
+                  <RotateCcw size={14} />
+                  Annuler le dernier verso
+                </button>
+              )}
+            </Panel>
+          )}
+
+          <Panel title="Lot" icon={Archive}>
+            <div className="space-y-4">
+              {currentSession && (
+                <div className="rounded-lg border border-[var(--border-accent)] bg-[var(--accent-dim)] px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-[13px] font-medium text-[var(--text-primary)]">{currentSession.tag}</span>
+                    <Badge tone="accent">Session active</Badge>
+                  </div>
+                  <p className="tabular mt-0.5 text-xs text-[var(--text-muted)]">
+                    {currentSession.capturedCount} carte{currentSession.capturedCount > 1 ? 's' : ''} · {formatStudioDuration(currentSession.startedAt)}
+                  </p>
                 </div>
+              )}
+
+              <p className="text-[13px] text-[var(--text-muted)]">
+                L’identification IA se lance après la capture, sur tout le lot.
+              </p>
+
+              <div className="space-y-2">
+                <button
+                  onClick={() => handleProcessBatch(false)}
+                  disabled={processDisabled}
+                  data-active={!processDisabled}
+                  className="ui-btn w-full"
+                >
+                  {isBusy && step === 'saving' ? <RefreshCw size={15} className="animate-spin" /> : <Upload size={15} />}
+                  Traiter le lot
+                </button>
+                <button
+                  onClick={() => handleProcessBatch(true)}
+                  disabled={processDisabled}
+                  className="ui-btn w-full"
+                >
+                  <Sparkles size={15} />
+                  Traiter le lot et ouvrir la revue
+                </button>
               </div>
 
-              <button
-                onClick={() => handleProcessBatch(false)}
-                disabled={capturedPairs.length === 0 || isBusy || (captureMode === 'halves' && !halvesBackDone)}
-                className="flex w-full items-center justify-center gap-3 rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent-dim)] px-4 py-3.5 text-sm font-bold text-[var(--accent)] transition-all disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {isBusy && step === 'saving' ? <RefreshCw size={16} className="animate-spin" /> : <Upload size={16} />}
-                Traiter le lot
-              </button>
+              {step === 'saving' && saveMessage ? (
+                <Notice tone="info">
+                  <span className="flex items-center gap-2">
+                    <RefreshCw size={14} className="shrink-0 animate-spin" />
+                    {saveMessage}
+                  </span>
+                </Notice>
+              ) : saveMessage ? (
+                <Notice tone="success" icon={CheckCircle2}>{saveMessage}</Notice>
+              ) : null}
 
-              <button
-                onClick={() => handleProcessBatch(true)}
-                disabled={capturedPairs.length === 0 || isBusy || (captureMode === 'halves' && !halvesBackDone)}
-                className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3.5 text-sm font-bold text-white transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                Traiter le lot et ouvrir la revue
-              </button>
+              {saveError && <Notice tone="error">{saveError}</Notice>}
 
               {capturedPairs.length > 0 && !(captureMode === 'halves' && halvesPhase === 'back' && !halvesBackDone) && (
-                <div className="space-y-3">
-                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Lot capturé</div>
-                  <div className="max-h-64 space-y-2 overflow-auto pr-1">
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-[var(--text-secondary)]">Lot capturé</p>
+                  <div className="max-h-64 divide-y divide-[var(--border)] overflow-auto rounded-lg border border-[var(--border)]">
                     {capturedPairs.map((pair, index) => (
-                      <div
-                        key={pair.id}
-                        className="flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2.5"
-                      >
+                      <div key={pair.id} className="flex items-center justify-between gap-3 px-3 py-2">
                         <div className="min-w-0">
-                          <div className="text-sm font-semibold text-white">Paire {index + 1}</div>
-                          <div className="truncate text-xs text-white/45">
-                            {pair.frontName} • {pair.backName}
+                          <div className="text-[13px] font-medium text-[var(--text-primary)]">Paire {index + 1}</div>
+                          <div className="truncate text-xs text-[var(--text-muted)]">
+                            {pair.frontName} · {pair.backName}
                           </div>
                         </div>
                         <button
                           onClick={() => removePair(pair.id)}
                           disabled={isBusy}
-                          className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-bold text-red-300 transition-all hover:bg-red-500/15"
+                          className="ui-btn ui-btn-danger ui-btn-sm shrink-0"
                         >
                           <Trash2 size={14} />
                           Retirer
@@ -1456,66 +1422,42 @@ export function StudioView() {
                   </div>
                 </div>
               )}
-
-              {saveMessage && (
-                <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3 text-xs sm:text-sm text-emerald-300">
-                  <div className="flex items-center gap-2 font-semibold">
-                    <CheckCircle2 size={16} />
-                    {saveMessage}
-                  </div>
-                </div>
-              )}
-
-              {saveError && (
-                <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-xs sm:text-sm text-red-300">
-                  {saveError}
-                </div>
-              )}
-
-              {sessionHistory.length > 0 && (
-                <div className="space-y-3">
-                  <div className="text-[10px] font-black uppercase tracking-[0.2em] text-[var(--accent)]">Historique sessions</div>
-                  <div className="space-y-2">
-                    {sessionHistory.slice(0, 4).map((session) => (
-                      <div key={session.id} className="rounded-2xl border border-white/10 bg-black/20 px-4 py-3">
-                        <div className="text-sm font-semibold text-white">{session.tag}</div>
-                        <div className="mt-1 text-xs text-white/50">
-                          {session.capturedCount} carte{session.capturedCount > 1 ? 's' : ''} • {session.processedCount} traitée{session.processedCount > 1 ? 's' : ''} • {session.errorsCount} erreur{session.errorsCount > 1 ? 's' : ''}
-                        </div>
-                        <div className="mt-1 text-xs text-white/35">
-                          Durée: {formatStudioDuration(session.startedAt, session.processedAt ?? session.updatedAt)}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
             </div>
-          </aside>
-        </div>
-      </motion.div>
+          </Panel>
 
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 px-4 pb-4">
-        <div className="pointer-events-auto mx-auto max-w-3xl rounded-[1.75rem] border border-white/10 bg-black/65 p-3 shadow-2xl backdrop-blur-2xl">
-          <div className="mb-3 flex items-center justify-between gap-3 px-2">
-            <div className="min-w-0">
-              <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[var(--accent)]">Action principale</div>
-              <div className="truncate text-xs sm:text-sm font-semibold text-white">
-                {captureMode === 'halves'
-                  ? halvesPhase === 'front'
-                    ? 'Phase recto : capture tous les recto.'
-                    : halvesBackDone
-                      ? 'Verso terminés : traite le lot.'
-                      : 'Phase verso : suis le guide recto.'
-                  : 'Bluetooth: recto, verso, enregistrement.'}
+          {sessionHistory.length > 0 && (
+            <Panel title="Historique des sessions" padded={false}>
+              <div className="divide-y divide-[var(--border)]">
+                {sessionHistory.slice(0, 4).map((session) => (
+                  <div key={session.id} className="px-4 py-3">
+                    <div className="truncate text-[13px] font-medium text-[var(--text-primary)]">{session.tag}</div>
+                    <div className="tabular mt-0.5 text-xs text-[var(--text-muted)]">
+                      {session.capturedCount} carte{session.capturedCount > 1 ? 's' : ''} · {session.processedCount} traitée{session.processedCount > 1 ? 's' : ''} · {session.errorsCount} erreur{session.errorsCount > 1 ? 's' : ''}
+                    </div>
+                    <div className="mt-0.5 text-xs text-[var(--text-muted)]">
+                      Durée : {formatStudioDuration(session.startedAt, session.processedAt ?? session.updatedAt)}
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
+            </Panel>
+          )}
+        </aside>
+      </div>
+
+      {/* Réserve la place de la barre d'action fixe */}
+      <div aria-hidden className="h-48 lg:h-40" />
+
+      {/* Barre d'action principale, au-dessus de la barre d'onglets mobile */}
+      <div className="pointer-events-none fixed inset-x-0 bottom-[calc(env(safe-area-inset-bottom)+4.25rem)] z-50 px-3 lg:bottom-4">
+        <div className="popover-surface pointer-events-auto mx-auto max-w-3xl space-y-2 p-3">
+          <div className="flex items-center justify-between gap-3 px-1">
+            <p className={`flex min-w-0 items-center gap-2 truncate text-[13px] ${step === 'saving' ? 'text-[var(--text-primary)]' : 'text-[var(--text-secondary)]'}`}>
+              {step === 'saving' && <RefreshCw size={13} className="shrink-0 animate-spin text-[var(--accent)]" />}
+              <span className="truncate">{barHint}</span>
+            </p>
             {(frontFile || backFile) && (
-              <button
-                onClick={resetCurrentPair}
-                disabled={isBusy}
-                className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[11px] sm:text-xs font-bold text-white/75 transition-all hover:bg-white/10"
-              >
+              <button onClick={resetCurrentPair} disabled={isBusy} className="ui-btn ui-btn-ghost ui-btn-sm shrink-0">
                 <RotateCcw size={14} />
                 Reset paire
               </button>
@@ -1525,8 +1467,7 @@ export function StudioView() {
           <button
             onClick={primaryAction.onClick}
             disabled={primaryDisabled}
-            className="flex w-full items-center justify-center gap-3 rounded-2xl px-4 py-4 text-base font-black text-[#0d0c0b] transition-all disabled:cursor-not-allowed disabled:opacity-50"
-            style={{ background: 'var(--accent)' }}
+            className="ui-btn ui-btn-primary ui-btn-lg h-12 w-full text-[15px]"
           >
             {isBusy ? (
               <RefreshCw size={18} className="animate-spin" />
@@ -1538,44 +1479,42 @@ export function StudioView() {
             {primaryAction.label}
           </button>
 
-          {step === 'ready' && capturedPairs.length > 0 && (
-            <button
-              onClick={() => handleProcessBatch(false)}
-              disabled={isBusy}
-              className="mt-3 w-full rounded-2xl border border-[var(--accent)]/30 bg-[var(--accent-dim)] px-4 py-3 text-sm font-bold text-[var(--accent)] transition-all hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Traiter le lot maintenant
-            </button>
-          )}
-
           {capturedPairs.length > 0 && (
-            <button
-              onClick={() => handleProcessBatch(true)}
-              disabled={isBusy || (captureMode === 'halves' && !halvesBackDone)}
-              className="mt-3 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold text-white transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Traiter le lot et ouvrir la revue
-            </button>
+            <div className={`grid gap-2 ${step === 'ready' ? 'sm:grid-cols-2' : ''}`}>
+              {step === 'ready' && (
+                <button onClick={() => handleProcessBatch(false)} disabled={isBusy} data-active className="ui-btn w-full">
+                  Traiter le lot maintenant
+                </button>
+              )}
+              <button
+                onClick={() => handleProcessBatch(true)}
+                disabled={isBusy || (captureMode === 'halves' && !halvesBackDone)}
+                className="ui-btn w-full"
+              >
+                Traiter le lot et ouvrir la revue
+              </button>
+            </div>
           )}
         </div>
       </div>
 
       {previewUrl && (
         <div
-          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 p-4 backdrop-blur-xl"
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 p-4"
           onClick={() => setPreviewUrl(null)}
         >
           <img
             src={previewUrl}
             alt="Aperçu"
-            className="max-h-[90vh] max-w-[95vw] rounded-2xl object-contain shadow-2xl"
+            className="max-h-[90vh] max-w-[95vw] rounded-xl object-contain"
             onClick={(e) => e.stopPropagation()}
           />
           <button
             onClick={() => setPreviewUrl(null)}
-            className="absolute top-6 right-6 flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-lg text-white hover:bg-white/20"
+            className="ui-btn ui-btn-icon absolute right-4 top-[calc(env(safe-area-inset-top)+1rem)]"
+            aria-label="Fermer l’aperçu"
           >
-            ✕
+            <X size={18} />
           </button>
         </div>
       )}
@@ -1591,6 +1530,6 @@ export function StudioView() {
           }}
         />
       )}
-    </div>
+    </Page>
   );
 }
