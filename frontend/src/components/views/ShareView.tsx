@@ -9,12 +9,10 @@ import {
   Target,
   Globe,
   ExternalLink,
-  LayoutGrid,
   Maximize2,
   Layers,
   Star,
   Hash,
-  RefreshCw,
   Heart,
   Send,
   Copy,
@@ -29,7 +27,7 @@ import { errorMessage, toast } from '../../lib/feedback';
 import type { Card } from '../../types';
 import { RookieBadge } from '../shared/RookieBadge';
 import { Popover } from '../shared/Popover';
-import { Badge, EmptyState, Field, Modal, Spinner, ThemeToggleButton } from '../ui';
+import { EmptyState, Field, Modal, ThemeToggleButton } from '../ui';
 import { playerLastName, stripDiacritics } from '../../lib/playerName';
 import { cdnImg } from '../../lib/cdn';
 
@@ -69,17 +67,6 @@ const FILTER_LABELS: Record<string, string> = {
   all: 'Collection complète',
   collection: 'Collection',
   a_vendre: 'À vendre',
-};
-const GROUP_LABELS: Record<GroupBy, string> = {
-  none: 'Aucun',
-  year: 'Année',
-  player: 'Joueur',
-  team: 'Équipe',
-  brand: 'Marque',
-  set: 'Set',
-  type: 'Type',
-  rookie: 'RC',
-  graded: 'Grading',
 };
 const SORT_LABELS: Record<SortBy, string> = {
   recent: 'Plus récentes',
@@ -128,8 +115,8 @@ function sortCards(list: Card[], sortBy: SortBy): Card[] {
       case 'player': return playerLastName(a.player).localeCompare(playerLastName(b.player)) || (a.player ?? '').localeCompare(b.player ?? '');
       case 'brand': return (a.brand ?? '').localeCompare(b.brand ?? '') || (a.set_name ?? '').localeCompare(b.set_name ?? '');
       case 'set': return (a.set_name ?? '').localeCompare(b.set_name ?? '') || (a.player ?? '').localeCompare(b.player ?? '');
-      case 'price_desc': return (b.price ?? -1) - (a.price ?? -1);
-      case 'price_asc': return (a.price ?? Number.POSITIVE_INFINITY) - (b.price ?? Number.POSITIVE_INFINITY);
+      case 'price_desc': return (sharePrice(b) ?? -1) - (sharePrice(a) ?? -1);
+      case 'price_asc': return (sharePrice(a) ?? Number.POSITIVE_INFINITY) - (sharePrice(b) ?? Number.POSITIVE_INFINITY);
       case 'numbered': return parseNumberedValue(a.numbered) - parseNumberedValue(b.numbered);
       case 'rookie_first': return Number(b.is_rookie ?? false) - Number(a.is_rookie ?? false) || playerLastName(a.player).localeCompare(playerLastName(b.player));
       case 'recent':
@@ -139,8 +126,13 @@ function sortCards(list: Card[], sortBy: SortBy): Card[] {
 }
 
 const euro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2, minimumFractionDigits: 0 });
-function formatEuro(v: number): string {
-  return euro.format(v);
+function formatEuro(v: number | null | undefined): string {
+  return v == null ? '' : euro.format(v);
+}
+
+/** Prix public : prix Vinted s'il existe, sinon le prix de vente (même règle que l'app). */
+function sharePrice(card: Card): number | null {
+  return card.price ?? card.vinted_price ?? null;
 }
 
 /* ── Primitives locales (page publique, hors shell) ───────── */
@@ -159,13 +151,13 @@ function LogoMark({ size = 'sm' }: { size?: 'sm' | 'md' }) {
   );
 }
 
-function ShareHeader() {
+function ShareHeader({ selectionCount = 0, onOpenSelection }: { selectionCount?: number; onOpenSelection?: () => void }) {
   return (
-    <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--bg-primary)]">
+    <header className="sticky top-0 z-40 border-b border-[var(--border)] bg-[var(--bg-primary)]/85 backdrop-blur-xl">
       <div className="mx-auto flex h-14 w-full max-w-7xl items-center justify-between gap-3 px-4 sm:px-6">
         <div className="flex items-center gap-2.5">
           <LogoMark />
-          <span className="text-sm font-bold tracking-tight text-[var(--text-primary)]">CardVaults</span>
+          <span className="text-sm font-semibold tracking-tight text-[var(--text-primary)]">CardVaults</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="hidden items-center gap-1.5 text-xs text-[var(--text-muted)] sm:inline-flex">
@@ -173,6 +165,13 @@ function ShareHeader() {
             Collection partagée
           </span>
           <ThemeToggleButton />
+          {selectionCount > 0 && onOpenSelection && (
+            <button onClick={onOpenSelection} className="ui-btn ui-btn-primary ui-btn-sm">
+              <Heart size={14} fill="currentColor" />
+              <span className="tabular">{selectionCount}</span>
+              <span className="hidden sm:inline">Ma sélection</span>
+            </button>
+          )}
         </div>
       </div>
     </header>
@@ -193,13 +192,9 @@ function PhotoTag({ children, color = 'var(--text-primary)', background }: { chi
 
 function SectionHeading({ title, count }: { title: ReactNode; count: number }) {
   return (
-    <div className="flex items-center gap-2">
-      <h2 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h2>
-      <Badge>
-        <span className="tabular">{count}</span>
-      </Badge>
-      <span className="h-px flex-1 bg-[var(--border)]" />
-    </div>
+    <h2 className="text-base font-semibold tracking-tight text-[var(--text-primary)]">
+      {title} <span className="tabular ml-1 text-sm font-normal text-[var(--text-muted)]">{count}</span>
+    </h2>
   );
 }
 
@@ -360,10 +355,10 @@ function CardModal({ card, showPrice, onClose, interested, onToggleInterest }: {
         </div>
 
         <div className="min-w-0 flex-1 space-y-5">
-          {showPrice && card.price != null && (
+          {showPrice && sharePrice(card) != null && (
             <div>
               <p className="text-xs text-[var(--text-muted)]">Prix</p>
-              <p className="tabular text-2xl font-semibold tracking-tight text-[var(--price)]">{formatEuro(card.price)}</p>
+              <p className="tabular text-2xl font-semibold tracking-tight text-[var(--price)]">{formatEuro(sharePrice(card))}</p>
             </div>
           )}
 
@@ -413,7 +408,7 @@ function SharedCard({ card, showPrice, onClick, interested, onToggleInterest }: 
       tabIndex={0}
       onClick={onClick}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
-      className={`group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-xl border bg-[var(--bg-card)] text-left transition-[border-color,box-shadow] duration-200 hover:shadow-[var(--shadow-md)] focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${
+      className={`group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-xl border bg-[var(--bg-card)] text-left transition-[transform,border-color,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-[var(--shadow-md)] focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${
         interested ? 'border-[var(--accent)] ring-1 ring-[var(--accent)]' : 'border-[var(--border)] hover:border-[var(--border-strong)]'
       }`}
     >
@@ -439,16 +434,16 @@ function SharedCard({ card, showPrice, onClick, interested, onToggleInterest }: 
         {onToggleInterest && (
           <button
             onClick={(e) => { e.stopPropagation(); onToggleInterest(); }}
-            className={`absolute right-2 top-2 z-20 flex h-9 w-9 items-center justify-center rounded-full ring-1 transition-colors ${
+            className={`absolute right-2 top-2 z-20 flex h-8 w-8 items-center justify-center rounded-full ring-1 transition-[opacity,background-color] ${
               interested
                 ? 'bg-[var(--accent)] text-[var(--on-accent)] ring-transparent'
-                : 'dark-scope bg-black/60 text-white ring-white/15 hover:bg-black/80'
+                : 'dark-scope bg-black/60 text-white ring-white/15 opacity-0 hover:bg-black/80 focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100'
             }`}
             title={interested ? 'Retirer de ma sélection' : 'Ça m’intéresse'}
             aria-label="Ça m'intéresse"
             aria-pressed={!!interested}
           >
-            <Heart size={16} fill={interested ? 'currentColor' : 'none'} />
+            <Heart size={15} fill={interested ? 'currentColor' : 'none'} />
           </button>
         )}
 
@@ -462,8 +457,8 @@ function SharedCard({ card, showPrice, onClick, interested, onToggleInterest }: 
       <div className="flex flex-1 flex-col gap-0.5 p-3">
         <div className="flex items-baseline justify-between gap-2">
           <p className="truncate text-[13px] font-semibold text-[var(--text-primary)]">{card.player || '—'}</p>
-          {showPrice && card.price != null && (
-            <span className="tabular shrink-0 text-[13px] font-semibold text-[var(--price)]">{formatEuro(card.price)}</span>
+          {showPrice && sharePrice(card) != null && (
+            <span className="tabular shrink-0 text-[13px] font-semibold text-[var(--price)]">{formatEuro(sharePrice(card))}</span>
           )}
         </div>
         <p className="truncate text-xs text-[var(--text-muted)]">{meta || '—'}</p>
@@ -493,7 +488,8 @@ export function ShareView({ token }: { token: string }) {
   const [rookieOnly, setRookieOnly] = useState(initialSearch.get('rookie') === '1');
   const [gradedOnly, setGradedOnly] = useState(initialSearch.get('graded') === '1');
   const [vintedOnly, setVintedOnly] = useState(initialSearch.get('vinted') === '1');
-  const [groupBy, setGroupBy] = useState<GroupBy>((initialSearch.get('group') as GroupBy) || 'none');
+  // Regroupement conservé via l'URL (?group=) pour les liens existants ; plus exposé dans l'interface.
+  const [groupBy] = useState<GroupBy>((initialSearch.get('group') as GroupBy) || 'none');
   const [sortBy, setSortBy] = useState<SortBy>((initialSearch.get('sort') as SortBy) || 'recent');
 
   // ── Sélection « Ça m'intéresse » ──
@@ -516,7 +512,7 @@ export function ShareView({ token }: { token: string }) {
   }
 
   const interestTotal = useMemo(
-    () => (data?.cards ?? []).filter((c) => interest.has(c.id)).reduce((sum, c) => sum + (c.price ?? 0), 0),
+    () => (data?.cards ?? []).filter((c) => interest.has(c.id)).reduce((sum, c) => sum + (sharePrice(c) ?? 0), 0),
     [data, interest],
   );
 
@@ -542,10 +538,10 @@ export function ShareView({ token }: { token: string }) {
       if (c.numbered) parts.push(`/${c.numbered}`);
       if (c.card_type) parts.push(typeLabel[c.card_type] ?? c.card_type);
       if (c.is_rookie) parts.push('Rookie');
-      if (showPrice && c.price != null) parts.push(`${c.price}€`);
+      if (showPrice && sharePrice(c) != null) parts.push(`${sharePrice(c)}€`);
       return `- ${c.player ?? 'Carte'}${parts.length ? ` — ${parts.join(' · ')}` : ''}`;
     });
-    const total = submittedCards.reduce((s, c) => s + (c.price ?? 0), 0);
+    const total = submittedCards.reduce((s, c) => s + (sharePrice(c) ?? 0), 0);
     const header = `Ma sélection — ${submittedCards.length} carte${submittedCards.length > 1 ? 's' : ''}`;
     const totalLine = showPrice && total > 0 ? `\n\nTotal : ${total.toFixed(0)}€` : '';
     return `${header}\n${lines.join('\n')}${totalLine}`;
@@ -663,13 +659,30 @@ export function ShareView({ token }: { token: string }) {
 
   const showcaseSections = useMemo(() => {
     const sections = [
-      { key: 'rc', title: 'RC', cards: filtered.filter((card) => card.is_rookie).slice(0, 6) },
-      { key: 'psa', title: 'PSA', cards: filtered.filter((card) => card.grading_company === 'PSA').slice(0, 6) },
-      { key: 'sale', title: 'À vendre', cards: filtered.filter((card) => card.status === 'a_vendre' || card.vinted_url).slice(0, 6) },
-      { key: 'autos', title: 'Autos', cards: filtered.filter((card) => card.card_type === 'auto' || card.card_type === 'auto_patch').slice(0, 6) },
+      { key: 'autos', title: 'Autographes', all: filtered.filter((card) => card.card_type === 'auto' || card.card_type === 'auto_patch'), show: () => setTypeFilter('auto') },
+      { key: 'numbered', title: 'Petits tirages', all: [...filtered].filter((card) => parseNumberedValue(card.numbered) <= 99).sort((a, b) => parseNumberedValue(a.numbered) - parseNumberedValue(b.numbered)), show: () => setSortBy('numbered') },
+      { key: 'rc', title: 'Rookies', all: filtered.filter((card) => card.is_rookie), show: () => setRookieOnly(true) },
+      { key: 'graded', title: 'Gradées', all: filtered.filter((card) => card.grading_company), show: () => setGradedOnly(true) },
     ];
-    return sections.filter((section) => section.cards.length > 0);
+    return sections
+      .filter((section) => section.all.length >= 3)
+      .map((section) => ({ ...section, cards: section.all.slice(0, 12), total: section.all.length }));
   }, [filtered]);
+
+  const featured = useMemo(() => {
+    const score = (c: Card) =>
+      (c.card_type === 'auto' || c.card_type === 'auto_patch' ? 4 : 0) +
+      (c.grading_company ? 2 : 0) +
+      (c.numbered ? (parseNumberedValue(c.numbered) <= 25 ? 4 : parseNumberedValue(c.numbered) <= 99 ? 2 : 1) : 0) +
+      (c.is_rookie ? 1 : 0);
+    return cardsList.filter((c) => c.image_front_url).sort((a, b) => score(b) - score(a)).slice(0, 3);
+  }, [cardsList]);
+
+  const priceFloor = useMemo(() => {
+    if (!data?.show_prices) return null;
+    const values = cardsList.map(sharePrice).filter((v): v is number => v != null && v > 0);
+    return values.length ? Math.min(...values) : null;
+  }, [cardsList, data]);
 
   function resetFilters() {
     setPlayerFilter(null); setTeamFilter(null); setBrandFilter(null); setSetFilter(null);
@@ -683,9 +696,27 @@ export function ShareView({ token }: { token: string }) {
   if (loading) return (
     <div className="flex min-h-[100dvh] flex-col bg-[var(--bg-primary)]">
       <ShareHeader />
-      <div className="flex flex-1 items-center justify-center">
-        <Spinner label="Chargement de la collection…" />
-      </div>
+      <main className="mx-auto w-full max-w-7xl flex-1 space-y-8 px-4 py-6 sm:px-6 sm:py-10" aria-busy="true" aria-label="Chargement de la collection">
+        <div className="space-y-4">
+          <div className="h-9 w-2/3 max-w-md animate-pulse rounded-lg bg-[var(--bg-elevated)] sm:h-12" />
+          <div className="h-4 w-full max-w-lg animate-pulse rounded bg-[var(--bg-elevated)]" />
+          <div className="flex gap-6 pt-2">
+            {Array.from({ length: 4 }).map((_, i) => <div key={i} className="h-10 w-16 animate-pulse rounded-lg bg-[var(--bg-elevated)]" />)}
+          </div>
+        </div>
+        <div className="h-9 w-full animate-pulse rounded-lg bg-[var(--bg-elevated)]" />
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-3 sm:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] sm:gap-4">
+          {Array.from({ length: 10 }).map((_, i) => (
+            <div key={i} className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-card)]">
+              <div className="aspect-[3/4] animate-pulse bg-[var(--bg-elevated)]" />
+              <div className="space-y-2 p-3">
+                <div className="h-3 w-2/3 animate-pulse rounded bg-[var(--bg-elevated)]" />
+                <div className="h-2.5 w-1/2 animate-pulse rounded bg-[var(--bg-elevated)]" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </main>
     </div>
   );
 
@@ -707,37 +738,72 @@ export function ShareView({ token }: { token: string }) {
 
   return (
     <div className="flex min-h-[100dvh] flex-col overflow-x-clip bg-[var(--bg-primary)]">
-      <ShareHeader />
+      <ShareHeader selectionCount={selectionCount} onOpenSelection={() => setSubmitOpen(true)} />
 
       <main className={`mx-auto w-full max-w-7xl flex-1 space-y-6 px-4 py-5 sm:px-6 sm:py-8 ${selectionCount > 0 ? 'pb-32' : ''}`}>
         {/* En-tête de la vitrine */}
-        <section className="space-y-3">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-2xl">
+        <section className="grid items-center gap-8 pt-1 sm:pt-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+          <div className="min-w-0 space-y-4 sm:space-y-5">
+            <span className="hidden h-7 items-center gap-2 rounded-full border sm:inline-flex border-[var(--border-strong)] px-3 text-xs text-[var(--text-secondary)]">
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--green)]" />
+              {FILTER_LABELS[data.filter] ?? 'Collection'} · mise à jour en direct
+            </span>
+            <h1 className="text-balance text-3xl font-semibold tracking-[-0.03em] text-[var(--text-primary)] sm:text-5xl">
               {data.title || FILTER_LABELS[data.filter] || 'Ma collection'}
             </h1>
-            <p className="mt-1 text-[13px] text-[var(--text-muted)]">
-              <span className="tabular">{data.card_count}</span> carte{data.card_count > 1 ? 's' : ''}
-              {data.show_prices ? ' · prix indiqués' : ''}
+            <p className="max-w-xl text-sm leading-relaxed text-[var(--text-secondary)] sm:text-[15px]">
+              Parcours la collection, ajoute à ta sélection les cartes qui t'intéressent{' '}
+              <Heart size={14} className="inline -mt-0.5 text-[var(--accent)]" />, puis envoie ta demande : le collectionneur te recontacte.
             </p>
+            <dl className="flex flex-wrap gap-x-6 gap-y-3 pt-1 sm:gap-x-8">
+              {[
+                { label: 'cartes', value: data.card_count },
+                { label: 'rookies', value: stats.rookieCount },
+                { label: 'autographes', value: stats.autos },
+                { label: 'numérotées', value: stats.numbered },
+                { label: 'gradées', value: stats.graded },
+              ].filter((k) => k.value > 0).map((k) => (
+                <div key={k.label}>
+                  <dt className="sr-only">{k.label}</dt>
+                  <dd className="tabular text-xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-2xl">{k.value}</dd>
+                  <dd className="text-xs text-[var(--text-muted)]">{k.label}</dd>
+                </div>
+              ))}
+              {priceFloor != null && (
+                <div>
+                  <dd className="tabular text-xl font-semibold tracking-tight text-[var(--text-primary)] sm:text-2xl">{formatEuro(priceFloor)}</dd>
+                  <dd className="text-xs text-[var(--text-muted)]">à partir de</dd>
+                </div>
+              )}
+            </dl>
           </div>
-          {(stats.rookieCount > 0 || stats.autos > 0 || stats.numbered > 0 || stats.graded > 0) && (
-            <div className="flex flex-wrap gap-1.5">
-              {stats.rookieCount > 0 && <Badge tone="blue"><span className="tabular">{stats.rookieCount}</span> RC</Badge>}
-              {stats.autos > 0 && <Badge tone="green"><span className="tabular">{stats.autos}</span> Auto</Badge>}
-              {stats.numbered > 0 && <Badge tone="accent"><span className="tabular">{stats.numbered}</span> Tirages</Badge>}
-              {stats.graded > 0 && <Badge><span className="tabular">{stats.graded}</span> Gradées</Badge>}
+
+          {featured.length >= 2 && (
+            <div className="relative mx-auto hidden h-[300px] w-[340px] lg:block" aria-hidden="true">
+              {featured.map((c, i) => {
+                const pose = [
+                  'left-[18px] top-[34px] -rotate-[9deg]',
+                  'left-[170px] top-[34px] rotate-[9deg]',
+                  'left-[94px] top-0 rotate-0 z-10',
+                ][i];
+                return (
+                  <button
+                    key={c.id}
+                    tabIndex={-1}
+                    onClick={() => setSelected(c)}
+                    className={`absolute w-[150px] overflow-hidden rounded-xl border border-[var(--border-strong)] bg-[var(--bg-card)] shadow-[var(--shadow-lg)] transition-transform duration-300 hover:-translate-y-2 ${pose}`}
+                  >
+                    <img src={cdnImg(c.image_front_url)} alt="" className="aspect-[3/4] w-full object-cover" />
+                  </button>
+                );
+              })}
             </div>
           )}
-          <p className="flex items-start gap-2 text-[13px] text-[var(--text-secondary)]">
-            <Heart size={15} className="mt-0.5 shrink-0 text-[var(--accent)]" />
-            <span>Touche le cœur des cartes qui t'intéressent, puis envoie ta sélection : le collectionneur te recontactera.</span>
-          </p>
         </section>
 
-        {/* Recherche, regroupement, tri */}
-        <div className="space-y-3">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        {/* Recherche, filtres, tri : restent visibles au défilement */}
+        <div className="sticky top-14 z-30 -mx-4 space-y-3 border-b border-[var(--border)] bg-[var(--bg-primary)]/85 px-4 py-3 backdrop-blur-xl sm:-mx-6 sm:px-6">
+          <div className="flex items-center gap-2">
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <div className="relative min-w-0 flex-1">
                 <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
@@ -759,26 +825,12 @@ export function ShareView({ token }: { token: string }) {
                   </button>
                 )}
               </div>
-              <button onClick={resetFilters} className="ui-btn ui-btn-icon shrink-0" title="Réinitialiser" aria-label="Réinitialiser les filtres">
-                <RefreshCw size={15} />
-              </button>
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:flex">
-              <div className="relative">
-                <LayoutGrid size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-                <select
-                  className="ui-select pl-8 sm:w-40"
-                  value={groupBy}
-                  onChange={(e) => setGroupBy(e.target.value as GroupBy)}
-                  aria-label="Regrouper par"
-                >
-                  {Object.entries(GROUP_LABELS).map(([v, l]) => <option key={v} value={v}>{v === 'none' ? 'Sans groupe' : l}</option>)}
-                </select>
-              </div>
-              <div className="relative">
+            <div className="flex shrink-0 gap-2">
+              <div className="relative w-[9.5rem] sm:w-auto">
                 <ArrowUpDown size={14} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
                 <select
-                  className="ui-select pl-8 sm:w-48"
+                  className="ui-select pl-8 sm:w-52"
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value as SortBy)}
                   aria-label="Trier par"
@@ -824,10 +876,19 @@ export function ShareView({ token }: { token: string }) {
           <div className="space-y-8">
             {showShowcase && showcaseSections.map((section) => (
               <section key={section.key} className="space-y-3">
-                <SectionHeading title={section.title} count={section.cards.length} />
-                <div className="-mx-4 flex snap-x gap-3 overflow-x-auto px-4 pb-1 no-scrollbar sm:-mx-6 sm:gap-4 sm:px-6">
+                <div className="flex items-baseline justify-between gap-3">
+                  <h2 className="text-base font-semibold tracking-tight text-[var(--text-primary)]">
+                    {section.title} <span className="tabular ml-1 text-sm font-normal text-[var(--text-muted)]">{section.total}</span>
+                  </h2>
+                  {section.total > section.cards.length || section.key !== 'numbered' ? (
+                    <button onClick={() => { section.show(); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-[13px] font-medium text-[var(--accent)] hover:underline">
+                      Voir tout
+                    </button>
+                  ) : null}
+                </div>
+                <div className="-mx-4 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-2 no-scrollbar sm:-mx-6 sm:scroll-px-6 sm:gap-4 sm:px-6">
                   {section.cards.map((card) => (
-                    <div key={`${section.key}-${card.id}`} className="w-[150px] shrink-0 snap-start sm:w-[180px]">
+                    <div key={`${section.key}-${card.id}`} className="w-[160px] shrink-0 snap-start sm:w-[196px]">
                       <SharedCard card={card} showPrice={data.show_prices} onClick={() => setSelected(card)} interested={interest.has(card.id)} onToggleInterest={() => toggleInterest(card.id)} />
                     </div>
                   ))}
@@ -852,10 +913,13 @@ export function ShareView({ token }: { token: string }) {
         )}
       </main>
 
-      <footer className="border-t border-[var(--border)] px-4 py-6">
-        <div className="mx-auto flex max-w-7xl items-center justify-center gap-2 text-xs text-[var(--text-muted)]">
-          <LogoMark />
-          <span>Collection partagée avec <span className="font-medium text-[var(--text-secondary)]">CardVaults</span></span>
+      <footer className="mt-12 border-t border-[var(--border)] px-4 py-8">
+        <div className="mx-auto flex max-w-7xl flex-col items-center justify-between gap-3 text-xs text-[var(--text-muted)] sm:flex-row">
+          <span className="inline-flex items-center gap-2">
+            <LogoMark />
+            <span>Vitrine propulsée par <span className="font-medium text-[var(--text-secondary)]">CardVaults</span></span>
+          </span>
+          <span>Les prix et la disponibilité sont indicatifs : confirme avec le collectionneur.</span>
         </div>
       </footer>
 
@@ -933,8 +997,8 @@ export function ShareView({ token }: { token: string }) {
                         <X size={14} />
                       </button>
                       <div className="mt-1 truncate text-xs font-medium text-[var(--text-primary)]" title={c.player ?? ''}>{c.player ?? '—'}</div>
-                      {data.show_prices && c.price != null && (
-                        <div className="tabular text-xs font-semibold text-[var(--price)]">{formatEuro(c.price)}</div>
+                      {data.show_prices && sharePrice(c) != null && (
+                        <div className="tabular text-xs font-semibold text-[var(--price)]">{formatEuro(sharePrice(c))}</div>
                       )}
                     </div>
                   ))}

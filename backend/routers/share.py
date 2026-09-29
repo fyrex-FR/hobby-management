@@ -7,6 +7,7 @@ import httpx
 
 from .auth import current_user
 from .cards import fetch_all_rows, resolve_user_id
+from services.share_public import public_card
 
 router = APIRouter()
 
@@ -136,15 +137,7 @@ async def view_share(token: str):
     async with httpx.AsyncClient() as client:
         cards = await fetch_all_rows(client, f"{SUPABASE_URL}/rest/v1/cards", params)
 
-    # 3. Masquer les prix si nécessaire
-    if not show_prices:
-        for card in cards:
-            card.pop("price", None)
-            card.pop("purchase_price", None)
-
-    # Toujours masquer les infos sensibles
-    for card in cards:
-        card.pop("user_id", None)
+    cards = [public_card(card, show_prices) for card in cards]
 
     return {
         "title": share.get("title"),
