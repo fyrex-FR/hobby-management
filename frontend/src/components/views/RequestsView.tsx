@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Inbox, Check, Archive, Trash2, MessageSquare, Clock, Download, ShoppingBag, ImageOff } from 'lucide-react';
+import { confirmDialog, errorMessage, toast } from '../../lib/feedback';
 import { useRequests, useUpdateRequest, useDeleteRequest } from '../../hooks/useRequests';
 import { useCards, useUpdateCard } from '../../hooks/useCards';
 import { CardDetail } from '../shared/CardDetail';
@@ -99,7 +100,14 @@ export function RequestsView() {
                 }));
                 if (req.status === 'new') updateRequest.mutate({ id: req.id, status: 'contacted' });
               }}
-              onDelete={() => { if (confirm('Supprimer cette demande ?')) deleteRequest.mutate(req.id); }}
+              onDelete={async () => {
+                const ok = await confirmDialog({ title: 'Supprimer cette demande ?', description: `De ${req.viewer_handle ?? 'ce visiteur'}. Cette action est définitive.`, danger: true });
+                if (!ok) return;
+                deleteRequest.mutate(req.id, {
+                  onSuccess: () => toast.success('Demande supprimée'),
+                  onError: (e) => toast.error('Suppression impossible', { description: errorMessage(e) }),
+                });
+              }}
             />
           ))}
         </div>
@@ -205,9 +213,20 @@ function RequestCard({
           {sellableIds.length > 0 && (
             <button
               onClick={async () => {
-                if (!confirm(`Passer ${sellableIds.length} carte(s) en vendu ?\n(les cartes en plusieurs exemplaires seront décrémentées de 1)`)) return;
+                const n = sellableIds.length;
+                const ok = await confirmDialog({
+                  title: `Passer ${n} carte${n > 1 ? 's' : ''} en vendu ?`,
+                  description: 'Les cartes en plusieurs exemplaires sont décrémentées de 1.',
+                  confirmLabel: 'Marquer vendu',
+                });
+                if (!ok) return;
                 setMarkingSold(true);
-                try { await onMarkSold(sellableIds); } finally { setMarkingSold(false); }
+                try {
+                  await onMarkSold(sellableIds);
+                  toast.success(`${n} carte${n > 1 ? 's' : ''} marquée${n > 1 ? 's' : ''} vendue${n > 1 ? 's' : ''}`);
+                } catch (e) {
+                  toast.error('Impossible de marquer les cartes vendues', { description: errorMessage(e) });
+                } finally { setMarkingSold(false); }
               }}
               disabled={markingSold}
               title="Marquer ces cartes comme vendues (décrémente les multi-exemplaires)"

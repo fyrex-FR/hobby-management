@@ -281,3 +281,4 @@ export function Modal({
   );
 }
 export { ThemeSwitcher, ThemeToggleButton } from './ThemeSwitcher';
+export { FeedbackHost } from './Feedback';

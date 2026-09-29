@@ -29,7 +29,7 @@ import { SPORTS, type Card, type CardType, type GradingCompany, type GradingStat
 import { GradingBadge } from './GradingBadge';
 import { StatusBadge } from './StatusBadge';
 import { CardBadge } from './CardBadge';
-import { useDeleteCard, useUpdateCard } from '../../hooks/useCards';
+import { useDeleteCardsWithUndo, useUpdateCard } from '../../hooks/useCards';
 import { useFolders } from '../../hooks/useFolders';
 import { useIdentify } from '../../hooks/useIdentify';
 import { EbaySoldItems } from './EbaySoldItems';
@@ -290,7 +290,7 @@ interface Props {
 }
 
 export function CardDetail({ card, onClose }: Props) {
-  const deleteCard = useDeleteCard();
+  const deleteWithUndo = useDeleteCardsWithUndo();
   const updateCard = useUpdateCard();
   const identify = useIdentify();
   const queryClient = useQueryClient();
@@ -472,9 +472,8 @@ export function CardDetail({ card, onClose }: Props) {
     }
   }
 
-  async function handleDelete() {
-    if (!confirm(`Supprimer ${card.player ?? 'cette carte'} ?`)) return;
-    await deleteCard.mutateAsync(card.id);
+  function handleDelete() {
+    deleteWithUndo([card.id], `${card.player ?? 'Carte'} supprimée`);
     onClose();
   }
 
@@ -1088,7 +1087,7 @@ export function CardDetail({ card, onClose }: Props) {
                 </>
               ) : (
                 <>
-                  <button onClick={handleDelete} disabled={deleteCard.isPending} className="ui-btn ui-btn-danger mr-auto">
+                  <button onClick={handleDelete} disabled={false} className="ui-btn ui-btn-danger mr-auto">
                     <Trash2 size={15} />
                     Supprimer
                   </button>
