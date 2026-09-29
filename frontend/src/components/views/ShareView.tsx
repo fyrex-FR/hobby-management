@@ -285,7 +285,7 @@ function CardTags({ card }: { card: Card }) {
   );
 }
 
-function CardModal({ card, showPrice, onClose }: { card: Card; showPrice: boolean; onClose: () => void }) {
+function CardModal({ card, showPrice, onClose, interested, onToggleInterest }: { card: Card; showPrice: boolean; onClose: () => void; interested: boolean; onToggleInterest: () => void }) {
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
 
   const details = [
@@ -304,7 +304,22 @@ function CardModal({ card, showPrice, onClose }: { card: Card; showPrice: boolea
   const subtitle = [card.year, card.brand, card.set_name].filter(Boolean).join(' · ');
 
   return (
-    <Modal onClose={onClose} size="lg" zIndex={90} title={card.player || 'Joueur inconnu'} subtitle={subtitle || undefined}>
+    <Modal
+      onClose={onClose}
+      size="lg"
+      zIndex={90}
+      title={card.player || 'Joueur inconnu'}
+      subtitle={subtitle || undefined}
+      footer={
+        <>
+          <button className="ui-btn" onClick={onClose}>Fermer</button>
+          <button className={`ui-btn ${interested ? '' : 'ui-btn-primary'}`} data-active={interested} onClick={onToggleInterest}>
+            <Heart size={15} fill={interested ? 'currentColor' : 'none'} />
+            {interested ? 'Dans ta sélection' : 'Ça m\'intéresse'}
+          </button>
+        </>
+      }
+    >
       <div className="flex flex-col gap-5 sm:flex-row">
         <div className="w-full shrink-0 space-y-2 sm:w-[44%]">
           <div className="relative overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)]">
@@ -840,7 +855,7 @@ export function ShareView({ token }: { token: string }) {
         </div>
       </footer>
 
-      {selected && <CardModal card={selected} showPrice={data.show_prices} onClose={() => setSelected(null)} />}
+      {selected && <CardModal card={selected} showPrice={data.show_prices} onClose={() => setSelected(null)} interested={interest.has(selected.id)} onToggleInterest={() => toggleInterest(selected.id)} />}
 
       {/* Barre de sélection « Ça m'intéresse » */}
       {selectionCount > 0 && !submitOpen && (

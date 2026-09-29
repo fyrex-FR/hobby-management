@@ -50,7 +50,7 @@ function ImageDropzone({
         ? 'border-[var(--border)] bg-[var(--bg-elevated)]'
         : 'border-dashed border-[var(--border-strong)] bg-[var(--bg-secondary)] hover:border-[var(--border-accent)] hover:bg-[var(--bg-elevated)]'
         }`}
-      style={{ aspectRatio: '2/3' }}
+      style={{ aspectRatio: '3/4', maxHeight: 'min(42vh, 360px)' }}
     >
       {preview ? (
         <>

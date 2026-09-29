@@ -93,3 +93,10 @@ export function getCardAlerts(card: Partial<Card>): CardAlert[] {
 
   return alerts;
 }
+
+/** « 23 » ou « #23 » → « #23 » (certains numéros sont stockés avec le #). */
+export function formatCardNumber(n: string | null | undefined): string | null {
+  const v = n?.trim();
+  if (!v) return null;
+  return v.startsWith('#') ? v : `#${v}`;
+}

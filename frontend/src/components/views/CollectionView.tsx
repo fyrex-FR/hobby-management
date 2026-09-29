@@ -43,6 +43,7 @@ import { EbayLogo, VintedLogo } from '../shared/EbayLogo';
 import { PricingFlow } from '../shared/PricingFlow';
 import { VintedPublishFlow } from '../shared/VintedPublishFlow';
 import { Popover } from '../shared/Popover';
+import { Modal } from '../ui';
 import { ActiveFilterChips, FilterRow, SearchField, StatusTabs } from '../shared/CollectionFilterBar';
 import { cdnImg } from '../../lib/cdn';
 import { RookieBadge } from '../shared/RookieBadge';
@@ -95,12 +96,11 @@ declare module '@tanstack/react-table' {
 function TableActions({ card, onEdit }: { card: Card; onEdit: () => void }) {
   const deleteCard = useDeleteCard();
   return (
-    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+    <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100">
       <button
         onClick={(e) => { e.stopPropagation(); onEdit(); }}
-        className="p-2 rounded-xl transition-all hover:bg-white/10 active:scale-90"
+        className="ui-btn ui-btn-sm ui-btn-icon"
         title="Modifier"
-        style={{ color: 'var(--text-primary)', border: '1px solid var(--border)' }}
       >
         <Pencil size={14} />
       </button>
@@ -110,9 +110,8 @@ function TableActions({ card, onEdit }: { card: Card; onEdit: () => void }) {
           if (!confirm(`Supprimer ${card.player ?? 'cette carte'} ?`)) return;
           await deleteCard.mutateAsync(card.id);
         }}
-        className="p-2 rounded-xl transition-all hover:bg-red-500/10 active:scale-90"
+        className="ui-btn ui-btn-sm ui-btn-icon ui-btn-danger"
         title="Supprimer"
-        style={{ color: 'var(--red, #ef4444)', border: '1px solid hsla(0, 84%, 60%, 0.2)' }}
       >
         <Trash2 size={14} />
       </button>
@@ -138,10 +137,7 @@ function QuickRookieToggle({ card }: { card: Card }) {
       {card.is_rookie ? (
         <RookieBadge compact />
       ) : (
-        <span
-          className="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold"
-          style={{ background: 'var(--bg-elevated)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}
-        >
+        <span className="inline-flex h-5 items-center rounded-md border border-dashed border-[var(--border-strong)] px-1.5 text-[10px] font-semibold text-[var(--text-muted)]">
           RC
         </span>
       )}
@@ -157,8 +153,7 @@ function QuickTypeSelect({ card }: { card: Card }) {
       value={card.card_type ?? ''}
       onClick={(e) => e.stopPropagation()}
       onChange={(e) => updateCard.mutate({ id: card.id, card_type: (e.target.value || null) as CardType | null })}
-      className="rounded-lg px-2 py-1 text-[11px] font-medium outline-none transition-all min-w-[108px]"
-      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+      className="ui-select h-8 min-w-[112px] text-xs"
     >
       <option value="">—</option>
       {CARD_TYPE_OPTIONS.map((option) => (
@@ -176,8 +171,7 @@ function QuickStatusSelect({ card }: { card: Card }) {
       value={card.status}
       onClick={(e) => e.stopPropagation()}
       onChange={(e) => updateCard.mutate({ id: card.id, status: e.target.value as CardStatus })}
-      className="rounded-lg px-2 py-1 text-[11px] font-medium outline-none transition-all min-w-[118px]"
-      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
+      className="ui-select h-8 min-w-[120px] text-xs"
     >
       {STATUS_OPTIONS.map((option) => (
         <option key={option.value} value={option.value}>{option.label}</option>
@@ -214,8 +208,8 @@ function QuickParallelInput({ card }: { card: Card }) {
           (e.currentTarget as HTMLInputElement).blur();
         }
       }}
-      className="w-full rounded-lg px-2 py-1 text-[11px] outline-none transition-all"
-      style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--accent)' }}
+      className="ui-input h-7 px-2 text-xs"
+      style={{ color: 'var(--accent)' }}
     />
   );
 }
@@ -1409,7 +1403,7 @@ function FolderQuickAssign({
         <div
           ref={popRef}
           style={{ position: 'fixed', top: pos.top, left: pos.left, width: 224 }}
-          className="z-[80] max-h-[280px] overflow-auto rounded-2xl border border-white/10 bg-[var(--bg-elevated)] p-1.5 shadow-2xl"
+          className="popover-surface z-[90] max-h-[280px] overflow-auto p-1"
           onClick={(e) => e.stopPropagation()}
         >
           {folders.map((f) => {
@@ -1419,13 +1413,13 @@ function FolderQuickAssign({
                 key={f.id}
                 type="button"
                 onClick={(e) => toggle(e, f.id)}
-                className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs font-semibold hover:bg-white/10"
+                className="ui-menu-item"
               >
                 <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${active ? 'border-[var(--accent)] bg-[var(--accent)] text-black' : 'border-white/20 text-transparent'}`}>
                   <Check size={11} />
                 </span>
                 {f.emoji && <span>{f.emoji}</span>}
-                <span className="truncate text-white/90">{f.name}</span>
+                <span className="truncate">{f.name}</span>
               </button>
             );
           })}
@@ -1463,13 +1457,13 @@ function EmojiPicker({ value, onChange }: { value: string; onChange: (emoji: str
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex h-[38px] w-12 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-lg outline-none hover:bg-white/10 focus:border-[var(--accent)]/50"
+        className="ui-btn ui-btn-icon h-9 w-11 text-lg"
         title="Choisir un emoji"
       >
         {value || <span className="text-[var(--text-muted)]"><Smile size={16} /></span>}
       </button>
       {open && (
-        <div className="absolute left-0 top-[44px] z-20 w-60 rounded-2xl border border-white/10 bg-[var(--bg-elevated)] p-2 shadow-2xl">
+        <div className="popover-surface absolute left-0 top-[42px] z-20 w-60 p-2">
           <div className="grid grid-cols-8 gap-1">
             <button
               type="button"
@@ -1525,49 +1519,30 @@ function FolderManager({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm" onClick={onClose}>
-      <div
-        className="w-full max-w-md rounded-3xl border border-white/10 bg-[var(--bg-card)] p-5 shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-sm font-black uppercase tracking-widest text-white">Dossiers</h3>
-          <button onClick={onClose} className="rounded-lg p-1.5 text-[var(--text-muted)] hover:bg-white/10 hover:text-white">
-            <X size={16} />
-          </button>
-        </div>
-
-        {/* Création */}
-        <div className="mb-4 flex items-center gap-2">
-          <EmojiPicker value={newEmoji} onChange={setNewEmoji} />
-          <input
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); }}
-            placeholder="Nom du dossier"
-            className="flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm outline-none focus:border-[var(--accent)]/50"
-          />
-          <button
-            onClick={handleCreate}
-            disabled={busy || !newName.trim()}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-[var(--accent)]/30 bg-[var(--accent-dim)] px-3 py-2 text-xs font-bold text-[var(--accent)] hover:opacity-90 disabled:opacity-40"
-          >
-            <FolderPlus size={14} />
-            Créer
-          </button>
-        </div>
-
-        {/* Liste */}
-        <div className="max-h-[50vh] space-y-2 overflow-auto">
-          {folders.length === 0 && (
-            <p className="py-6 text-center text-xs text-[var(--text-muted)]">Aucun dossier pour le moment.</p>
-          )}
-          {folders.map((f) => (
-            <FolderRow key={f.id} folder={f} onSave={(emoji, name) => updateFolder.mutate({ id: f.id, emoji, name })} onDelete={() => onDelete(f.id)} />
-          ))}
-        </div>
+    <Modal onClose={onClose} title="Dossiers" subtitle="Range tes cartes par thème : PC, à grader, lots…" size="md" zIndex={60}>
+      <div className="mb-4 flex items-center gap-2">
+        <EmojiPicker value={newEmoji} onChange={setNewEmoji} />
+        <input
+          value={newName}
+          onChange={(e) => setNewName(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleCreate(); }}
+          placeholder="Nouveau dossier"
+          className="ui-input flex-1"
+        />
+        <button onClick={handleCreate} disabled={busy || !newName.trim()} className="ui-btn ui-btn-primary">
+          <FolderPlus size={15} />
+          Créer
+        </button>
       </div>
-    </div>
+      <div className="space-y-2">
+        {folders.length === 0 && (
+          <p className="py-6 text-center text-[13px] text-[var(--text-muted)]">Aucun dossier pour le moment.</p>
+        )}
+        {folders.map((f) => (
+          <FolderRow key={f.id} folder={f} onSave={(emoji, name) => updateFolder.mutate({ id: f.id, emoji, name })} onDelete={() => onDelete(f.id)} />
+        ))}
+      </div>
+    </Modal>
   );
 }
 
@@ -1585,24 +1560,24 @@ function FolderRow({
   const dirty = emoji !== (folder.emoji ?? '') || name !== folder.name;
 
   return (
-    <div className="flex items-center gap-2 rounded-xl border border-white/5 bg-white/[0.03] p-2">
+    <div className="flex items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] p-2">
       <EmojiPicker value={emoji} onChange={setEmoji} />
       <input
         value={name}
         onChange={(e) => setName(e.target.value)}
-        className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm outline-none focus:border-[var(--accent)]/50"
+        className="ui-input h-9 flex-1"
       />
       <button
         onClick={() => name.trim() && onSave(emoji.trim() || null, name.trim())}
         disabled={!dirty || !name.trim()}
-        className="rounded-lg p-2 text-[var(--accent)] hover:bg-[var(--accent-dim)] disabled:opacity-30"
+        className="ui-btn ui-btn-ghost ui-btn-icon text-[var(--accent)]"
         title="Enregistrer"
       >
         <Check size={15} />
       </button>
       <button
         onClick={onDelete}
-        className="rounded-lg p-2 text-red-300 hover:bg-red-500/15"
+        className="ui-btn ui-btn-ghost ui-btn-icon ui-btn-danger"
         title="Supprimer"
       >
         <Trash2 size={15} />

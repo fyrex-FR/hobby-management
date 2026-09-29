@@ -4,6 +4,7 @@ import type { Card } from '../../types';
 import { useUpdateCard } from '../../hooks/useCards';
 import { calculateEbayPrice } from '../../lib/marketplacePricing';
 import { cdnImg } from '../../lib/cdn';
+import { formatCardNumber } from '../../lib/cardQuality';
 import { EbaySoldItems } from './EbaySoldItems';
 import { EbayLogo } from './EbayLogo';
 import { EmptyState, Field, Modal, Notice } from '../ui';
@@ -13,7 +14,7 @@ function buildPriceSearchText(card: Card): string {
     card.player,
     card.year,
     card.set_name || card.brand,
-    card.card_number ? `#${card.card_number}` : null,
+    formatCardNumber(card.card_number),
     card.insert_name,
     card.parallel_name,
     card.numbered,
@@ -92,7 +93,7 @@ export function PricingFlow({ cards, onClose }: Props) {
   const query = buildPriceSearchText(card);
   const rawSoldUrl = `https://www.ebay.fr/sch/i.html?_nkw=${encodeURIComponent(query).replace(/%20/g, '+')}&LH_Sold=1&LH_Complete=1&LH_PrefLoc=2`;
   const progress = ((index + 1) / queue.length) * 100;
-  const details = [card.insert_name, card.parallel_name, card.card_number ? `#${card.card_number}` : null, card.numbered].filter(Boolean).join(' · ');
+  const details = [card.insert_name, card.parallel_name, formatCardNumber(card.card_number), card.numbered].filter(Boolean).join(' · ');
 
   return (
     <div className="fixed inset-0 z-[70] flex flex-col overflow-hidden bg-[var(--bg-primary)]" role="dialog" aria-modal="true" aria-label="Pricing en chaîne">

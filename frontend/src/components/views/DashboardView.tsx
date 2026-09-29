@@ -31,8 +31,8 @@ const int = new Intl.NumberFormat('fr-FR');
 
 function KpiStrip({ stats, onOpenCollection, onOpenSales }: { stats: ReturnType<typeof buildStats>; onOpenCollection: () => void; onOpenSales: () => void }) {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-      <div className="col-span-2 sm:col-span-1 [&>*]:h-full">
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="col-span-2 lg:col-span-1 [&>*]:h-full">
         <StatTile
           label="Valeur estimée"
           value={stats.totalValue > 0 ? euro.format(stats.totalValue) : '—'}

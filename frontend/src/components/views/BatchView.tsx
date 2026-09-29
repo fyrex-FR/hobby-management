@@ -36,6 +36,7 @@ async function fileToBase64(file: File): Promise<string> {
 
 export function BatchView() {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [dragging, setDragging] = useState(false);
   const setActiveView = useAppStore((state) => state.setActiveView);
   const setImportBatchId = useAppStore((state) => state.setImportBatchId);
   const allFiles = useRef<File[]>([]);
@@ -210,13 +211,23 @@ export function BatchView() {
           <button
             onClick={() => inputRef.current?.click()}
             disabled={running}
-            className="group flex min-h-48 w-full flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed border-[var(--border-strong)] bg-[var(--bg-secondary)] px-4 py-8 text-center transition-colors hover:border-[var(--border-accent)] hover:bg-[var(--bg-elevated)] disabled:cursor-not-allowed disabled:opacity-50"
+            onDragOver={(e) => { if (running) return; e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragging(false);
+              if (running) return;
+              selectFiles(Array.from(e.dataTransfer.files), pairMode, frontOnly);
+            }}
+            className={`group flex min-h-48 w-full flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors hover:border-[var(--border-accent)] hover:bg-[var(--bg-elevated)] disabled:cursor-not-allowed disabled:opacity-50 ${
+              dragging ? 'border-[var(--accent)] bg-[var(--accent-dim)]' : 'border-[var(--border-strong)] bg-[var(--bg-secondary)]'
+            }`}
           >
             <span className={`flex h-12 w-12 items-center justify-center rounded-full ${items.length ? 'bg-[var(--accent-dim)] text-[var(--accent)]' : 'bg-[var(--bg-elevated)] text-[var(--text-muted)] group-hover:text-[var(--accent)]'}`}>
               {items.length ? <CheckCircle2 size={22} /> : <Upload size={22} />}
             </span>
             <span className="text-sm font-medium text-[var(--text-primary)]">
-              {items.length ? `${items.length} carte(s) prête(s)` : 'Choisir les photos'}
+              {dragging ? 'Dépose les photos ici' : items.length ? `${items.length} carte(s) prête(s)` : 'Glisse tes photos ici ou clique pour choisir'}
             </span>
             <span className="text-xs text-[var(--text-muted)]">
               {frontOnly ? 'Une photo par carte' : 'Ordre attendu : recto 1, verso 1, recto 2, verso 2…'}

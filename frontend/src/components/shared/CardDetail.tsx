@@ -39,7 +39,7 @@ import { supabase } from '../../lib/supabase';
 import { compressImage } from '../../lib/storage';
 import { cdnImg } from '../../lib/cdn';
 import { RookieBadge } from './RookieBadge';
-import { normalizeParallelName } from '../../lib/cardQuality';
+import { formatCardNumber, normalizeParallelName } from '../../lib/cardQuality';
 import { apiFetch } from '../../api/client';
 import { downloadImage } from '../../lib/downloadImage';
 import { formatVintedNumberedBadge } from '../../lib/vintedPhotoBadge';
@@ -74,7 +74,7 @@ function buildPriceSearchText(card: Card): string {
     card.player,
     card.year,
     card.set_name || card.brand,
-    card.card_number ? `#${card.card_number}` : null,
+    formatCardNumber(card.card_number),
     card.insert_name,
     card.parallel_name,
     card.numbered,
@@ -550,7 +550,7 @@ export function CardDetail({ card, onClose }: Props) {
     { label: 'Set', value: card.set_name },
     { label: 'Insert', value: card.insert_name },
     { label: 'Parallel', value: normalizeParallelName(card.parallel_name) },
-    { label: 'N° carte', value: card.card_number, num: true },
+    { label: 'N° carte', value: formatCardNumber(card.card_number), num: true },
     { label: 'Tirage', value: card.numbered, num: true },
     { label: 'Rookie', value: card.is_rookie ? 'Oui' : null },
     { label: 'Quantité', value: (card.quantity ?? 1) > 1 ? String(card.quantity) : null, num: true },
