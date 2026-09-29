@@ -10,7 +10,7 @@ export function RookieBadge({ compact = false }: { compact?: boolean }) {
       }`}
       style={{
         color: 'var(--blue)',
-        background: 'color-mix(in srgb, var(--blue) 16%, #0c0c0f)',
+        background: 'color-mix(in srgb, var(--blue) 14%, var(--bg-card))',
         ['--tw-ring-color' as string]: 'color-mix(in srgb, var(--blue) 32%, transparent)',
       }}
       title="Rookie Card"

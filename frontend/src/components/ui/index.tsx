@@ -240,7 +240,7 @@ export function Modal({
           exit={{ opacity: 0 }}
           transition={{ duration: 0.15 }}
         >
-          <div className="absolute inset-0 bg-black/65 backdrop-blur-[2px]" onClick={dismissible ? onClose : undefined} />
+          <div className="absolute inset-0 bg-[var(--backdrop)] backdrop-blur-[2px]" onClick={dismissible ? onClose : undefined} />
           <motion.div
             ref={panelRef}
             tabIndex={-1}
@@ -280,3 +280,4 @@ export function Modal({
     document.body,
   );
 }
+export { ThemeSwitcher, ThemeToggleButton } from './ThemeSwitcher';

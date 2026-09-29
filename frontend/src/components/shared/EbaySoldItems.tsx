@@ -368,7 +368,7 @@ export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPri
                     {r.image && <img src={r.image} alt="" loading="lazy" className="aspect-[3/4] w-full object-cover" />}
                     <div className="flex flex-1 flex-col gap-0.5 p-1.5">
                       <p className="line-clamp-2 text-[11px] leading-tight text-[var(--text-muted)]">{r.title}</p>
-                      <p className="tabular mt-auto text-xs font-semibold text-[var(--accent)]">${r.price}</p>
+                      <p className="tabular mt-auto text-xs font-semibold text-[var(--price)]">${r.price}</p>
                     </div>
                   </button>
                 ))}
@@ -452,7 +452,7 @@ export function EbaySoldItems({ query, imageUrl, match, currentPrice, onApplyPri
                             className="ui-btn h-auto flex-col gap-0 py-1.5"
                           >
                             <span className="text-[11px] font-medium text-[var(--text-muted)]">{label}</span>
-                            <span className="tabular text-[13px] font-semibold text-[var(--accent)]">{formatEuro(eur)}</span>
+                            <span className="tabular text-[13px] font-semibold text-[var(--price)]">{formatEuro(eur)}</span>
                           </button>
                         );
                       })}

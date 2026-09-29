@@ -1,45 +1,98 @@
 @import "tailwindcss";
 
-:root {
+/* ------------------------------------------------------------------ */
+/* Charte couleur                                                       */
+/* Neutres zinc froids qui portent l'interface, un seul accent indigo   */
+/* électrique réservé à l'action principale, aux états actifs et au     */
+/* focus. Les prix sont en texte neutre (--price), pas en couleur.      */
+/* ------------------------------------------------------------------ */
+
+/* Thème sombre : par défaut, et forcé localement par .dark-scope
+   (pastilles sur photo, visionneuses plein écran, caméra). */
+:root,
+.dark-scope {
   color-scheme: dark;
 
-  /* --- Surfaces --- */
-  --bg-primary: #0A0A0C;
-  --bg-secondary: #101013;
-  --bg-card: #141417;
-  --bg-elevated: #1B1B1F;
+  --bg-primary: #09090B;
+  --bg-secondary: #0E0E11;
+  --bg-card: #121215;
+  --bg-elevated: #1A1A1E;
   --bg-hover: #232328;
+  --bg-popover: #151518;
+  --backdrop: rgb(0 0 0 / 0.66);
 
-  /* --- Accent (or CardVaults) --- */
-  --accent: #F5AF23;
-  --accent-light: #FFD166;
-  --accent-dim: hsla(39, 91%, 55%, 0.10);
-  --accent-glow: hsla(39, 91%, 55%, 0.18);
-  --on-accent: #111113;
+  --accent: #7366F5;
+  --accent-light: #8479F7;
+  --accent-dim: rgb(115 102 245 / 0.14);
+  --accent-glow: rgb(115 102 245 / 0.24);
+  --on-accent: #FFFFFF;
 
-  /* --- Sémantiques (utilisées partout, jamais déclarées jusqu'ici) --- */
-  --red: #F87171;
-  --green: #34D399;
-  --blue: #60A5FA;
-
-  /* --- Texte : muted remonté de zinc-600 à zinc-500 (contraste ≥ 4:1) --- */
-  --text-primary: #F4F4F5;
+  --text-primary: #EDEDEF;
   --text-secondary: #A1A1AA;
-  --text-muted: #75757F;
+  --text-muted: #71717A;
+  --price: var(--text-primary);
 
-  /* --- Bordures --- */
-  --border: hsla(0, 0%, 100%, 0.07);
-  --border-strong: hsla(0, 0%, 100%, 0.12);
-  --border-accent: hsla(39, 91%, 55%, 0.28);
+  --red: #FF6369;
+  --green: #3DD68C;
+  --blue: #52A8FF;
+  --violet: #B69CFF;
+  --orange: #FFA657;
 
-  /* --- Utilitaires --- */
+  --border: rgb(255 255 255 / 0.07);
+  --border-strong: rgb(255 255 255 / 0.12);
+  --border-accent: rgb(115 102 245 / 0.45);
+
   --radius-lg: 12px;
   --radius-xl: 16px;
   --blur-md: 12px;
 
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
-  --shadow-md: 0 4px 12px -2px rgb(0 0 0 / 0.4);
-  --shadow-lg: 0 16px 40px -8px rgb(0 0 0 / 0.6);
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --shadow-md: 0 4px 16px -4px rgb(0 0 0 / 0.5);
+  --shadow-lg: 0 24px 48px -12px rgb(0 0 0 / 0.7);
+}
+
+/* Thème clair. Appliqué via <html data-theme="light"> (script inline dans
+   index.html, avant le premier rendu). */
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --bg-primary: #FAFAFA;
+  --bg-secondary: #F4F4F5;
+  --bg-card: #FFFFFF;
+  --bg-elevated: #F4F4F5;
+  --bg-hover: #EAEAEC;
+  --bg-popover: #FFFFFF;
+  --backdrop: rgb(9 9 11 / 0.32);
+
+  --accent: #5B4DE8;
+  --accent-light: #6B5EEE;
+  --accent-dim: rgb(91 77 232 / 0.08);
+  --accent-glow: rgb(91 77 232 / 0.14);
+  --on-accent: #FFFFFF;
+
+  --text-primary: #09090B;
+  --text-secondary: #52525B;
+  --text-muted: #71717A;
+  --price: var(--text-primary);
+
+  --red: #DC2626;
+  --green: #15803D;
+  --blue: #2563EB;
+  --violet: #7C3AED;
+  --orange: #C2410C;
+
+  --border: rgb(9 9 11 / 0.08);
+  --border-strong: rgb(9 9 11 / 0.14);
+  --border-accent: rgb(91 77 232 / 0.35);
+
+  --shadow-sm: 0 1px 2px 0 rgb(9 9 11 / 0.05);
+  --shadow-md: 0 4px 16px -4px rgb(9 9 11 / 0.08);
+  --shadow-lg: 0 24px 48px -12px rgb(9 9 11 / 0.18);
+}
+
+/* .dark-scope doit aussi imposer couleur de texte et color-scheme localement. */
+.dark-scope {
+  color-scheme: dark;
 }
 
 @theme {
@@ -73,8 +126,7 @@ body {
   margin: 0;
   background: var(--bg-primary);
   color: var(--text-primary);
-  font-family: 'Inter', -apple-system, system-ui, sans-serif;
-  font-feature-settings: 'cv11', 'ss01';
+  font-family: 'Geist', 'Inter', -apple-system, system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   letter-spacing: -0.011em;
@@ -237,7 +289,7 @@ body {
   .ui-segmented .count { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 
   .popover-surface {
-    background: #17171A; border: 1px solid var(--border-strong);
+    background: var(--bg-popover); border: 1px solid var(--border-strong);
     border-radius: 12px; box-shadow: var(--shadow-lg);
   }
 

@@ -186,7 +186,7 @@ function CardRow({ card, onClick }: { card: Card; onClick: () => void }) {
         </span>
         {card.numbered && <Badge tone="accent" className="tabular">{card.numbered}</Badge>}
         {card.price != null && card.price > 0 && (
-          <span className="tabular hidden w-16 text-right text-[13px] font-medium text-[var(--accent)] sm:inline">{euro.format(card.price)}</span>
+          <span className="tabular hidden w-16 text-right text-[13px] font-medium text-[var(--price)] sm:inline">{euro.format(card.price)}</span>
         )}
         <ChevronRight size={15} className="text-[var(--text-muted)] group-hover:text-[var(--text-primary)]" />
       </div>

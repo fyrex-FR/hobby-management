@@ -191,7 +191,7 @@ export function EbaySaleReconcileModal({ cards, onClose }: Props) {
                     right={
                       <div className="flex shrink-0 items-center gap-1.5">
                         {card.price != null && (
-                          <span className="tabular mr-1 text-[13px] font-semibold text-[var(--accent)]">{euro.format(card.price)}</span>
+                          <span className="tabular mr-1 text-[13px] font-semibold text-[var(--price)]">{euro.format(card.price)}</span>
                         )}
                         <a href={card.ebay_url!} target="_blank" rel="noreferrer" className="ui-btn ui-btn-ghost ui-btn-sm ui-btn-icon" title="Ouvrir l’annonce eBay" aria-label="Ouvrir l’annonce eBay">
                           <ExternalLink size={13} />

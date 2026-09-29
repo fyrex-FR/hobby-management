@@ -56,7 +56,7 @@ function ImageDropzone({
         <>
           <img src={preview} alt={label} className="h-full w-full object-contain" />
           <span className="absolute left-2 top-2"><Badge>{label}</Badge></span>
-          <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1.5 bg-black/60 py-2 text-xs font-medium text-[var(--text-primary)] opacity-0 transition-opacity group-hover:opacity-100">
+          <div className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-1.5 dark-scope bg-black/60 py-2 text-xs font-medium text-[var(--text-primary)] opacity-0 transition-opacity group-hover:opacity-100">
             <Camera size={14} /> Changer
           </div>
         </>

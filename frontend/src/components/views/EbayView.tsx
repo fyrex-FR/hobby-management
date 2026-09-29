@@ -697,7 +697,7 @@ function ListingsTab({
                         {(card.quantity ?? 1) > 1 && (
                           <span title={`${card.quantity} exemplaires en ligne`}><Badge tone="blue">×{card.quantity}</Badge></span>
                         )}
-                        {price != null && <span className="tabular mx-1 text-sm font-semibold text-[var(--accent)]">{euro.format(price)}</span>}
+                        {price != null && <span className="tabular mx-1 text-sm font-semibold text-[var(--price)]">{euro.format(price)}</span>}
                         <button onClick={() => setEditCard(card)} className="ui-btn ui-btn-ghost ui-btn-sm" title="Modifier l’annonce">
                           <Pencil size={13} /> <span className="hidden sm:inline">Modifier</span>
                         </button>
@@ -735,7 +735,7 @@ function ListingsTab({
                   card={card}
                   right={
                     <div className="flex shrink-0 items-center gap-2">
-                      {price != null && <span className="tabular text-sm font-semibold text-[var(--accent)]">{euro.format(price)}</span>}
+                      {price != null && <span className="tabular text-sm font-semibold text-[var(--price)]">{euro.format(price)}</span>}
                       <button onClick={() => setPublishCard(card)} className="ui-btn ui-btn-primary ui-btn-sm">
                         <EbayLogo width={24} height={10} mono="#09090B" /> Publier
                       </button>

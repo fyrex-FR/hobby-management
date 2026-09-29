@@ -1112,7 +1112,7 @@ export function StudioView() {
             <Badge className="max-w-[200px] truncate">{cameraLabel}</Badge>
           </header>
 
-          <div className="relative min-h-[46vh] bg-black sm:aspect-[4/3] sm:min-h-0">
+          <div className="relative min-h-[46vh] dark-scope bg-black sm:aspect-[4/3] sm:min-h-0">
             {cameraError ? (
               <div className="absolute inset-0 flex items-center justify-center">
                 <EmptyState icon={CameraOff} title="Caméra indisponible" description={cameraError} />
@@ -1122,7 +1122,7 @@ export function StudioView() {
                 <div className="absolute inset-0 flex items-center justify-center p-3 sm:p-4">
                   <div
                     ref={frameBoxRef}
-                    className="relative overflow-hidden rounded-lg border border-[var(--border)] bg-black"
+                    className="relative overflow-hidden rounded-lg border border-[var(--border)] dark-scope bg-black"
                     style={{ height: '100%', maxWidth: '100%', aspectRatio: rotated90 ? 1 / videoAspect : videoAspect, containerType: 'size' }}
                   >
                     <video
@@ -1183,14 +1183,14 @@ export function StudioView() {
 
                 {/* Étape en cours, lisible de loin (mode trépied) */}
                 <div className="pointer-events-none absolute inset-x-0 top-4 flex justify-center px-4 sm:top-6">
-                  <div className="rounded-lg border border-[var(--border-strong)] bg-black/75 px-4 py-2 text-lg font-semibold tracking-wide text-[var(--text-primary)] sm:px-6 sm:text-2xl">
+                  <div className="rounded-lg border border-[var(--border-strong)] dark-scope bg-black/75 px-4 py-2 text-lg font-semibold tracking-wide text-[var(--text-primary)] sm:px-6 sm:text-2xl">
                     {stepLabel}
                   </div>
                 </div>
 
                 {autoCropEnabled && (
                   <div className="pointer-events-none absolute inset-x-0 bottom-16 flex justify-center px-4 sm:bottom-20">
-                    <div className="rounded-md border border-[var(--border-accent)] bg-black/75 px-3 py-1.5 text-xs font-medium text-[var(--accent)]">
+                    <div className="rounded-md border border-[var(--border-accent)] dark-scope bg-black/75 px-3 py-1.5 text-xs font-medium text-[var(--accent)]">
                       {adjustingFrame
                         ? 'Déplace le cadre et tire les coins pour matcher ta carte'
                         : 'Cadre fixe (format carte) — aligne ta carte dedans'}
@@ -1200,13 +1200,13 @@ export function StudioView() {
 
                 <div className="absolute bottom-3 left-1/2 flex w-[calc(100%-1.5rem)] -translate-x-1/2 flex-col items-center gap-2 sm:bottom-5 sm:w-auto">
                   {!cameraReady && (
-                    <div className="flex items-center gap-2 rounded-lg border border-[var(--border-strong)] bg-black/75 px-3 py-2 text-xs text-[var(--text-secondary)]">
+                    <div className="flex items-center gap-2 rounded-lg border border-[var(--border-strong)] dark-scope bg-black/75 px-3 py-2 text-xs text-[var(--text-secondary)]">
                       <RefreshCw size={13} className="animate-spin" />
                       Initialisation caméra…
                     </div>
                   )}
                   {cameraReady && (
-                    <div className="flex h-10 items-center gap-3 rounded-lg border border-[var(--border-strong)] bg-black/75 px-3">
+                    <div className="flex h-10 items-center gap-3 rounded-lg border border-[var(--border-strong)] dark-scope bg-black/75 px-3">
                       <span className="text-xs font-medium text-[var(--text-secondary)]">Zoom</span>
                       <input
                         type="range"
@@ -1281,11 +1281,11 @@ export function StudioView() {
                       <button
                         key={item.cardId}
                         onClick={() => setPreviewUrl(item.imageFrontUrl)}
-                        className="relative overflow-hidden rounded-md border border-[var(--border)] bg-black transition-colors hover:border-[var(--border-strong)]"
+                        className="relative overflow-hidden rounded-md border border-[var(--border)] dark-scope bg-black transition-colors hover:border-[var(--border-strong)]"
                         style={{ aspectRatio: '2/3' }}
                       >
                         <img src={item.imageFrontUrl} alt={`Recto ${i + 1}`} className="h-full w-full object-cover" />
-                        <span className="tabular absolute left-1 top-1 rounded bg-black/70 px-1 text-[10px] font-medium text-[var(--text-primary)]">{i + 1}</span>
+                        <span className="tabular absolute left-1 top-1 rounded dark-scope bg-black/70 px-1 text-[10px] font-medium text-[var(--text-primary)]">{i + 1}</span>
                       </button>
                     ))}
                   </div>
@@ -1322,7 +1322,7 @@ export function StudioView() {
                     Recto à apparier (carte {backIndex + 1})
                   </p>
                   <div
-                    className="mt-2 overflow-hidden rounded-lg border border-[var(--border-accent)] bg-black"
+                    className="mt-2 overflow-hidden rounded-lg border border-[var(--border-accent)] dark-scope bg-black"
                     style={{ aspectRatio: '2/3' }}
                   >
                     <img
@@ -1500,7 +1500,7 @@ export function StudioView() {
 
       {previewUrl && (
         <div
-          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/90 p-4"
+          className="fixed inset-0 z-[70] flex items-center justify-center dark-scope bg-black/90 p-4"
           onClick={() => setPreviewUrl(null)}
         >
           <img

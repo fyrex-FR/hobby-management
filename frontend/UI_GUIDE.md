@@ -3,14 +3,15 @@
 Référence visuelle : `src/components/views/CollectionView.tsx`, `src/components/shared/CollectionFilterBar.tsx` et `src/App.tsx` (shell). Le reste de l'app doit leur ressembler.
 
 ## Principes
-- Sobre, dense, lisible. Thème sombre, un seul accent (or `--accent`), utilisé pour l'action principale, l'état actif et les prix. Pas de dégradés décoratifs, de halos (`blur-2xl`), de glassmorphism ni d'ombres colorées.
+- Sobre, dense, lisible. Les neutres (zinc) portent l'interface ; un seul accent indigo (`--accent`), réservé à l'action principale, aux états actifs et au focus. Les prix sont en texte neutre (`--price`), jamais en couleur. Pas de dégradés décoratifs, de halos (`blur-2xl`), de glassmorphism ni d'ombres colorées.
 - La hiérarchie vient de la taille et de la graisse du texte, pas des majuscules espacées. Pas de `font-black`, pas de `uppercase tracking-widest` (tolérés seulement pour de très courts libellés de section en `text-[11px] font-medium uppercase tracking-wider`).
 - Animations discrètes : pas de `whileHover={{ y: -4 }}`, pas de `scale-110` au survol, pas d'apparitions en cascade. `active:scale-95` est inutile.
 
 ## Tokens (index.css)
 - Surfaces : `--bg-primary` (fond page) < `--bg-secondary` (sidebar, en-têtes de tableau) < `--bg-card` (cartes, modales) < `--bg-elevated` (champs, boutons) < `--bg-hover`.
 - Texte : `--text-primary`, `--text-secondary`, `--text-muted`. Jamais `text-white/40` et autres opacités arbitraires : utiliser les tokens.
-- Sémantique : `--accent`, `--green` (succès, vendu), `--red` (erreur, suppression), `--blue` (info, réservé). Sur fond accent, le texte est `--on-accent`.
+- Sémantique : `--accent` (action, actif, focus), `--violet` (« à vendre », tirages sur photo), `--green` (succès, vendu), `--red` (erreur, suppression), `--blue` (info, réservé), `--orange`. Sur fond accent, le texte est `--on-accent`. Prix : `--price`.
+- Police : Geist (chiffres alignés via `tabular`).
 - Bordures : `--border` (par défaut), `--border-strong` (popover, contrôle survolé), `--border-accent`.
 
 ## Échelle
@@ -44,3 +45,10 @@ Référence visuelle : `src/components/views/CollectionView.tsx`, `src/component
 ## Responsive
 - Mobile d'abord : pas de scroll horizontal de page, cibles tactiles ≥ 36px. Une barre d'onglets fixe occupe le bas de l'écran (3.5rem + safe area) : rien d'important ne doit y être caché (le conteneur de vue a déjà le padding).
 - Les tableaux larges deviennent des listes sur mobile, ou défilent dans leur propre conteneur `overflow-x-auto`.
+
+## Thème clair / sombre
+- Le thème est porté par `<html data-theme="light|dark">`, posé avant le premier rendu par le script inline d'`index.html` et piloté par `src/lib/theme.ts` (préférence Système / Clair / Sombre, stockée dans `localStorage` sous `cv-theme`).
+- N'utiliser que les tokens : aucune couleur en dur (`text-white`, `bg-white/5`, `#18181b`…) sur une surface de l'app, sinon elle casse dans l'autre thème.
+- Tout ce qui est posé sur une photo, une visionneuse plein écran ou la caméra porte la classe `dark-scope` (palette sombre forcée localement) : les pastilles restent lisibles quel que soit le thème. `bg-black/…` s'accompagne toujours de `dark-scope`.
+- Fonds de modale : `bg-[var(--backdrop)]`. Menus : `popover-surface` (`--bg-popover`).
+- Sélecteurs : `<ThemeSwitcher />` (menu de compte) et `<ThemeToggleButton />` (pages publiques).

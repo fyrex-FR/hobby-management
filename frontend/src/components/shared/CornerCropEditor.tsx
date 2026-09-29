@@ -97,7 +97,7 @@ export function CornerCropEditor({ file, side, onDone, onCancel }: Props) {
   const poly = corners ? corners.map((c) => `${c.x},${c.y}`).join(' ') : '';
 
   return (
-    <div className="fixed inset-0 z-[60] flex flex-col bg-black">
+    <div className="fixed inset-0 z-[60] flex flex-col dark-scope bg-black">
       {/* En-tête */}
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-3 pb-2 pt-[calc(env(safe-area-inset-top)+0.5rem)]">
         <button onClick={onCancel} className="ui-btn ui-btn-ghost">
@@ -135,10 +135,10 @@ export function CornerCropEditor({ file, side, onDone, onCancel }: Props) {
               className="absolute inset-0 h-full w-full touch-none"
               preserveAspectRatio="none"
             >
-              <polygon points={poly} fill="rgba(245,166,35,0.12)" stroke="var(--accent)" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+              <polygon points={poly} fill="color-mix(in srgb, var(--accent) 14%, transparent)" stroke="var(--accent)" strokeWidth={2} vectorEffect="non-scaling-stroke" />
               {corners.map((c, i) => (
                 <g key={i}>
-                  <circle cx={c.x} cy={c.y} r={handleR} fill="rgba(245,166,35,0.3)" stroke="var(--accent)" strokeWidth={2} vectorEffect="non-scaling-stroke" />
+                  <circle cx={c.x} cy={c.y} r={handleR} fill="color-mix(in srgb, var(--accent) 32%, transparent)" stroke="var(--accent)" strokeWidth={2} vectorEffect="non-scaling-stroke" />
                   <circle cx={c.x} cy={c.y} r={handleR * 2.4} fill="transparent" className="cursor-grab touch-none" onPointerDown={(e) => startDrag(i, e)} />
                 </g>
               ))}

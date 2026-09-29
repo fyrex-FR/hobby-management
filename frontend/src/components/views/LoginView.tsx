@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { ArrowLeft, MailCheck } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
-import { Field, Notice } from '../ui';
+import { Field, Notice, ThemeToggleButton } from '../ui';
 
 function Logo() {
   return (
@@ -94,7 +94,8 @@ export function LoginView() {
   }
 
   return (
-    <div className="flex min-h-[100dvh] items-center justify-center bg-[var(--bg-primary)] px-4 py-10">
+    <div className="relative flex min-h-[100dvh] items-center justify-center bg-[var(--bg-primary)] px-4 py-10">
+      <ThemeToggleButton className="absolute right-4 top-4" />
       <div className="w-full max-w-sm">
         <Logo />
 

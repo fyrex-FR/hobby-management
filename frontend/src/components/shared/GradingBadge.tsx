@@ -79,7 +79,7 @@ export function GradingBadge({
       }`}
       style={{
         color: 'var(--text-primary)',
-        background: `color-mix(in srgb, ${color} 14%, #0c0c0f)`,
+        background: `color-mix(in srgb, ${color} 12%, var(--bg-card))`,
         ['--tw-ring-color' as string]: `color-mix(in srgb, ${color} 30%, transparent)`,
       }}
       title={

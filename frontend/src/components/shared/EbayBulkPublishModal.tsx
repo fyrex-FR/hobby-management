@@ -214,7 +214,7 @@ export function EbayBulkPublishModal({ cards, onClose, onDone }: Props) {
                       {res.status === 'published' ? <><Check size={11} /> Publiée</> : res.status === 'skipped' ? 'Ignorée' : 'Échec'}
                     </Badge>
                   ) : eligible ? (
-                    <span className="tabular shrink-0 text-[13px] font-semibold text-[var(--accent)]">{formatEuro(cardPrice)}</span>
+                    <span className="tabular shrink-0 text-[13px] font-semibold text-[var(--price)]">{formatEuro(cardPrice)}</span>
                   ) : (
                     <span className="shrink-0 text-xs text-[var(--text-muted)]">—</span>
                   )}

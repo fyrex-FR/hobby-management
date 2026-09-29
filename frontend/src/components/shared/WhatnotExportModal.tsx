@@ -156,7 +156,7 @@ export function WhatnotExportModal({ cards, onClose }: Props) {
                     {(card.quantity ?? 1) > 1 ? ` · ×${card.quantity}` : ''}
                   </p>
                 </div>
-                <span className="tabular shrink-0 text-[13px] font-semibold text-[var(--accent)]">{card.price != null ? euro.format(card.price) : '—'}</span>
+                <span className="tabular shrink-0 text-[13px] font-semibold text-[var(--price)]">{card.price != null ? euro.format(card.price) : '—'}</span>
               </div>
             ))}
             {skipped.map((card) => (

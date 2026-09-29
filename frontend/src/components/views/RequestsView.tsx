@@ -262,7 +262,7 @@ function RequestCard({
                 <span className={`truncate text-[11px] font-medium ${c ? 'text-[var(--text-secondary)]' : 'text-[var(--text-muted)]'}`} title={c?.player ?? 'Carte supprimée'}>
                   {c?.player ?? 'Carte supprimée'}
                 </span>
-                {c?.price != null && <span className="tabular text-[11px] font-semibold text-[var(--accent)]">{formatEuro(c.price)}</span>}
+                {c?.price != null && <span className="tabular text-[11px] font-semibold text-[var(--price)]">{formatEuro(c.price)}</span>}
               </button>
             );
           })}

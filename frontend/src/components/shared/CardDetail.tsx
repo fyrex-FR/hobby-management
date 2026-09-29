@@ -132,7 +132,7 @@ function MarketRow({ logo, label, price, live, children }: { logo: ReactNode; la
     <div className="flex items-center gap-3 px-3 py-2.5">
       <span className="flex w-14 shrink-0 items-center" title={label}>{logo}</span>
       <div className="min-w-0 flex-1">
-        <div className={`tabular text-sm font-semibold ${price != null ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
+        <div className={`tabular text-sm font-semibold ${price != null ? 'text-[var(--price)]' : 'text-[var(--text-muted)]'}`}>
           {price != null ? formatEuro(price) : '—'}
         </div>
         {live && (
@@ -186,7 +186,7 @@ function Lightbox({ card, side, onSide, onClose }: { card: Card; side: Side; onS
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.15 }}
-      className="fixed inset-0 z-[100] flex flex-col bg-black/90"
+      className="fixed inset-0 z-[100] flex flex-col dark-scope bg-black/90"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
@@ -604,18 +604,18 @@ export function CardDetail({ card, onClose }: Props) {
         )}
 
         {!editing && shownUrl && (
-          <span className="pointer-events-none absolute bottom-2 right-2 inline-flex h-8 w-8 items-center justify-center rounded-lg bg-black/70 text-[var(--text-primary)] ring-1 ring-white/10 opacity-0 transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+          <span className="pointer-events-none absolute bottom-2 right-2 inline-flex h-8 w-8 items-center justify-center rounded-lg dark-scope bg-black/70 text-[var(--text-primary)] ring-1 ring-white/10 opacity-0 transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100">
             <Maximize2 size={14} />
           </span>
         )}
         {editing && shownUrl && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 bg-black/55 text-[13px] font-medium text-[var(--text-primary)] opacity-0 transition-opacity group-hover:opacity-100">
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 dark-scope bg-black/55 text-[13px] font-medium text-[var(--text-primary)] opacity-0 transition-opacity group-hover:opacity-100">
             <Camera size={18} />
             Remplacer la photo
           </div>
         )}
         {uploadingImage === side && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+          <div className="absolute inset-0 flex items-center justify-center dark-scope bg-black/60">
             <Loader2 size={22} className="animate-spin text-[var(--accent)]" />
           </div>
         )}
@@ -648,7 +648,7 @@ export function CardDetail({ card, onClose }: Props) {
                   <ImageIcon size={12} className="text-[var(--text-muted)]" />
                 )}
                 {uploadingImage === s && (
-                  <span className="absolute inset-0 flex items-center justify-center bg-black/60">
+                  <span className="absolute inset-0 flex items-center justify-center dark-scope bg-black/60">
                     <Loader2 size={12} className="animate-spin text-[var(--accent)]" />
                   </span>
                 )}
@@ -1029,7 +1029,7 @@ export function CardDetail({ card, onClose }: Props) {
           animate={{ opacity: 1 }}
           transition={{ duration: 0.15 }}
         >
-          <div className="absolute inset-0 bg-black/65 backdrop-blur-[2px]" onClick={saving ? undefined : onClose} />
+          <div className="absolute inset-0 bg-[var(--backdrop)] backdrop-blur-[2px]" onClick={saving ? undefined : onClose} />
           <motion.div
             ref={panelRef}
             tabIndex={-1}
