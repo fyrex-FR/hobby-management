@@ -13,8 +13,9 @@ import { formatCardNumber } from '../../lib/cardQuality';
 import { errorMessage, toast } from '../../lib/feedback';
 import type { AIIdentificationResult, Card } from '../../types';
 import { CardDetail } from '../shared/CardDetail';
+import { CornerCropEditor } from '../shared/CornerCropEditor';
 import { HoloCard } from '../ui';
-import { VitrineControls } from '../shared/VitrineControls';
+import { VitrineSummary } from '../shared/VitrineSettings';
 import { makeVitrine, useVitrine } from '../../lib/vitrine';
 import { useVitrineBackdrops } from '../../hooks/useVitrineBackdrops';
 
@@ -39,6 +40,9 @@ interface ScanResult {
   /** Verso : le tirage (/99), le numéro et souvent la saison y sont imprimés. */
   backUrl?: string;
   backBlob?: Blob;
+  /** Recadrages manuels (« Ajuster le cadrage ») : remplacent la détection auto. */
+  manualFront?: Blob;
+  manualBack?: Blob;
   ident: AIIdentificationResult;
   comps: Comps | null;
   compsStatus: 'loading' | 'ready' | 'error';
@@ -171,13 +175,14 @@ export function ScanView() {
   /** Résultat auquel on ajoute un verso après coup (« Ajouter le verso »). */
   const [refineOf, setRefineOf] = useState<ScanResult | null>(null);
   const [shownBack, setShownBack] = useState(false);
+  const [cropSide, setCropSide] = useState<'front' | 'back' | null>(null);
   const vitrine = useVitrine();
   // Photos vitrine du résultat courant, recalculées quand le style change.
   const [vitrineOut, setVitrineOut] = useState<{ key: string; front: string; frontBlob: Blob; back?: string; backBlob?: Blob } | null>(null);
   const { data: backdrops } = useVitrineBackdrops();
   const backdropUrl = vitrine.style === 'backdrop' ? backdrops?.[vitrine.tone]?.url ?? null : null;
   const vitrineKey = current && vitrine.enabled
-    ? `${current.id}|${current.backBlob ? 'fb' : 'f'}|${vitrine.style}|${vitrine.tone}|${vitrine.signature.trim()}|${backdropUrl ?? ''}`
+    ? `${current.id}|${current.backBlob ? 'fb' : 'f'}|${current.manualFront ? 'mf' : ''}${current.manualBack ? 'mb' : ''}|${vitrine.style}|${vitrine.tone}|${vitrine.signature.trim()}|${backdropUrl ?? ''}`
     : null;
 
   useEffect(() => {
@@ -188,8 +193,10 @@ export function ScanView() {
       try {
         const opts = { style: vitrine.style, tone: vitrine.tone, signature: vitrine.signature, backdropUrl };
         const [frontBlob, backBlob] = await Promise.all([
-          makeVitrine(current.blob, opts),
-          current.backBlob ? makeVitrine(current.backBlob, opts) : Promise.resolve(undefined),
+          current.manualFront ? makeVitrine(current.manualFront, { ...opts, precropped: true }) : makeVitrine(current.blob, opts),
+          current.manualBack
+            ? makeVitrine(current.manualBack, { ...opts, precropped: true })
+            : current.backBlob ? makeVitrine(current.backBlob, opts) : Promise.resolve(undefined),
         ]);
         if (!alive) return;
         setVitrineOut({
@@ -371,6 +378,15 @@ export function ScanView() {
     }
   }
 
+  /** Recadrage manuel validé dans l'éditeur de coins. */
+  function onManualCrop(file: File) {
+    if (!current || !cropSide) return;
+    const next = { ...current, ...(cropSide === 'front' ? { manualFront: file } : { manualBack: file }) };
+    setCurrent(next);
+    setHistory((h) => h.map((x) => (x.id === next.id ? next : x)));
+    setCropSide(null);
+  }
+
   /** Retient / écarte un résultat eBay : l'estimation se recalcule aussitôt. */
   function toggleComp(key: string, kept: boolean) {
     if (!current) return;
@@ -429,8 +445,14 @@ export function ScanView() {
       if (vitrine.enabled) {
         const opts = { style: vitrine.style, tone: vitrine.tone, signature: vitrine.signature, backdropUrl };
         try {
-          frontBlob = vitrineReady ? vitrineOut!.frontBlob : await makeVitrine(current.blob, opts);
-          if (current.backBlob) backBlob = vitrineReady && vitrineOut!.backBlob ? vitrineOut!.backBlob : await makeVitrine(current.backBlob, opts);
+          frontBlob = vitrineReady
+            ? vitrineOut!.frontBlob
+            : current.manualFront ? await makeVitrine(current.manualFront, { ...opts, precropped: true }) : await makeVitrine(current.blob, opts);
+          if (current.backBlob) {
+            backBlob = vitrineReady && vitrineOut!.backBlob
+              ? vitrineOut!.backBlob
+              : current.manualBack ? await makeVitrine(current.manualBack, { ...opts, precropped: true }) : await makeVitrine(current.backBlob, opts);
+          }
         } catch {
           frontBlob = current.blob;
           backBlob = current.backBlob;
@@ -662,6 +684,14 @@ export function ScanView() {
                       + Ajouter le verso
                     </button>
                   )}
+                  {vitrine.enabled && !current.addedCardId && (
+                    <button
+                      className="mt-1.5 w-full text-center text-[11px] font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:underline"
+                      onClick={() => setCropSide(shownBack && current.backBlob ? 'back' : 'front')}
+                    >
+                      Ajuster le cadrage
+                    </button>
+                  )}
                 </div>
                 <div className="min-w-0 flex-1 space-y-3">
                   <div>
@@ -723,7 +753,7 @@ export function ScanView() {
 
               {!current.addedCardId && (
                 <div className="mt-3">
-                  <VitrineControls compact />
+                  <VitrineSummary />
                 </div>
               )}
 
@@ -768,6 +798,15 @@ export function ScanView() {
 
       <input ref={fileRef} type="file" accept="image/*" capture="environment" hidden onChange={(e) => { void onFile(e.target.files?.[0]); e.target.value = ''; }} />
       {openCard && <CardDetail card={openCard} onClose={() => setOpenCardId(null)} />}
+      {cropSide && current && (
+        <CornerCropEditor
+          file={new File([cropSide === 'back' && current.backBlob ? current.backBlob : current.blob], `${cropSide}.jpg`, { type: 'image/jpeg' })}
+          side={cropSide}
+          keepRatio
+          onDone={onManualCrop}
+          onCancel={() => setCropSide(null)}
+        />
+      )}
       {camera === 'on' && phase === 'live' && history.length === 0 && (
         <span className="sr-only"><Camera /> Caméra prête</span>
       )}

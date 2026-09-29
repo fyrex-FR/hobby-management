@@ -122,14 +122,113 @@ function longestRun(on: boolean[], maxGap: number): [number, number] | null {
   return best;
 }
 
+export interface Box { x: number; y: number; w: number; h: number }
+
+/** Pics d'un profil (maxima locaux au-dessus de la moyenne), les plus forts d'abord. */
+function peaks(profile: Float32Array, radius: number, keep: number): number[] {
+  const n = profile.length;
+  let mean = 0;
+  for (let i = 0; i < n; i++) mean += profile[i];
+  mean /= n;
+  const out: number[] = [];
+  for (let i = 1; i < n - 1; i++) {
+    const v = profile[i];
+    if (v <= mean) continue;
+    let isMax = true;
+    for (let j = Math.max(0, i - radius); j <= Math.min(n - 1, i + radius); j++) {
+      if (profile[j] > v) { isMax = false; break; }
+    }
+    if (isMax) out.push(i);
+  }
+  return out.sort((p, q) => profile[q] - profile[p]).slice(0, keep);
+}
+
 /**
- * Isole la carte : la couleur du fond est estimée sur les bords de la photo,
- * les pixels qui s'en distinguent forment la carte, et sa boîte est trouvée
- * par projection des lignes et colonnes (ignore les pieds fins d'un stand et
- * le bruit). Instantané, sans dépendance. Sans résultat plausible, la photo
- * est gardée telle quelle.
+ * Détection par les bords : les côtés d'une carte (ou de son toploader /
+ * slab) sont des lignes droites nettes. On mesure l'énergie des contours
+ * verticaux par colonne et horizontaux par ligne, puis on cherche la paire
+ * gauche/droite et haut/bas la plus forte qui forme un rectangle aux
+ * proportions d'une carte. Robuste à un fond encombré (table, mains…).
  */
-export function findCardBox(img: HTMLImageElement | HTMLCanvasElement): { x: number; y: number; w: number; h: number } | null {
+function edgeBox(img: HTMLImageElement | HTMLCanvasElement): Box | null {
+  const W0 = (img as HTMLImageElement).naturalWidth || img.width;
+  const H0 = (img as HTMLImageElement).naturalHeight || img.height;
+  const k = 320 / Math.max(W0, H0);
+  const w = Math.max(8, Math.round(W0 * k));
+  const h = Math.max(8, Math.round(H0 * k));
+  const c = document.createElement('canvas');
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext('2d', { willReadFrequently: true })!;
+  ctx.drawImage(img, 0, 0, w, h);
+  const d = ctx.getImageData(0, 0, w, h).data;
+  const g = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) g[i] = d[i * 4] * 0.299 + d[i * 4 + 1] * 0.587 + d[i * 4 + 2] * 0.114;
+
+  // Sobel : |gx| pour les bords verticaux, |gy| pour les horizontaux.
+  const colE = new Float32Array(w);
+  const rowE = new Float32Array(h);
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      const gx = g[i - w + 1] + 2 * g[i + 1] + g[i + w + 1] - g[i - w - 1] - 2 * g[i - 1] - g[i + w - 1];
+      const gy = g[i + w - 1] + 2 * g[i + w] + g[i + w + 1] - g[i - w - 1] - 2 * g[i - w] - g[i - w + 1];
+      const ax = Math.abs(gx), ay = Math.abs(gy);
+      // Un bord vertical franc a un fort gx ET un faible gy (et inversement) :
+      // écarte les textures diagonales et les zones de bruit.
+      if (ax > 2 * ay) colE[x] += ax;
+      if (ay > 2 * ax) rowE[y] += ay;
+    }
+  }
+  const radius = Math.round(Math.min(w, h) * 0.04);
+  const cols = peaks(colE, radius, 8);
+  const rows = peaks(rowE, radius, 8);
+  if (cols.length < 2 || rows.length < 2) return null;
+  const maxC = colE[cols[0]] || 1;
+  const maxR = rowE[rows[0]] || 1;
+
+  let best: { s: number; l: number; r: number; t: number; b: number } | null = null;
+  for (const a1 of cols) for (const a2 of cols) {
+    const l = Math.min(a1, a2), r = Math.max(a1, a2);
+    const bw = r - l;
+    if (bw < w * 0.3 || l > w * 0.5 || r < w * 0.5) continue;
+    for (const b1 of rows) for (const b2 of rows) {
+      const t = Math.min(b1, b2), b = Math.max(b1, b2);
+      const bh = b - t;
+      if (bh < h * 0.35 || t > h * 0.5 || b < h * 0.5) continue;
+      const ratio = (bw / w * W0) / (bh / h * H0);
+      if (ratio < 0.5 || ratio > 0.85) continue;
+      // Proportions d'une carte (0,71) ou d'un slab (≈ 0,6) : bonus si proche.
+      const shape = 1 - Math.min(Math.abs(ratio - 0.71), Math.abs(ratio - 0.6)) * 2;
+      const strength = (colE[l] + colE[r]) / (2 * maxC) + (rowE[t] + rowE[b]) / (2 * maxR);
+      // Léger bonus aux bords extérieurs : garder le toploader entier plutôt qu'un cadre imprimé.
+      const area = (bw * bh) / (w * h);
+      const s = strength * shape + area * 0.35;
+      if (!best || s > best.s) best = { s, l, r, t, b };
+    }
+  }
+  if (!best || best.s < 0.9) return null;
+  const pad = 0.006;
+  const x = Math.max(0, (best.l / w - pad) * W0);
+  const y = Math.max(0, (best.t / h - pad) * H0);
+  return {
+    x, y,
+    w: Math.min(W0 - x, ((best.r - best.l) / w + pad * 2) * W0),
+    h: Math.min(H0 - y, ((best.b - best.t) / h + pad * 2) * H0),
+  };
+}
+
+/** Boîte de la carte : bords d'abord, couleur du fond en secours. */
+export function findCardBox(img: HTMLImageElement | HTMLCanvasElement): Box | null {
+  return edgeBox(img) ?? colorBox(img);
+}
+
+/**
+ * Méthode de secours : la couleur du fond est estimée sur les bords de la
+ * photo, les pixels qui s'en distinguent forment la carte, et sa boîte est
+ * trouvée par projection des lignes et colonnes. Fiable sur fond uni.
+ */
+function colorBox(img: HTMLImageElement | HTMLCanvasElement): Box | null {
   const W0 = (img as HTMLImageElement).naturalWidth || img.width;
   const H0 = (img as HTMLImageElement).naturalHeight || img.height;
   const k = 256 / Math.max(W0, H0);
@@ -187,8 +286,8 @@ export function findCardBox(img: HTMLImageElement | HTMLCanvasElement): { x: num
   return { x: bx, y: by, w: bw, h: bh };
 }
 
-function isolateCard(img: HTMLImageElement): HTMLCanvasElement {
-  const box = findCardBox(img);
+function isolateCard(img: HTMLImageElement, detect = true): HTMLCanvasElement {
+  const box = detect ? findCardBox(img) : null;
   const src = box ?? { x: 0, y: 0, w: img.naturalWidth, h: img.naturalHeight };
   const c = document.createElement('canvas');
   c.width = Math.round(src.w);
@@ -360,6 +459,8 @@ export interface VitrineOptions {
   signature?: string;
   /** URL du fond du compte pour le style « Mon fond ». */
   backdropUrl?: string | null;
+  /** Photo déjà recadrée sur la carte (ajustement manuel) : pas de détection. */
+  precropped?: boolean;
 }
 
 /** Compose la photo vitrine (JPEG 1200 × 1600) à partir d'une photo de carte. */
@@ -367,7 +468,7 @@ export async function makeVitrine(photo: Blob, opts: VitrineOptions): Promise<Bl
   const url = URL.createObjectURL(photo);
   try {
     const [img] = await Promise.all([loadImage(url), document.fonts?.load('600 40px Geist').catch(() => undefined)]);
-    const card = isolateCard(img);
+    const card = opts.precropped ? isolateCard(img, false) : isolateCard(img);
     const canvas = document.createElement('canvas');
     canvas.width = OUT_W;
     canvas.height = OUT_H;

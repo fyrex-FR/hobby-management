@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { compressImage } from '../../lib/storage';
 import { applyVitrine } from '../../lib/vitrine';
-import { VitrineControls } from '../shared/VitrineControls';
+import { VitrineSummary } from '../shared/VitrineSettings';
 import { DEFAULT_CROP_RECT, clampNormRect, type NormRect } from '../../lib/guideCrop';
 import { CornerCropEditor } from '../shared/CornerCropEditor';
 import { useCreateCard, useDeleteCard, useUpdateCard } from '../../hooks/useCards';
@@ -1352,7 +1352,7 @@ export function StudioView() {
 
           <Panel title="Lot" icon={Archive}>
             <div className="space-y-4">
-              <VitrineControls compact />
+              <VitrineSummary />
               {currentSession && (
                 <div className="rounded-lg border border-[var(--border-accent)] bg-[var(--accent-dim)] px-3 py-2.5">
                   <div className="flex items-center justify-between gap-2">
