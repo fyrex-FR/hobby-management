@@ -62,8 +62,14 @@ function estimateOf(r: ScanResult): Estimate {
   return estimateFrom(r.comps, r.overrides);
 }
 
+function typeWords(r: AIIdentificationResult): string[] {
+  const t = r.card_type;
+  return [t === 'auto' || t === 'auto_patch' ? 'auto' : '', t === 'patch' || t === 'auto_patch' ? 'patch' : ''];
+}
+
+/** Requête minimale : année, set, joueur, numéro, auto/patch. Ni parallel, ni insert, ni tirage. */
 function buildQuery(r: AIIdentificationResult): string {
-  return [r.player, r.year, r.set || r.brand, formatCardNumber(r.card_number), r.insert, r.parallel, r.numbered]
+  return [r.year, r.set || r.brand, r.player, formatCardNumber(r.card_number), ...typeWords(r)]
     .filter(Boolean)
     .join(' ')
     .replace(/\s+/g, ' ')
@@ -129,9 +135,9 @@ async function downscaleFile(file: File): Promise<Blob> {
   );
 }
 
-/** Requête large : joueur + set + insert, sans année ni parallel (souvent mal lus sur photo). */
+/** Repli sans année ni numéro (souvent mal lus sur photo). */
 function broadQuery(r: AIIdentificationResult): string {
-  return [r.player, r.set || r.brand, r.insert].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
+  return [r.set || r.brand, r.player, ...typeWords(r)].filter(Boolean).join(' ').replace(/\s+/g, ' ').trim();
 }
 
 async function compsFor(query: string, ident: ScanIdent, broad: boolean): Promise<Comps> {
