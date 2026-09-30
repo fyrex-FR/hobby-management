@@ -28,6 +28,7 @@ import {
   CheckCircle2,
 } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
+import { isStandalone } from './lib/scanHistory';
 import { useAppStore, viewFromHash } from './stores/appStore';
 import type { ActiveView } from './stores/appStore';
 import { useCards } from './hooks/useCards';
@@ -576,6 +577,7 @@ function AuthedShell({ userId, email, showShare, setShowShare }: { userId: strin
   // Réglages « photo vitrine » propres au compte connecté.
   useEffect(() => { setVitrineUser(userId); }, [userId]);
   const isAdmin = email === 'xavier.andrieux@gmail.com';
+  const bare = activeView === 'scan' && isStandalone();
 
   // Retour du flux OAuth eBay (?ebay=connected | ?ebay=error&reason=...) :
   // navigue vers la vue eBay, qui lit et nettoie ces paramètres elle-même.
@@ -606,9 +608,9 @@ function AuthedShell({ userId, email, showShare, setShowShare }: { userId: strin
 
   return (
     <div className="flex h-[100dvh] overflow-hidden bg-[var(--bg-primary)]">
-      <Sidebar isAdmin={isAdmin} email={email} onShare={() => setShowShare(true)} />
+      {!bare && <Sidebar isAdmin={isAdmin} email={email} onShare={() => setShowShare(true)} />}
       <div className="flex min-w-0 flex-1 flex-col">
-        <MobileTopBar isAdmin={isAdmin} email={email} onShare={() => setShowShare(true)} />
+        {!bare && <MobileTopBar isAdmin={isAdmin} email={email} onShare={() => setShowShare(true)} />}
         <main className="relative min-h-0 flex-1 overflow-hidden">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
@@ -618,7 +620,7 @@ function AuthedShell({ userId, email, showShare, setShowShare }: { userId: strin
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.12 }}
-              className="absolute inset-0 overflow-auto pb-[calc(env(safe-area-inset-bottom)+3.5rem)] lg:pb-0"
+              className={`absolute inset-0 overflow-auto ${bare ? '' : 'pb-[calc(env(safe-area-inset-bottom)+3.5rem)] lg:pb-0'}`}
             >
               {activeView === 'dashboard' && <DashboardView />}
               {activeView === 'collection' && <CollectionView />}
@@ -638,7 +640,7 @@ function AuthedShell({ userId, email, showShare, setShowShare }: { userId: strin
             </motion.div>
           </AnimatePresence>
         </main>
-        <MobileTabBar isAdmin={isAdmin} />
+        {!bare && <MobileTabBar isAdmin={isAdmin} />}
       </div>
       {showShare && <ShareModal onClose={() => setShowShare(false)} />}
       <CommandPalette isAdmin={isAdmin} onShare={() => setShowShare(true)} />

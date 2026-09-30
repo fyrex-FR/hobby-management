@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Camera, CameraOff, Check, ChevronDown, ExternalLink, ImageUp, ListChecks, Library, Loader2, Plus, RotateCcw, ScanLine, Sparkles, TrendingUp, X } from 'lucide-react';
+import { Camera, CameraOff, Check, History, ChevronDown, ExternalLink, ImageUp, ListChecks, Library, Loader2, Plus, RotateCcw, ScanLine, Sparkles, TrendingUp, X } from 'lucide-react';
 import { apiFetch } from '../../api/client';
 import { useCards, useCreateCard, useUpdateCard } from '../../hooks/useCards';
 import { useAppStore } from '../../stores/appStore';
@@ -20,6 +20,9 @@ import { makeVitrine, makeVitrineDetailed, useVitrine } from '../../lib/vitrine'
 import { detectQuad, toGray, type Quad } from '../../lib/cardQuad';
 import { createGuideTracker } from '../../lib/scanGuide';
 import { useVitrineBackdrops } from '../../hooks/useVitrineBackdrops';
+import { isStandalone, linkScanCard, saveScan } from '../../lib/scanHistory';
+import { ScanHistory } from './ScanHistory';
+import { useQueryClient } from '@tanstack/react-query';
 
 /**
  * Scan live : on vise une carte, l'IA l'identifie sur la seule photo du recto,
@@ -173,6 +176,8 @@ export function ScanView() {
   const [current, setCurrent] = useState<ScanResult | null>(null);
   const [history, setHistory] = useState<ScanResult[]>([]);
   const [adding, setAdding] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const qc = useQueryClient();
   const [openCardId, setOpenCardId] = useState<string | null>(null);
   // Recto + verso par défaut : sur les cartes de sport, le tirage et le numéro
   // sont au dos. Choix mémorisé (le mode « recto seul » est plus rapide).
@@ -320,6 +325,11 @@ export function ScanView() {
           setCurrent((c) => (c?.id === result.id ? { ...c, ...patch } : c));
           setHistory((h) => {
             const done = { ...result, ...patch };
+            const e = estimateOf(done);
+            // Un scan est gardé dès que l'estimation est connue (échec silencieux : l'historique est un bonus).
+            saveScan({ id: done.id, ident: done.ident, estimate_value: e.value ?? null, estimate_status: e.status, front: done.blob, back: done.backBlob })
+              .then(() => qc.invalidateQueries({ queryKey: ['scans'] }))
+              .catch(() => {});
             return opts.replaceId ? h.map((x) => (x.id === opts.replaceId ? done : x)) : [done, ...h].slice(0, 12);
           });
         });
@@ -487,6 +497,7 @@ export function ScanView() {
       if (!frontUrl || (current.backBlob && !backUrl)) {
         toast.error('Photo non enregistrée', { description: 'L’envoi d’une photo a échoué, tu pourras l’ajouter depuis la fiche.' });
       }
+      linkScanCard(current.id, card.id).then(() => qc.invalidateQueries({ queryKey: ['scans'] })).catch(() => {});
       const added = { ...current, addedCardId: card.id };
       setCurrent(added);
       setHistory((h) => h.map((x) => (x.id === added.id ? added : x)));
@@ -665,6 +676,14 @@ export function ScanView() {
             <ScanLine size={13} className="-mt-0.5 mr-1.5 inline text-[var(--violet)]" />
             Scan live
           </div>
+          {isStandalone() && (
+            <button className="rounded-full bg-black/50 p-2 backdrop-blur" onClick={() => setActiveView('collection')} aria-label="Collection">
+              <Library size={15} />
+            </button>
+          )}
+          <button className="rounded-full bg-black/50 p-2 backdrop-blur" onClick={() => setShowHistory(true)} aria-label="Historique des scans">
+            <History size={15} />
+          </button>
           {history.length > 0 && (
             <div className="rounded-full bg-black/50 px-3 py-1.5 text-xs backdrop-blur">
               <span className="tabular font-semibold">{history.length}</span> scannée{history.length > 1 ? 's' : ''}
@@ -673,6 +692,8 @@ export function ScanView() {
           )}
         </div>
       </div>
+
+      {showHistory && <ScanHistory onClose={() => setShowHistory(false)} />}
 
       {/* Déclencheur + historique */}
       {phase !== 'result' && (
