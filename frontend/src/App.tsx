@@ -17,6 +17,7 @@ import {
   Key,
   Share2,
   Store,
+  Bot,
   Inbox,
   ChevronDown,
   ChevronsUpDown,
@@ -53,6 +54,7 @@ import { PlayersView } from './components/views/PlayersView';
 import { GradingView } from './components/views/GradingView';
 import { RequestsView } from './components/views/RequestsView';
 import { ShareView } from './components/views/ShareView';
+import { PricingAutoView } from './components/views/PricingAutoView';
 import { SalonView } from './components/views/SalonView';
 import { SalonPublic } from './components/views/SalonPublic';
 import { ShareModal } from './components/shared/ShareModal';
@@ -149,6 +151,7 @@ const VIEW_TITLES: Partial<Record<ActiveView, string>> = {
   scan: 'Scan live',
   compare: 'Comparer IA',
   migration: 'Migration R2',
+  pricing_auto: 'Pricing auto',
 };
 
 /** Items de navigation, partagés entre la sidebar desktop et le menu mobile. */
@@ -173,6 +176,7 @@ function useNavItems(isAdmin: boolean) {
     { id: 'studio', label: 'Studio photo', icon: ScanLine },
     { id: 'batch', label: 'Import en lot', icon: Upload },
     ...(isAdmin ? [{ id: 'salon' as const, label: 'Salon', icon: Store }] : []),
+    ...(isAdmin ? [{ id: 'pricing_auto' as const, label: 'Pricing auto', icon: Bot }] : []),
     ...(isAdmin ? [{ id: 'compare' as const, label: 'Comparer IA', icon: Database }] : []),
     ...(isAdmin ? [{ id: 'migration' as const, label: 'Migration R2', icon: HardDrive }] : []),
   ];
@@ -645,6 +649,7 @@ function AuthedShell({ userId, email, showShare, setShowShare }: { userId: strin
               {activeView === 'review' && <ReviewView />}
               {activeView === 'sales' && <SalesView />}
               {activeView === 'salon' && isAdmin && <SalonView />}
+              {activeView === 'pricing_auto' && isAdmin && <PricingAutoView />}
               {activeView === 'compare' && isAdmin && <CompareView />}
               {activeView === 'players' && <PlayersView />}
               {activeView === 'grading' && <GradingView />}

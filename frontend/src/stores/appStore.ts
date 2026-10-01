@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type ActiveView = 'dashboard' | 'collection' | 'scan' | 'add_card' | 'studio' | 'batch' | 'import_review' | 'review' | 'sales' | 'compare' | 'players' | 'grading' | 'requests' | 'migration' | 'ebay' | 'salon';
+export type ActiveView = 'dashboard' | 'collection' | 'scan' | 'add_card' | 'studio' | 'batch' | 'import_review' | 'review' | 'sales' | 'compare' | 'players' | 'grading' | 'requests' | 'migration' | 'ebay' | 'salon' | 'pricing_auto';
 type ViewMode = 'grid' | 'table';
 
 export interface DrillFilter {
@@ -24,7 +24,7 @@ interface AppStore {
   setImportBatchId: (batchId: string | null) => void;
 }
 
-const VIEWS: ActiveView[] = ['dashboard', 'collection', 'scan', 'add_card', 'studio', 'batch', 'import_review', 'review', 'sales', 'compare', 'players', 'grading', 'requests', 'migration', 'ebay', 'salon'];
+const VIEWS: ActiveView[] = ['dashboard', 'collection', 'scan', 'add_card', 'studio', 'batch', 'import_review', 'review', 'sales', 'compare', 'players', 'grading', 'requests', 'migration', 'ebay', 'salon', 'pricing_auto'];
 
 /** Vue lue dans l'URL (#/collection) : un rafraîchissement ne renvoie plus au dashboard. */
 export function viewFromHash(hash = window.location.hash): ActiveView | null {
