@@ -1,314 +1,467 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ImageOff, Minus, Plus, Search, ShoppingBasket, X } from 'lucide-react';
-import { cdnImg } from '../../lib/cdn';
-import { cartUrl, formatEuro, useQrDataUrl, type PublicCart } from '../../lib/salon';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
+import { ArrowRight, Check, HandCoins, Plus, Search, ShoppingBasket, SlidersHorizontal, Store, X } from 'lucide-react';
+import { ThemeToggleButton } from '../ui';
+import { confirmDialog, toast } from '../../lib/feedback';
+import { buildFilterContext } from '../../lib/collectionFilters';
+import {
+  SalonError, formatEuro, salonApi,
+  type PublicCart, type SalonLive, type SalonStock, type SalonTicket as Ticket,
+} from '../../lib/salon';
 import type { Card } from '../../types';
+import { CardTags, ScrollRow, Thumb } from '../salon/parts';
+import { cardMeta, cardVariant } from '../salon/cardText';
+import {
+  SALON_FACETS, SALON_FLAGS, SALON_SORTS, activeCount, clearFilters, computeSalon, emptySalonFilters,
+  setSport, toggleFacet, toggleFlag, type SalonFilterState, type SalonSort,
+} from '../salon/salonFilters';
+import { SalonFilterSheet } from '../salon/SalonFilterSheet';
+import { SalonCardSheet } from '../salon/SalonCardSheet';
+import { SalonCartSheet } from '../salon/SalonCartSheet';
+import { SalonTicket } from '../salon/SalonTicket';
 
-const API_BASE = import.meta.env.VITE_API_URL ?? '';
-interface Stock { title: string | null; paypal_me: string | null; hold_minutes: number; cards: Card[]; reserved: string[] }
-interface Live { reserved: string[]; sold: string[] }
-interface Done { code: string; total: number; expires_at: string }
+const PAGE = 30;
 
-const PAGE = 24;
-const PRICES = [10, 25, 50, 100];
-const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-const metaOf = (c: Card) => [c.year, c.set_name || c.brand, c.insert_name, c.parallel_name && c.parallel_name !== 'Base' ? c.parallel_name : null].filter(Boolean).join(' · ');
-const isAuto = (c: Card) => /auto/i.test(c.card_type ?? '');
-const isPatch = (c: Card) => /patch|relic|jersey/i.test(c.card_type ?? '');
+function load<T>(storage: () => Storage, key: string, fallback: T): T {
+  try {
+    const raw = storage().getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+function save(storage: () => Storage, key: string, value: unknown) {
+  try {
+    if (value == null) storage().removeItem(key);
+    else storage().setItem(key, JSON.stringify(value));
+  } catch { /* stockage indisponible (navigation privée) */ }
+}
+const local = () => window.localStorage;
+const session = () => window.sessionStorage;
+const sameSet = (a: string[], b: string[]) => a.length === b.length && a.every((x) => b.includes(x));
+const buzz = () => { try { navigator.vibrate?.(8); } catch { /* pas de vibreur */ } };
 
-const LINE_LABEL = { none: '', offered: 'Offre en attente', accepted: 'Offre acceptée', countered: 'Contre-offre', refused: 'Offre refusée' } as const;
+function Tile({ card, inCart, taken, onOpen, onToggle }: { card: Card; inCart: boolean; taken: boolean; onOpen: () => void; onToggle: () => void }) {
+  const variant = cardVariant(card);
+  return (
+    <div className={`relative flex flex-col overflow-hidden rounded-xl border bg-[var(--bg-card)] transition-[border-color,opacity] ${inCart ? 'border-[var(--accent)] ring-1 ring-[var(--accent)]' : 'border-[var(--border)]'} ${taken ? 'opacity-55' : ''}`}>
+      <button className="relative block aspect-[3/4] w-full" onClick={onOpen} aria-label={`Voir ${card.player ?? 'la carte'}`}>
+        <Thumb url={card.image_front_url} alt={card.player ?? ''} className="absolute inset-0" />
+        <span className="absolute left-2 top-2 flex max-w-[85%] flex-wrap gap-1"><CardTags card={card} /></span>
+        {taken && <span className="dark-scope absolute inset-x-0 bottom-0 bg-black/70 py-1.5 text-center text-xs font-semibold text-white">Réservée</span>}
+      </button>
+      <div className="flex flex-1 flex-col gap-0.5 p-2.5">
+        <p className="truncate text-[13px] font-semibold text-[var(--text-primary)]">{card.player ?? 'Carte'}</p>
+        <p className="truncate text-xs text-[var(--text-muted)]">{cardMeta(card) || '—'}</p>
+        {variant && <p className="truncate text-xs text-[var(--text-secondary)]">{variant}</p>}
+        <div className="mt-auto flex items-center justify-between gap-2 pt-2">
+          <span className="tabular min-w-0 truncate text-[15px] font-semibold text-[var(--price)]">{formatEuro(card.price ?? 0)}</span>
+          {!taken && (
+            <button
+              className={`ui-btn ui-btn-sm h-9 ${inCart ? '' : 'ui-btn-primary'}`}
+              aria-pressed={inCart}
+              aria-label={inCart ? 'Retirer du panier' : 'Ajouter au panier'}
+              onClick={onToggle}
+            >
+              {inCart ? <Check size={15} /> : <Plus size={15} />}
+              <span>{inCart ? 'Ajoutée' : 'Ajouter'}</span>
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
-/** Page publique du stand : /salon/:token. Sans compte ; le panier vit dans le navigateur. */
+/**
+ * Page publique du stand (/salon/:token), sans compte.
+ *
+ * Parcours : chercher / filtrer → ajouter d'un tap → « Réserver » (avec ou
+ * sans offre sur le lot) → code + QR à montrer au stand. La réservation reste
+ * modifiable (ajouter, retirer, nouvelle offre) sans changer de code.
+ */
 export function SalonPublic({ token }: { token: string }) {
-  const storeKey = `cv-salon-cart-${token}`;
-  const [stock, setStock] = useState<Stock | null>(null);
-  const [live, setLive] = useState<Live>({ reserved: [], sold: [] });
-  const [error, setError] = useState<string | null>(null);
-  const [q, setQ] = useState('');
-  const [sort, setSort] = useState<'recent' | 'asc' | 'desc'>('recent');
-  const [maxPrice, setMaxPrice] = useState(0);
-  const [setName, setSetName] = useState('');
-  const [flags, setFlags] = useState<Record<string, boolean>>({});
+  const api = useMemo(() => salonApi(token), [token]);
+  const K = useMemo(() => ({ cart: `cv-salon-${token}-cart`, ticket: `cv-salon-${token}-ticket`, filters: `cv-salon-${token}-filters` }), [token]);
+
+  const [stock, setStock] = useState<SalonStock | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [live, setLive] = useState<SalonLive>({ reserved: [], sold: [] });
+  const [cart, setCart] = useState<string[]>(() => load(local, K.cart, load(local, `cv-salon-cart-${token}`, [] as string[])));
+  const [ticket, setTicket] = useState<Ticket | null>(() => load(local, K.ticket, null));
+  const [pub, setPub] = useState<PublicCart | null>(null);
+  const [screen, setScreen] = useState<'browse' | 'ticket'>(() => (load<Ticket | null>(local, K.ticket, null) ? 'ticket' : 'browse'));
+  const [fs, setFs] = useState<SalonFilterState>(() => {
+    const saved = load<SalonFilterState | null>(session, K.filters, null);
+    return saved ? { ...emptySalonFilters(), ...saved } : emptySalonFilters();
+  });
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [cartOpen, setCartOpen] = useState(false);
+  const [detail, setDetail] = useState<number | null>(null);
   const [limit, setLimit] = useState(PAGE);
-  const [detail, setDetail] = useState<Card | null>(null);
-  const [back, setBack] = useState(false);
-  const [cart, setCart] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem(storeKey) ?? '[]'); } catch { return []; }
-  });
-  const [offers, setOffers] = useState<Record<string, string>>({});
-  const [open, setOpen] = useState(false);
-  const [pseudo, setPseudo] = useState('');
   const [sending, setSending] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [done, setDone] = useState<Done | null>(() => {
-    try { return JSON.parse(localStorage.getItem(`${storeKey}-done`) ?? 'null'); } catch { return null; }
-  });
-  const [status, setStatus] = useState<PublicCart | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [replied, setReplied] = useState(false);
+  const lastOfferState = useRef<string | null>(null);
+  const sentinel = useRef<HTMLDivElement>(null);
 
-  const loadStock = useCallback(async () => {
-    try {
-      const r = await fetch(`${API_BASE}/api/salon/${token}/stock`);
-      if (!r.ok) throw new Error(r.status === 404 ? 'Ce stand est fermé ou introuvable.' : 'Chargement impossible.');
-      const d: Stock = await r.json();
-      setStock(d);
-      setLive((l) => ({ ...l, reserved: d.reserved }));
-      setError(null);
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  }, [token]);
+  useEffect(() => save(local, K.cart, cart), [K, cart]);
+  useEffect(() => save(local, K.ticket, ticket), [K, ticket]);
+  useEffect(() => save(session, K.filters, fs), [K, fs]);
 
-  const loadLive = useCallback(async () => {
-    try {
-      const r = await fetch(`${API_BASE}/api/salon/${token}/live`);
-      if (r.ok) setLive(await r.json());
-    } catch { /* réseau instable : on réessaie au prochain tour */ }
-  }, [token]);
+  /* ── Données ─────────────────────────────────────────────── */
 
-  useEffect(() => { void loadStock(); }, [loadStock]);
   useEffect(() => {
-    const id = window.setInterval(() => { if (!document.hidden) void loadLive(); }, 10000);
+    api.stock().then(
+      (d) => { setStock(d); setLive((l) => ({ ...l, reserved: d.reserved })); },
+      (e) => setLoadError(e instanceof SalonError && e.status === 404 ? 'Ce stand est fermé pour le moment.' : 'Impossible de charger le stand. Vérifie ta connexion.'),
+    );
+  }, [api]);
+
+  const refreshLive = useCallback(() => { api.live().then(setLive, () => { /* réessai au prochain tour */ }); }, [api]);
+  useEffect(() => {
+    const id = window.setInterval(() => { if (!document.hidden) refreshLive(); }, 10000);
     return () => window.clearInterval(id);
-  }, [loadLive]);
+  }, [refreshLive]);
 
+  const refreshPub = useCallback((t: Ticket | null = ticket) => {
+    if (!t) return;
+    api.cart(t).then(setPub, (e) => {
+      // Réservation effacée côté serveur : on oublie le ticket.
+      if (e instanceof SalonError && e.status === 404) { setTicket(null); setPub(null); setScreen('browse'); }
+    });
+  }, [api, ticket]);
   useEffect(() => {
-    if (!done) return;
-    const poll = async () => {
-      try {
-        const r = await fetch(`${API_BASE}/api/salon/${token}/carts/${done.code}`);
-        if (r.ok) setStatus(await r.json());
-      } catch { /* réessai au prochain tour */ }
-    };
-    void poll();
-    const id = window.setInterval(() => { if (!document.hidden) void poll(); }, 5000);
+    if (!ticket) return;
+    refreshPub();
+    const id = window.setInterval(() => { if (!document.hidden) refreshPub(); }, screen === 'ticket' ? 5000 : 12000);
     return () => window.clearInterval(id);
-  }, [done, token]);
+  }, [ticket, screen, refreshPub]);
 
+  // Retour sur la page (téléphone déverrouillé, onglet repris) : on rafraîchit tout de suite.
   useEffect(() => {
-    try { localStorage.setItem(storeKey, JSON.stringify(cart)); } catch { /* stockage indisponible */ }
-  }, [cart, storeKey]);
+    const onVisible = () => { if (!document.hidden) { refreshLive(); refreshPub(); } };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [refreshLive, refreshPub]);
 
-  const reserved = useMemo(() => new Set(live.reserved), [live]);
+  // Le vendeur répond pendant que le visiteur parcourt le stand : on le prévient.
+  useEffect(() => {
+    const st = pub?.offer_state ?? null;
+    if (lastOfferState.current === 'offered' && st && st !== 'offered' && screen === 'browse') setReplied(true);
+    lastOfferState.current = st;
+    if (pub?.status === 'paid') setScreen('ticket');
+  }, [pub, screen]);
+
+  /* ── Dérivés ─────────────────────────────────────────────── */
+
+  const reservation = ticket && pub && (pub.status === 'active' || pub.status === 'expired') ? pub : null;
+  const mineReserved = useMemo(() => new Set(reservation?.status === 'active' ? reservation.card_ids : []), [reservation]);
   const sold = useMemo(() => new Set(live.sold), [live]);
-  const available = useMemo(() => (stock?.cards ?? []).filter((c) => !sold.has(c.id)), [stock, sold]);
-  const byId = useMemo(() => new Map(available.map((c) => [c.id, c])), [available]);
-  const mine = useMemo(() => cart.map((id) => byId.get(id)).filter((c): c is Card => !!c), [cart, byId]);
-  const offerOf = (id: string) => {
-    const v = Number(offers[id]?.replace(',', '.'));
-    const asked = byId.get(id)?.price ?? 0;
-    return v > 0 && v < asked ? v : null;
+  const unavailable = useMemo(() => new Set(live.reserved.filter((id) => !mineReserved.has(id))), [live, mineReserved]);
+  const forSale = useMemo(() => (stock?.cards ?? []).filter((c) => !sold.has(c.id)), [stock, sold]);
+  const byId = useMemo(() => new Map(forSale.map((c) => [c.id, c])), [forSale]);
+  const ctx = useMemo(() => buildFilterContext(forSale), [forSale]);
+  const data = useMemo(() => computeSalon(forSale, fs, ctx, unavailable), [forSale, fs, ctx, unavailable]);
+
+  const cartCards = cart.map((id) => byId.get(id)).filter((c): c is Card => !!c && !unavailable.has(c.id));
+  const blocked = cart.map((id) => byId.get(id)).filter((c): c is Card => !!c && unavailable.has(c.id));
+  const cartTotal = cartCards.reduce((s, c) => s + (c.price ?? 0), 0);
+  const dirty = !!reservation && !sameSet(cartCards.map((c) => c.id), reservation.card_ids);
+  const filterCount = activeCount(fs);
+  // Accord déjà trouvé et toutes ses cartes gardées : on le reprend comme offre.
+  const keptDeal = reservation && dirty && reservation.total < reservation.asked && reservation.card_ids.every((id) => cart.includes(id))
+    ? Math.round((reservation.total + cartCards.filter((c) => !reservation.card_ids.includes(c.id)).reduce((s, c) => s + (c.price ?? 0), 0)) * 100) / 100
+    : null;
+  const sportOptions = data.sports;
+  const sport = fs.filters.facets.sport[0] ?? null;
+
+  useEffect(() => { setLimit(PAGE); }, [fs]);
+  useEffect(() => {
+    const el = sentinel.current;
+    if (!el) return;
+    const io = new IntersectionObserver((entries) => { if (entries[0].isIntersecting) setLimit((l) => l + PAGE); }, { rootMargin: '800px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [screen, stock]);
+
+  /* ── Actions ─────────────────────────────────────────────── */
+
+  const toggle = (id: string) => {
+    buzz();
+    setCart((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id]));
   };
-  const total = mine.reduce((s, c) => s + (c.price ?? 0), 0);
-  const sets = useMemo(() => [...new Set(available.map((c) => c.set_name).filter((x): x is string => !!x))].sort(), [available]);
+  const update = (next: SalonFilterState) => setFs(next);
 
-  const shown = useMemo(() => {
-    const n = norm(q.trim());
-    const list = available.filter((c) =>
-      (!n || norm([c.player, c.team, c.year, c.brand, c.set_name, c.insert_name, c.parallel_name, c.card_number].filter(Boolean).join(' ')).includes(n))
-      && (!maxPrice || (c.price ?? 0) <= maxPrice)
-      && (!setName || c.set_name === setName)
-      && (!flags.auto || isAuto(c)) && (!flags.patch || isPatch(c)) && (!flags.num || !!c.numbered) && (!flags.rc || !!c.is_rookie));
-    if (sort === 'asc') list.sort((a, b) => (a.price ?? 0) - (b.price ?? 0));
-    if (sort === 'desc') list.sort((a, b) => (b.price ?? 0) - (a.price ?? 0));
-    return list;
-  }, [available, q, maxPrice, setName, flags, sort]);
-
-  const toggle = (id: string) => setCart((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id]));
-  const flag = (k: string) => { setFlags((f) => ({ ...f, [k]: !f[k] })); setLimit(PAGE); };
-
-  async function validate() {
+  async function submit({ offer, pseudo }: { offer: number | null; pseudo: string }) {
+    const ids = cartCards.map((c) => c.id);
     setSending(true);
-    setNotice(null);
-    const sent: Record<string, number> = {};
-    for (const c of mine) { const o = offerOf(c.id); if (o) sent[c.id] = o; }
+    setSendError(null);
     try {
-      const r = await fetch(`${API_BASE}/api/salon/${token}/carts`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ card_ids: mine.map((c) => c.id), pseudo: pseudo.trim() || null, offers: sent }),
-      });
-      if (r.status === 409) {
-        const gone: string[] = (await r.json()).detail?.unavailable ?? [];
-        setCart((c) => c.filter((id) => !gone.includes(id)));
-        setNotice(`${gone.length > 1 ? 'Des cartes viennent' : 'Une carte vient'} d'être prise : ${gone.length > 1 ? 'retirées' : 'retirée'} de ton panier.`);
-        void loadLive();
-        return;
+      const body = { card_ids: ids, offer, pseudo: pseudo || null };
+      const res = reservation && ticket ? await api.update(ticket, body) : await api.create(body);
+      const next = { code: res.code, key: res.key ?? ticket?.key ?? '' };
+      setTicket(next);
+      setCart(ids);
+      setPub(null);
+      lastOfferState.current = null;
+      setCartOpen(false);
+      setScreen('ticket');
+      refreshLive();
+      refreshPub(next);
+    } catch (e) {
+      if (e instanceof SalonError && e.unavailable.length) {
+        refreshLive();
+        setCart((c) => c.filter((id) => !e.unavailable.includes(id)));
+        setSendError(e.unavailable.length > 1
+          ? `${e.unavailable.length} cartes viennent d'être prises par quelqu'un d'autre : retirées de ton panier.`
+          : 'Une carte vient d\'être prise par quelqu\'un d\'autre : retirée de ton panier.');
+      } else if (e instanceof SalonError && (e.status === 409 || e.status === 403 || e.status === 404)) {
+        setTicket(null);
+        setPub(null);
+        setSendError('Ta réservation précédente n\'existe plus. Valide à nouveau pour en créer une.');
+      } else {
+        setSendError('Envoi impossible. Vérifie ta connexion et réessaie.');
       }
-      if (!r.ok) throw new Error();
-      const d: Done = await r.json();
-      try { localStorage.setItem(`${storeKey}-done`, JSON.stringify(d)); } catch { /* stockage indisponible */ }
-      setStatus(null);
-      setDone(d);
-      setCart([]);
-      setOffers({});
-      setOpen(false);
-      void loadLive();
-    } catch {
-      setNotice('Envoi impossible, réessaie dans un instant.');
     } finally {
       setSending(false);
     }
   }
 
-  const qr = useQrDataUrl(done ? cartUrl(done.code) : null);
+  async function cancelReservation() {
+    if (!ticket) return;
+    const ok = await confirmDialog({ title: 'Annuler la réservation ?', description: 'Les cartes seront remises en vente pour les autres visiteurs.', confirmLabel: 'Annuler la réservation', cancelLabel: 'Garder', danger: true });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      await api.cancel(ticket);
+      setTicket(null); setPub(null); setCart([]); setScreen('browse');
+      refreshLive();
+      toast('Réservation annulée');
+    } catch {
+      toast.error('Annulation impossible', { description: 'Réessaie dans un instant.' });
+    } finally {
+      setBusy(false);
+    }
+  }
 
-  if (error && !stock) return <div className="flex min-h-screen items-center justify-center p-6 text-center text-[var(--text-secondary)]">{error}</div>;
-  if (!stock) return <div className="flex min-h-screen items-center justify-center text-[var(--text-secondary)]">Chargement…</div>;
+  async function acceptCounter() {
+    if (!ticket) return;
+    setBusy(true);
+    try { await api.accept(ticket); refreshPub(); } catch { toast.error('Impossible de répondre', { description: 'Réessaie dans un instant.' }); } finally { setBusy(false); }
+  }
 
-  if (done) {
-    const cur = status?.total ?? done.total;
-    const closed = status?.status === 'paid' || status?.status === 'expired' || status?.status === 'cancelled';
+  function editReservation() {
+    if (reservation) setCart(reservation.card_ids);
+    setReplied(false);
+    setScreen('browse');
+    if (reservation?.status === 'expired') setCartOpen(true);
+  }
+
+  function finish() {
+    setTicket(null); setPub(null); setCart([]); setScreen('browse');
+  }
+
+  /* ── Écrans ──────────────────────────────────────────────── */
+
+  if (loadError && !stock) {
     return (
-      <div className="mx-auto flex min-h-screen max-w-sm flex-col items-center justify-center gap-4 p-6 text-center">
-        <div className="text-sm text-[var(--text-secondary)]">
-          {status?.status === 'paid' ? 'Merci, c\'est réglé !' : status?.status === 'expired' ? 'Panier expiré' : status?.status === 'cancelled' ? 'Panier annulé' : 'Ton panier est prêt'}
-        </div>
-        <div className="font-mono text-6xl font-bold tracking-[0.2em] text-[var(--text-primary)]">{done.code}</div>
-        {!closed && qr && <img src={qr} alt={`QR du panier ${done.code}`} className="w-64 rounded-xl bg-white p-2" />}
-        {status && status.lines.length > 0 && (
-          <ul className="w-full divide-y divide-[var(--border)] text-left text-sm">
-            {status.lines.map((l) => (
-              <li key={l.card_id} className="flex items-center justify-between gap-2 py-2">
-                <span className="min-w-0"><span className="block truncate">{l.player ?? 'Carte'}</span>
-                  {l.state !== 'none' && <span className="block text-xs text-[var(--text-secondary)]">{LINE_LABEL[l.state]}{l.state === 'offered' || l.state === 'refused' ? ` · ${formatEuro(l.offer ?? 0)}` : ''}</span>}
-                </span>
-                <span className="text-right font-medium">{l.final !== l.asked && <s className="mr-1 text-xs text-[var(--text-muted)]">{formatEuro(l.asked)}</s>}{formatEuro(l.final)}</span>
-              </li>
-            ))}
-          </ul>
-        )}
-        <div className="text-lg font-semibold">{formatEuro(cur)}</div>
-        {!closed && stock.paypal_me && (
-          <a className="ui-btn" href={`https://www.paypal.me/${stock.paypal_me}/${cur}EUR`} target="_blank" rel="noreferrer">Payer via PayPal</a>
-        )}
-        {!closed && <p className="text-sm text-[var(--text-secondary)]">Montre ce code ou ce QR au vendeur pour régler. Cette page se met à jour quand le vendeur répond à tes offres. Cartes réservées {stock.hold_minutes} min.</p>}
-        <button className="ui-btn" onClick={() => { setDone(null); setStatus(null); try { localStorage.removeItem(`${storeKey}-done`); } catch { /* stockage indisponible */ } }}>{closed ? 'Retour au stand' : 'Nouveau panier'}</button>
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-3 px-6 text-center">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[var(--bg-elevated)] text-[var(--text-muted)]"><Store size={24} /></div>
+        <p className="text-[15px] font-medium text-[var(--text-primary)]">{loadError}</p>
       </div>
     );
   }
 
-  const chip = (k: string, label: string) => (
-    <button key={k} className={`ui-btn h-8 shrink-0 px-3 text-xs ${flags[k] ? 'ui-btn-primary' : ''}`} aria-pressed={!!flags[k]} onClick={() => flag(k)}>{label}</button>
-  );
+  const title = stock?.title || 'Cartes à vendre';
+
+  if (screen === 'ticket' && ticket) {
+    return (
+      <SalonTicket
+        ticket={ticket}
+        cart={pub}
+        title={title}
+        paypalMe={stock?.paypal_me ?? null}
+        busy={busy}
+        onBrowse={() => { setReplied(false); setScreen('browse'); }}
+        onEdit={editReservation}
+        onCancel={() => void cancelReservation()}
+        onAccept={() => void acceptCounter()}
+        onDone={finish}
+      />
+    );
+  }
+
+  const shown = data.shown;
+  const openCart = () => (reservation && !dirty ? setScreen('ticket') : setCartOpen(true));
 
   return (
-    <div className="mx-auto max-w-5xl px-3 pb-28">
-      <header className="sticky top-0 z-10 -mx-3 mb-3 border-b border-[var(--border)] bg-[var(--bg-primary)] px-3 py-3">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <h1 className="truncate text-lg font-semibold">{stock.title || 'Cartes à vendre'}</h1>
-          <button className="ui-btn ui-btn-primary relative h-9 shrink-0 px-3" onClick={() => setOpen(true)} aria-label="Mon panier">
-            <ShoppingBasket size={18} />{mine.length > 0 && <span className="ml-1.5 text-sm font-semibold">{mine.length}</span>}
-          </button>
-        </div>
-        <label className="relative block">
-          <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-          <input className="ui-input w-full pl-9" placeholder="Joueur, équipe, set, année…" value={q} onChange={(e) => { setQ(e.target.value); setLimit(PAGE); }} />
-        </label>
-        <div className="-mx-3 mt-2 flex gap-2 overflow-x-auto px-3 pb-1">
-          {chip('auto', 'Auto')}{chip('patch', 'Patch')}{chip('num', 'Numérotée')}{chip('rc', 'Rookie')}
-          <select className="ui-input h-8 shrink-0 py-0 text-xs" aria-label="Prix max" value={maxPrice} onChange={(e) => { setMaxPrice(Number(e.target.value)); setLimit(PAGE); }}>
-            <option value={0}>Tous prix</option>{PRICES.map((p) => <option key={p} value={p}>≤ {p} €</option>)}
-          </select>
-          <select className="ui-input h-8 max-w-[10rem] shrink-0 py-0 text-xs" aria-label="Set" value={setName} onChange={(e) => { setSetName(e.target.value); setLimit(PAGE); }}>
-            <option value="">Tous les sets</option>{sets.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <select className="ui-input h-8 shrink-0 py-0 text-xs" aria-label="Tri" value={sort} onChange={(e) => setSort(e.target.value as typeof sort)}>
-            <option value="recent">Récentes</option><option value="asc">Prix ↑</option><option value="desc">Prix ↓</option>
-          </select>
+    <div className="min-h-dvh pb-28">
+      <header className="sticky top-0 z-30 border-b border-[var(--border)] bg-[var(--bg-primary)]/90 backdrop-blur-xl">
+        <div className="mx-auto w-full max-w-6xl space-y-2.5 px-4 pb-3 sm:px-6">
+          <div className="flex h-14 items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-[15px] font-semibold tracking-tight text-[var(--text-primary)]">{title}</h1>
+              <p className="text-xs text-[var(--text-muted)]">{stock ? `${forSale.length} cartes à vendre` : 'Chargement…'}</p>
+            </div>
+            <ThemeToggleButton />
+            <motion.button
+              key={cartCards.length}
+              initial={{ scale: cartCards.length ? 0.9 : 1 }}
+              animate={{ scale: 1 }}
+              className="ui-btn ui-btn-primary ui-btn-sm h-9"
+              onClick={openCart}
+              aria-label="Mon panier"
+            >
+              <ShoppingBasket size={16} />
+              <span className="tabular">{cartCards.length}</span>
+            </motion.button>
+          </div>
+
+          <label className="relative block">
+            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+            <input
+              className="ui-input h-10 pl-9 pr-9 text-[15px] sm:text-[13px]"
+              type="search"
+              enterKeyHint="search"
+              placeholder="Joueur, équipe, set, année…"
+              value={fs.filters.search}
+              onChange={(e) => update({ ...fs, filters: { ...fs.filters, search: e.target.value } })}
+            />
+            {fs.filters.search && (
+              <button className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md text-[var(--text-muted)]" onClick={() => update({ ...fs, filters: { ...fs.filters, search: '' } })} aria-label="Effacer la recherche">
+                <X size={15} />
+              </button>
+            )}
+          </label>
+
+          {sportOptions.length > 1 && (
+            <div className="ui-segmented w-full overflow-x-auto [scrollbar-width:none]">
+              <button data-active={!sport} onClick={() => update(setSport(fs, null))}>Tout</button>
+              {sportOptions.map((o) => (
+                <button key={o.value} data-active={sport === o.value} onClick={() => update(setSport(fs, sport === o.value ? null : o.value))}>
+                  {o.value}<span className="count">{o.count}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          <ScrollRow>
+            <button className="ui-chip shrink-0" data-active={filterCount > 0} onClick={() => setFiltersOpen(true)}>
+              <SlidersHorizontal size={14} /> Filtres{filterCount > 0 && <span className="count">{filterCount}</span>}
+            </button>
+            <select className="ui-select h-8 w-auto shrink-0 rounded-full pl-3 text-[13px]" aria-label="Trier" value={fs.sort} onChange={(e) => update({ ...fs, sort: e.target.value as SalonSort })}>
+              {SALON_SORTS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </select>
+            <span className="my-1.5 w-px shrink-0 bg-[var(--border)]" />
+            {SALON_FLAGS.filter((f) => data.flags[f.key] > 0 || fs.filters.flags.includes(f.key)).map((f) => (
+              <button key={f.key} className="ui-chip shrink-0" data-active={fs.filters.flags.includes(f.key)} aria-pressed={fs.filters.flags.includes(f.key)} onClick={() => update(toggleFlag(fs, f.key))}>
+                {f.label}<span className="count">{data.flags[f.key]}</span>
+              </button>
+            ))}
+          </ScrollRow>
         </div>
       </header>
-      {notice && <div className="mb-3 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] p-3 text-sm">{notice}</div>}
-      <div className="mb-2 text-xs text-[var(--text-secondary)]">{shown.length} carte{shown.length > 1 ? 's' : ''}</div>
-      {!shown.length && <div className="py-10 text-center text-[var(--text-secondary)]">Aucune carte.</div>}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-        {shown.slice(0, limit).map((c) => {
-          const taken = reserved.has(c.id);
-          const inCart = cart.includes(c.id);
-          return (
-            <div key={c.id} className={`flex flex-col overflow-hidden rounded-xl border bg-[var(--bg-card)] ${inCart ? 'border-[var(--accent)] ring-1 ring-[var(--accent)]' : 'border-[var(--border)]'} ${taken ? 'opacity-50' : ''}`}>
-              <button className="aspect-[3/4] bg-[var(--bg-secondary)]" onClick={() => { setDetail(c); setBack(false); }} aria-label={`Voir ${c.player ?? 'la carte'}`}>
-                {c.image_front_url
-                  ? <img src={cdnImg(c.image_front_url)} alt={c.player ?? ''} loading="lazy" decoding="async" className="h-full w-full object-cover" />
-                  : <div className="flex h-full items-center justify-center text-[var(--text-muted)]"><ImageOff size={24} /></div>}
-              </button>
-              <div className="flex flex-1 flex-col gap-1 p-2.5">
-                <div className="truncate text-sm font-semibold">{c.player ?? 'Carte'}</div>
-                <div className="line-clamp-2 text-xs text-[var(--text-secondary)]">{metaOf(c)}</div>
-                <div className="mt-auto flex items-center justify-between pt-1.5">
-                  <span className="font-semibold">{formatEuro(c.price ?? 0)}</span>
-                  {taken
-                    ? <span className="text-xs text-[var(--text-muted)]">Réservée</span>
-                    : <button className="ui-btn ui-btn-primary h-9 px-3" aria-pressed={inCart} aria-label={inCart ? 'Retirer du panier' : 'Ajouter au panier'} onClick={() => toggle(c.id)}>{inCart ? <Minus size={16} /> : <Plus size={16} />}</button>}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      {shown.length > limit && <button className="ui-btn mx-auto mt-4 flex" onClick={() => setLimit((l) => l + PAGE)}>Voir plus ({shown.length - limit})</button>}
 
-      {mine.length > 0 && !open && (
-        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-[var(--border)] bg-[var(--bg-card)] p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <button className="ui-btn ui-btn-primary mx-auto flex w-full max-w-md items-center justify-center gap-2" onClick={() => setOpen(true)}>
-            <ShoppingBasket size={18} /> Panier · {mine.length} carte{mine.length > 1 ? 's' : ''} · {formatEuro(total)}
+      <main className="mx-auto w-full max-w-6xl space-y-3 px-4 pt-3 sm:px-6">
+        {replied && (
+          <button className="flex w-full items-center gap-3 rounded-xl border border-[var(--border-accent)] bg-[var(--accent-dim)] p-3 text-left" onClick={() => { setReplied(false); setScreen('ticket'); }}>
+            <HandCoins size={18} className="shrink-0 text-[var(--accent)]" />
+            <span className="flex-1 text-[13px] font-medium text-[var(--text-primary)]">Le vendeur a répondu à ton offre</span>
+            <span className="text-[13px] font-semibold text-[var(--accent)]">Voir</span>
           </button>
-        </div>
-      )}
+        )}
 
-      {detail && (
-        <div className="fixed inset-0 z-30 flex items-end bg-black/60 sm:items-center sm:justify-center" onClick={() => setDetail(null)}>
-          <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-2xl bg-[var(--bg-card)] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:max-w-md sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-2 flex items-start justify-between gap-2">
-              <div><div className="text-lg font-semibold">{detail.player ?? 'Carte'}</div><div className="text-sm text-[var(--text-secondary)]">{metaOf(detail)}{detail.card_number ? ` · #${detail.card_number}` : ''}</div></div>
-              <button className="ui-btn h-8 px-2" onClick={() => setDetail(null)} aria-label="Fermer"><X size={16} /></button>
-            </div>
-            <div className="mx-auto aspect-[3/4] max-h-[55vh] overflow-hidden rounded-xl bg-[var(--bg-secondary)]">
-              {(back && detail.image_back_url ? detail.image_back_url : detail.image_front_url)
-                ? <img src={cdnImg((back && detail.image_back_url ? detail.image_back_url : detail.image_front_url) as string)} alt="" className="h-full w-full object-contain" />
-                : <div className="flex h-full items-center justify-center text-[var(--text-muted)]"><ImageOff size={32} /></div>}
-            </div>
-            {detail.image_back_url && <button className="ui-btn mx-auto mt-2 flex h-8 text-xs" onClick={() => setBack((b) => !b)}>{back ? 'Voir le recto' : 'Voir le verso'}</button>}
-            {detail.condition_notes && <p className="mt-2 text-sm text-[var(--text-secondary)]">{detail.condition_notes}</p>}
-            <div className="mt-3 flex items-center justify-between gap-3">
-              <span className="text-xl font-semibold">{formatEuro(detail.price ?? 0)}</span>
-              {reserved.has(detail.id)
-                ? <span className="text-sm text-[var(--text-muted)]">Réservée</span>
-                : <button className="ui-btn ui-btn-primary" onClick={() => toggle(detail.id)}>{cart.includes(detail.id) ? 'Retirer du panier' : 'Ajouter au panier'}</button>}
-            </div>
-            {!reserved.has(detail.id) && (
-              <button className="ui-btn mt-2 w-full" onClick={() => { if (!cart.includes(detail.id)) toggle(detail.id); setDetail(null); setOpen(true); }}>Faire une offre</button>
+        {(filterCount > 0) && (
+          <ScrollRow>
+            {fs.budget != null && (
+              <button className="ui-chip shrink-0" data-active onClick={() => update({ ...fs, budget: null })}>≤ {fs.budget} € <X size={13} /></button>
             )}
+            {SALON_FACETS.flatMap(({ key }) => fs.filters.facets[key].map((v) => (
+              <button key={`${key}-${v}`} className="ui-chip shrink-0" data-active onClick={() => update(toggleFacet(fs, key, v))}>{v} <X size={13} /></button>
+            )))}
+            {fs.filters.flags.map((f) => (
+              <button key={f} className="ui-chip shrink-0" data-active onClick={() => update(toggleFlag(fs, f))}>{SALON_FLAGS.find((x) => x.key === f)?.label} <X size={13} /></button>
+            ))}
+            <button className="ui-chip shrink-0 border-transparent" onClick={() => update(clearFilters(fs))}>Tout effacer</button>
+          </ScrollRow>
+        )}
+
+        {stock && (
+          <p className="text-xs text-[var(--text-muted)]">
+            <span className="tabular">{shown.length}</span> carte{shown.length > 1 ? 's' : ''}
+            {shown.some((c) => unavailable.has(c.id)) && <> · <span className="tabular">{shown.filter((c) => unavailable.has(c.id)).length}</span> réservée{shown.filter((c) => unavailable.has(c.id)).length > 1 ? 's' : ''} en fin de liste</>}
+          </p>
+        )}
+
+        {!stock ? (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {Array.from({ length: 10 }, (_, i) => <div key={i} className="aspect-[3/5] animate-pulse rounded-xl bg-[var(--bg-secondary)]" />)}
+          </div>
+        ) : !shown.length ? (
+          <div className="flex flex-col items-center gap-3 py-16 text-center">
+            <p className="text-[15px] font-medium text-[var(--text-primary)]">Aucune carte ne correspond</p>
+            <button className="ui-btn" onClick={() => update({ ...emptySalonFilters(), sort: fs.sort })}>Effacer la recherche et les filtres</button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {shown.slice(0, limit).map((c, i) => (
+              <Tile key={c.id} card={c} inCart={cart.includes(c.id)} taken={unavailable.has(c.id)} onOpen={() => setDetail(i)} onToggle={() => toggle(c.id)} />
+            ))}
+          </div>
+        )}
+        <div ref={sentinel} className="h-px" />
+      </main>
+
+      {(cartCards.length > 0 || reservation) && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-[var(--border)] bg-[var(--bg-card)]/95 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur-xl">
+          <div className="mx-auto flex max-w-md items-center gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] font-semibold text-[var(--text-primary)]">
+                {reservation ? `Réservation ${ticket?.code}` : `${cartCards.length} carte${cartCards.length > 1 ? 's' : ''}`}
+              </p>
+              <p className="tabular truncate text-xs text-[var(--text-muted)]">
+                {reservation && !dirty ? `${reservation.card_ids.length} carte${reservation.card_ids.length > 1 ? 's' : ''} · ${formatEuro(reservation.total)}`
+                  : reservation ? `Modifiée · ${cartCards.length} carte${cartCards.length > 1 ? 's' : ''} · ${formatEuro(cartTotal)}`
+                  : formatEuro(cartTotal)}
+              </p>
+            </div>
+            <button className="ui-btn ui-btn-primary ui-btn-lg" onClick={openCart}>
+              {reservation && !dirty ? 'Voir mon code' : reservation ? 'Mettre à jour' : 'Réserver'} <ArrowRight size={16} />
+            </button>
           </div>
         </div>
       )}
 
-      {open && (
-        <div className="fixed inset-0 z-30 flex items-end bg-black/50" onClick={() => setOpen(false)}>
-          <div className="max-h-[85vh] w-full overflow-y-auto rounded-t-2xl bg-[var(--bg-card)] p-4 pb-[max(1rem,env(safe-area-inset-bottom))]" onClick={(e) => e.stopPropagation()}>
-            <div className="mb-3 text-lg font-semibold">Mon panier</div>
-            {!mine.length && <div className="py-4 text-center text-sm text-[var(--text-secondary)]">Panier vide.</div>}
-            <ul className="divide-y divide-[var(--border)]">
-              {mine.map((c) => {
-                const o = offerOf(c.id);
-                return (
-                  <li key={c.id} className="py-2 text-sm">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="truncate">{c.player ?? 'Carte'} <span className="text-[var(--text-secondary)]">{[c.year, c.set_name].filter(Boolean).join(' ')}</span></span>
-                      <span className="flex items-center gap-2 font-medium">{o ? <><s className="text-xs text-[var(--text-muted)]">{formatEuro(c.price ?? 0)}</s>{formatEuro(o)}</> : formatEuro(c.price ?? 0)}<button className="ui-btn h-8 px-2" onClick={() => toggle(c.id)} aria-label="Retirer"><Minus size={14} /></button></span>
-                    </div>
-                    <input className="ui-input mt-1.5 h-8 w-full text-xs" inputMode="decimal" placeholder={`Ton offre en € (moins de ${c.price ?? 0})`} value={offers[c.id] ?? ''} onChange={(e) => setOffers((m) => ({ ...m, [c.id]: e.target.value }))} />
-                  </li>
-                );
-              })}
-            </ul>
-            <div className="mt-3 flex items-center justify-between text-base font-semibold"><span>Total</span><span>{formatEuro(total)}</span></div>
-            <p className="text-xs text-[var(--text-secondary)]">Le total reste au prix demandé tant que le vendeur n'a pas répondu à tes offres.</p>
-            <input className="ui-input mt-3 w-full" placeholder="Ton prénom (facultatif)" value={pseudo} maxLength={60} onChange={(e) => setPseudo(e.target.value)} />
-            {notice && <div className="mt-2 text-sm text-[var(--orange)]">{notice}</div>}
-            <button className="ui-btn ui-btn-primary mt-3 w-full" disabled={sending || !mine.length} onClick={() => void validate()}>{sending ? 'Envoi…' : 'Valider mon panier'}</button>
-          </div>
-        </div>
+      <SalonFilterSheet open={filtersOpen} onClose={() => setFiltersOpen(false)} state={fs} onChange={update} data={data} />
+
+      {detail != null && shown[detail] && (
+        <SalonCardSheet
+          list={shown}
+          index={detail}
+          onIndex={setDetail}
+          onClose={() => setDetail(null)}
+          inCart={(id) => cart.includes(id)}
+          unavailable={(id) => unavailable.has(id)}
+          onToggle={toggle}
+        />
       )}
+
+      <SalonCartSheet
+        key={`${reservation?.code ?? 'new'}-${keptDeal ?? ''}`}
+        keptDeal={keptDeal != null && keptDeal < cartTotal ? keptDeal : null}
+        open={cartOpen}
+        onClose={() => { setCartOpen(false); setSendError(null); }}
+        cards={cartCards}
+        blocked={blocked}
+        editingCode={reservation ? ticket?.code ?? null : null}
+        holdMinutes={stock?.hold_minutes ?? 30}
+        sending={sending}
+        error={sendError}
+        onRemove={(id) => setCart((c) => c.filter((x) => x !== id))}
+        onSubmit={(p) => void submit(p)}
+      />
     </div>
   );
 }

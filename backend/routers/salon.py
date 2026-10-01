@@ -3,6 +3,8 @@
 Gestion réservée à l'admin (`require_admin`). Les routes publiques ne servent
 que le stock `a_vendre` du compte propriétaire du stand.
 """
+import hashlib
+import hmac
 import os
 import re
 import secrets
@@ -55,7 +57,7 @@ def _price(card: dict) -> Optional[float]:
 
 
 SLIM_FIELDS = (
-    "id", "player", "team", "year", "brand", "set_name", "insert_name", "parallel_name", "card_number",
+    "id", "sport", "player", "team", "year", "brand", "set_name", "insert_name", "parallel_name", "card_number",
     "card_type", "numbered", "is_rookie", "image_front_url", "image_back_url", "condition_notes",
     "grading_company", "grading_grade", "created_at",
 )
@@ -67,6 +69,50 @@ def _slim(card: dict) -> dict:
 
 def _money(v) -> float:
     return round(float(v), 2)
+
+
+def spread(asked: list[float], total: float) -> list[float]:
+    """Répartit un prix de lot au prorata des prix demandés, au centime près.
+
+    La somme des parts vaut exactement `total` : l'arrondi résiduel va sur la
+    ligne la plus chère. Sert à garder un prix de vente par carte quand
+    l'acheteur négocie le lot entier.
+    """
+    if not asked:
+        return []
+    weights = [round(a * 100) for a in asked]
+    base = sum(weights)
+    cents = round(total * 100)
+    if base <= 0:
+        weights, base = [1] * len(asked), len(asked)
+    parts = [w * cents // base for w in weights]
+    parts[max(range(len(asked)), key=lambda i: weights[i])] += cents - sum(parts)
+    return [p / 100 for p in parts]
+
+
+def offer_summary(lines: list[dict]) -> dict:
+    """Vue « lot » des lignes : total demandé, offre, état de la négociation."""
+    asked = _money(sum(l["asked"] for l in lines))
+    offered = [l for l in lines if l.get("offer") is not None]
+    states = {l.get("state") for l in offered}
+    if not offered:
+        state = "none"
+    elif "offered" in states:
+        state = "offered"
+    elif "countered" in states:
+        state = "countered"
+    elif states == {"accepted"}:
+        state = "accepted"
+    else:
+        state = "refused"
+    offer = _money(sum(l["offer"] for l in offered)) if offered else None
+    return {"asked": asked, "offer": offer, "offer_state": state}
+
+
+def _buyer_key(cart_id: str) -> str:
+    """Clé du visiteur pour modifier sa réservation, dérivée de l'id (pas de colonne en base)."""
+    secret = (os.environ.get("SALON_SECRET") or SUPABASE_SERVICE_KEY or "cardvaults-salon").encode()
+    return hmac.new(secret, f"salon-cart:{cart_id}".encode(), hashlib.sha256).hexdigest()[:24]
 
 
 async def _stand_by_token(client: httpx.AsyncClient, token: str) -> dict:
@@ -117,77 +163,191 @@ async def public_live(token: str):
     }
 
 
-class CartCreate(BaseModel):
+class CartBody(BaseModel):
     card_ids: list[str]
     pseudo: Optional[str] = None
+    # Offre sur le lot entier (le cas normal).
+    offer: Optional[float] = None
+    # Ancien format : offre carte par carte. Gardé pour les pages déjà ouvertes.
     offers: dict[str, float] = {}
+    key: Optional[str] = None
 
 
-@router.post("/salon/{token}/carts", status_code=201)
-async def create_cart(token: str, body: CartCreate):
+class BuyerKey(BaseModel):
+    key: str
+
+
+def _clean_ids(card_ids: list[str]) -> list[str]:
     try:
-        ids = list(dict.fromkeys(str(uuid.UUID(c)) for c in body.card_ids))[:MAX_CART]
+        ids = list(dict.fromkeys(str(uuid.UUID(c)) for c in card_ids))[:MAX_CART]
     except ValueError:
         raise HTTPException(status_code=400, detail="Carte invalide")
     if not ids:
         raise HTTPException(status_code=400, detail="Panier vide")
+    return ids
+
+
+async def _reservable(client: httpx.AsyncClient, user_id: str, ids: list[str], except_cart: Optional[str] = None) -> tuple[dict, list[dict]]:
+    """Cartes à vendre, avec prix, non bloquées par un autre panier. 409 sinon."""
+    resp = _check(await client.get(
+        f"{SUPABASE_URL}/rest/v1/cards",
+        headers=_headers(),
+        params={"user_id": f"eq.{user_id}", "status": "eq.a_vendre", "id": f"in.({','.join(ids)})"},
+    ), (200,))
+    found = {c["id"]: c for c in resp.json()}
+    active = await _active_carts(client, user_id)
+    taken = {cid for cart in active if cart["id"] != except_cart for cid in cart["card_ids"]}
+    unavailable = [i for i in ids if i not in found or _price(found[i]) is None or i in taken]
+    if unavailable:
+        raise HTTPException(status_code=409, detail={"unavailable": unavailable})
+    return found, active
+
+
+def _build_lines(ids: list[str], found: dict, body: CartBody) -> list[dict]:
+    asked = [_money(_price(found[i])) for i in ids]
+    if body.offer is not None:
+        if not (0 < body.offer < sum(asked)):
+            raise HTTPException(status_code=400, detail="Offre invalide")
+        shares = spread(asked, _money(body.offer))
+        return [{"card_id": i, "asked": a, "offer": o, "final": a, "state": "offered"} for i, a, o in zip(ids, asked, shares)]
+    lines = []
+    for i, a in zip(ids, asked):
+        offer = body.offers.get(i)
+        if offer is not None and not (0 < offer < a):
+            raise HTTPException(status_code=400, detail="Offre invalide")
+        lines.append({"card_id": i, "asked": a, "offer": _money(offer) if offer is not None else None, "final": a, "state": "offered" if offer is not None else "none"})
+    return lines
+
+
+@router.post("/salon/{token}/carts", status_code=201)
+async def create_cart(token: str, body: CartBody):
+    ids = _clean_ids(body.card_ids)
     async with httpx.AsyncClient() as client:
         stand = await _stand_by_token(client, token)
         user_id = stand["user_id"]
-        resp = _check(await client.get(
-            f"{SUPABASE_URL}/rest/v1/cards",
-            headers=_headers(),
-            params={"user_id": f"eq.{user_id}", "status": "eq.a_vendre", "id": f"in.({','.join(ids)})"},
-        ), (200,))
-        found = {c["id"]: c for c in resp.json()}
-        active = await _active_carts(client, user_id)
-        taken = {cid for cart in active for cid in cart["card_ids"]}
-        unavailable = [i for i in ids if i not in found or _price(found[i]) is None or i in taken]
-        if unavailable:
-            raise HTTPException(status_code=409, detail={"unavailable": unavailable})
+        found, active = await _reservable(client, user_id, ids)
+        lines = _build_lines(ids, found, body)
         mine = {c["code"] for c in active}
         code = next(c for c in (("".join(secrets.choice(CODE_ALPHABET) for _ in range(4))) for _ in range(50)) if c not in mine)
-        lines = []
-        for i in ids:
-            asked = _money(_price(found[i]))
-            offer = body.offers.get(i)
-            if offer is not None and not (0 < offer < asked):
-                raise HTTPException(status_code=400, detail="Offre invalide")
-            lines.append({"card_id": i, "asked": asked, "offer": _money(offer) if offer is not None else None, "final": asked, "state": "offered" if offer is not None else "none"})
-        total = _money(sum(l["final"] for l in lines))
         ins = _check(await client.post(f"{SUPABASE_URL}/rest/v1/salon_carts", headers=_headers(), json={
             "user_id": user_id,
             "code": code,
             "card_ids": ids,
             "lines": lines,
-            "total": total,
+            "total": _money(sum(l["final"] for l in lines)),
             "pseudo": (body.pseudo or "").strip()[:60] or None,
             "expires_at": _iso(_now() + timedelta(minutes=HOLD_MINUTES)),
         }))
     cart = ins.json()[0]
-    return {"code": cart["code"], "total": cart["total"], "expires_at": cart["expires_at"]}
+    return {"code": cart["code"], "key": _buyer_key(cart["id"]), "total": cart["total"], "expires_at": cart["expires_at"]}
+
+
+async def _public_cart_row(client: httpx.AsyncClient, user_id: str, code: str, key: Optional[str]) -> dict:
+    """Panier d'un visiteur. Un code n'est unique que parmi les paniers actifs :
+    avec la clé on retrouve toujours le bon, même si le code a été réattribué."""
+    rows = _check(await client.get(
+        f"{SUPABASE_URL}/rest/v1/salon_carts", headers=_headers(),
+        params={"user_id": f"eq.{user_id}", "code": f"eq.{code.upper()}", "order": "created_at.desc"},
+    ), (200,)).json()
+    if key:
+        rows = [r for r in rows if hmac.compare_digest(_buyer_key(r["id"]), key)]
+    if not rows:
+        raise HTTPException(status_code=404, detail="Panier introuvable")
+    return rows[0]
+
+
+def _require_key(cart: dict, key: Optional[str]):
+    if not key or not hmac.compare_digest(_buyer_key(cart["id"]), key):
+        raise HTTPException(status_code=403, detail="Ce panier ne t'appartient pas")
+
+
+def _status(cart: dict) -> str:
+    if cart["status"] == "active" and cart["expires_at"] <= _iso(_now()):
+        return "expired"
+    return cart["status"]
 
 
 @router.get("/salon/{token}/carts/{code}")
-async def public_cart(token: str, code: str):
+async def public_cart(token: str, code: str, key: Optional[str] = None):
     async with httpx.AsyncClient() as client:
         stand = await _stand_by_token(client, token)
-        rows = _check(await client.get(
-            f"{SUPABASE_URL}/rest/v1/salon_carts", headers=_headers(),
-            params={"user_id": f"eq.{stand['user_id']}", "code": f"eq.{code.upper()}", "order": "created_at.desc", "limit": "1"},
-        ), (200,)).json()
-        if not rows:
-            raise HTTPException(status_code=404, detail="Panier introuvable")
-        cart = rows[0]
+        cart = await _public_cart_row(client, stand["user_id"], code, key)
         cards = {}
         if cart["card_ids"]:
             found = _check(await client.get(f"{SUPABASE_URL}/rest/v1/cards", headers=_headers(), params={"id": f"in.({','.join(cart['card_ids'])})"}), (200,)).json()
             cards = {c["id"]: c for c in found}
-    status = cart["status"]
-    if status == "active" and cart["expires_at"] <= _iso(_now()):
-        status = "expired"
-    lines = [{**l, "player": cards.get(l["card_id"], {}).get("player"), "set_name": cards.get(l["card_id"], {}).get("set_name"), "year": cards.get(l["card_id"], {}).get("year")} for l in (cart.get("lines") or [])]
-    return {"code": cart["code"], "status": status, "total": cart["total"], "expires_at": cart["expires_at"], "lines": lines}
+    lines = cart.get("lines") or []
+    pub_lines = [{
+        **l,
+        "player": cards.get(l["card_id"], {}).get("player"),
+        "set_name": cards.get(l["card_id"], {}).get("set_name"),
+        "year": cards.get(l["card_id"], {}).get("year"),
+        "image_front_url": cards.get(l["card_id"], {}).get("image_front_url"),
+    } for l in lines]
+    return {
+        "code": cart["code"],
+        "status": _status(cart),
+        "total": cart["total"],
+        "expires_at": cart["expires_at"],
+        "card_ids": cart["card_ids"],
+        "lines": pub_lines,
+        **offer_summary(lines),
+    }
+
+
+@router.put("/salon/{token}/carts/{code}")
+async def update_public_cart(token: str, code: str, body: CartBody):
+    """Le visiteur modifie sa réservation (ajout/retrait de cartes, nouvelle offre).
+    Le code ne change pas ; la négociation repart de zéro et la réservation est prolongée."""
+    ids = _clean_ids(body.card_ids)
+    async with httpx.AsyncClient() as client:
+        stand = await _stand_by_token(client, token)
+        user_id = stand["user_id"]
+        cart = await _public_cart_row(client, user_id, code, body.key)
+        _require_key(cart, body.key)
+        if cart["status"] != "active":
+            raise HTTPException(status_code=409, detail="Panier déjà encaissé ou annulé")
+        found, _ = await _reservable(client, user_id, ids, except_cart=cart["id"])
+        lines = _build_lines(ids, found, body)
+        payload = {
+            "card_ids": ids,
+            "lines": lines,
+            "total": _money(sum(l["final"] for l in lines)),
+            "expires_at": _iso(_now() + timedelta(minutes=HOLD_MINUTES)),
+        }
+        if body.pseudo is not None:
+            payload["pseudo"] = body.pseudo.strip()[:60] or None
+        updated = await _set_cart(client, cart["id"], user_id, payload)
+    return {"code": updated["code"], "key": body.key, "total": updated["total"], "expires_at": updated["expires_at"]}
+
+
+@router.post("/salon/{token}/carts/{code}/cancel")
+async def cancel_public_cart(token: str, code: str, body: BuyerKey):
+    async with httpx.AsyncClient() as client:
+        stand = await _stand_by_token(client, token)
+        cart = await _public_cart_row(client, stand["user_id"], code, body.key)
+        _require_key(cart, body.key)
+        if cart["status"] == "paid":
+            raise HTTPException(status_code=409, detail="Panier déjà encaissé")
+        await _set_cart(client, cart["id"], stand["user_id"], {"status": "cancelled"})
+    return {"status": "cancelled"}
+
+
+@router.post("/salon/{token}/carts/{code}/accept")
+async def accept_counter(token: str, code: str, body: BuyerKey):
+    """Le visiteur accepte la contre-offre du vendeur."""
+    async with httpx.AsyncClient() as client:
+        stand = await _stand_by_token(client, token)
+        cart = await _public_cart_row(client, stand["user_id"], code, body.key)
+        _require_key(cart, body.key)
+        if _status(cart) != "active":
+            raise HTTPException(status_code=409, detail="Panier non actif")
+        lines = cart.get("lines") or []
+        for l in lines:
+            if l.get("state") == "countered":
+                l["state"] = "accepted"
+        await _set_cart(client, cart["id"], stand["user_id"], {"lines": lines})
+    return {"status": "active", **offer_summary(lines)}
 
 
 # ── Admin ────────────────────────────────────────────────────────────────────
@@ -300,6 +460,48 @@ async def update_line(cart_id: str, card_id: str, body: LineUpdate, user: dict =
                 line["state"] = "accepted" if line["final"] == line["offer"] else "countered"
         else:
             raise HTTPException(status_code=400, detail="Rien à modifier")
+        total = _money(sum(l["final"] for l in lines))
+        return await _set_cart(client, cart_id, user["sub"], {"lines": lines, "total": total})
+
+
+class OfferAction(BaseModel):
+    action: str  # accept | refuse | counter
+    total: Optional[float] = None
+
+
+@router.post("/salon/carts/{cart_id}/offer")
+async def answer_offer(cart_id: str, body: OfferAction, user: dict = Depends(require_admin)):
+    """Réponse du vendeur sur le lot entier. `counter` fixe un prix de lot,
+    réparti sur les cartes au prorata (utilisable aussi comme remise sans offre)."""
+    async with httpx.AsyncClient() as client:
+        cart = await _get_cart(client, cart_id, user["sub"])
+        if cart["status"] != "active":
+            raise HTTPException(status_code=409, detail="Panier non actif")
+        lines = cart.get("lines") or []
+        if not lines:
+            raise HTTPException(status_code=400, detail="Panier sans lignes")
+        has_offer = any(l.get("offer") is not None for l in lines)
+        if body.action == "accept":
+            if not has_offer:
+                raise HTTPException(status_code=400, detail="Aucune offre à accepter")
+            for l in lines:
+                if l.get("offer") is not None:
+                    l["final"], l["state"] = l["offer"], "accepted"
+        elif body.action == "refuse":
+            for l in lines:
+                l["final"] = l["asked"]
+                if l.get("offer") is not None:
+                    l["state"] = "refused"
+        elif body.action == "counter":
+            if body.total is None or body.total <= 0:
+                raise HTTPException(status_code=400, detail="Prix invalide")
+            finals = spread([l["asked"] for l in lines], _money(body.total))
+            for l, f in zip(lines, finals):
+                l["final"] = f
+                if l.get("offer") is not None:
+                    l["state"] = "accepted" if f == l["offer"] else "countered"
+        else:
+            raise HTTPException(status_code=400, detail="Action inconnue")
         total = _money(sum(l["final"] for l in lines))
         return await _set_cart(client, cart_id, user["sub"], {"lines": lines, "total": total})
 
