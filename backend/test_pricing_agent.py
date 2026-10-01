@@ -58,6 +58,7 @@ class PricingTest(unittest.TestCase):
     def test_math(self):
         self.assertEqual(propose_from_sold([10, 20, 30]), (20.0, 24.0))   # 23.5 -> 24
         self.assertEqual(propose_from_sold([2, 2]), (2.0, 2.5))           # 2.35 -> 2.5
+        self.assertEqual(propose_from_sold([0.35]), (0.35, 1.0))          # plancher 1 €
         with self.assertRaises(ValueError):
             propose_from_sold([])
 
