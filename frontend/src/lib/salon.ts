@@ -17,6 +17,21 @@ export interface SalonCart {
   paid_at: string | null;
   cards: Card[];
   lines: SalonLine[];
+  /** Présent après un encaissement : ce qu'il reste à faire sur les annonces en ligne. */
+  marketplaces?: Marketplaces;
+}
+
+export interface Marketplaces { ebay_withdrawn: number; ebay_failed: string[]; vinted: string[] }
+
+/** Message après une vente : annonces eBay retirées, annonces à retirer à la main. */
+export function marketMessage(m: Marketplaces | undefined): { text: string; todo: boolean } | null {
+  if (!m) return null;
+  const parts: string[] = [];
+  if (m.ebay_withdrawn) parts.push(m.ebay_withdrawn > 1 ? `${m.ebay_withdrawn} annonces eBay retirées` : 'Annonce eBay retirée');
+  const todo = m.vinted.length + m.ebay_failed.length;
+  if (m.vinted.length) parts.push(m.vinted.length > 1 ? `${m.vinted.length} annonces Vinted à retirer` : 'Annonce Vinted à retirer');
+  if (m.ebay_failed.length) parts.push(m.ebay_failed.length > 1 ? `${m.ebay_failed.length} annonces eBay à retirer` : 'Annonce eBay à retirer');
+  return parts.length ? { text: parts.join(' · '), todo: todo > 0 } : null;
 }
 
 export type LineState = 'none' | 'offered' | 'accepted' | 'countered' | 'refused';
@@ -79,7 +94,9 @@ export function useCartAction() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, action }: { id: string; action: 'pay' | 'cancel' | 'extend' }) => apiFetch<SalonCart>(`/salon/carts/${id}/${action}`, { method: 'POST' }),
-    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['salon-carts'] }); void qc.invalidateQueries({ queryKey: ['cards'] }); },
+    onSuccess: () => {
+      for (const key of ['salon-carts', 'salon-stock', 'salon-stats', 'salon-delist', 'cards']) void qc.invalidateQueries({ queryKey: [key] });
+    },
   });
 }
 
@@ -186,5 +203,31 @@ export function useOfferAction() {
     mutationFn: ({ id, ...body }: { id: string; action: 'accept' | 'refuse' | 'counter'; total?: number }) =>
       apiFetch<SalonCart>(`/salon/carts/${id}/offer`, { method: 'POST', body: JSON.stringify(body) }),
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ['salon-carts'] }); },
+  });
+}
+
+export function useCheckout() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { card_ids: string[]; prices?: Record<string, number>; total?: number | null }) =>
+      apiFetch<SalonCart>('/salon/checkout', { method: 'POST', body: JSON.stringify(body) }),
+    onSuccess: () => {
+      for (const key of ['salon-carts', 'salon-stock', 'salon-stats', 'salon-delist', 'cards']) void qc.invalidateQueries({ queryKey: [key] });
+    },
+  });
+}
+
+export type DelistCard = Card & { vinted_url: string | null; ebay_url: string | null; ebay_listed: boolean; sold_at: string | null };
+
+export function useDelist() {
+  return useQuery<DelistCard[]>({ queryKey: ['salon-delist'], queryFn: () => apiFetch<DelistCard[]>('/salon/delist') });
+}
+
+export function useMarkDelisted() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, market }: { id: string; market: 'vinted' | 'ebay' }) =>
+      apiFetch<{ ok: boolean }>(`/salon/delist/${id}`, { method: 'POST', body: JSON.stringify({ market }) }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['salon-delist'] }); void qc.invalidateQueries({ queryKey: ['cards'] }); },
   });
 }

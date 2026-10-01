@@ -4,8 +4,8 @@
  * personnelle, rien envoyé à un tiers. Les visites du vendeur (navigateur
  * qui a ouvert l'écran Salon) ne sont pas comptées.
  */
-export type SalonEventKind = 'visit' | 'view' | 'add' | 'cart';
-export interface SalonEvent { kind: SalonEventKind; card_id?: string }
+export type SalonEventKind = 'visit' | 'view' | 'add' | 'cart' | 'search' | 'search_empty';
+export interface SalonEvent { kind: SalonEventKind; card_id?: string; query?: string }
 
 const VISITOR_KEY = 'cv-salon-visitor';
 const ownerKey = (token: string) => `cv-salon-owner-${token}`;
@@ -52,6 +52,8 @@ const defaultSend = (token: string): Send => (body) => {
 
 export interface Tracker {
   track: (kind: SalonEventKind, cardId?: string) => void;
+  /** Recherche terminée (le visiteur a cessé de taper), avec ou sans résultat. */
+  search: (query: string, results: number) => void;
   flush: () => void;
 }
 
@@ -81,6 +83,16 @@ export function createTracker(token: string, opts: { send?: Send; delayMs?: numb
       if (seen.has(k)) return;
       seen.add(k);
       queue.push(cardId ? { kind, card_id: cardId } : { kind });
+      if (!timer) timer = setTimeout(flush, delay);
+    },
+    search(query, results) {
+      const q = query.trim().toLowerCase().replace(/\s+/g, ' ').slice(0, 60);
+      if (opts.disabled || q.length < 2) return;
+      const kind: SalonEventKind = results ? 'search' : 'search_empty';
+      const k = `${kind}:${q}`;
+      if (seen.has(k)) return;
+      seen.add(k);
+      queue.push({ kind, query: q });
       if (!timer) timer = setTimeout(flush, delay);
     },
     flush,

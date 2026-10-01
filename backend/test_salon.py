@@ -18,6 +18,7 @@ class FakeDB:
 
     def __init__(self):
         self.t = {"cards": [], "salon_stands": [], "salon_carts": [], "salon_events": []}
+        self.event_columns = None  # ex. {"kind", ...} pour simuler une colonne manquante
 
     def match(self, row, params):
         params = dict(params)
@@ -54,6 +55,8 @@ class FakeDB:
             from datetime import datetime, timezone
             stamp = {"created_at": datetime.now(timezone.utc).isoformat()}
             if isinstance(body, list):
+                if table == "salon_events" and self.event_columns and any(set(b) - self.event_columns for b in body):
+                    return httpx.Response(400, json={"message": "column does not exist"})
                 new = [{"id": str(uuid.uuid4()), **stamp, **b} for b in body]
                 rows.extend(new)
                 return httpx.Response(201, json=new)
@@ -245,6 +248,78 @@ class SalonTest(unittest.TestCase):
         st = self.client.get("/api/salon/stats", params=self._day()).json()
         self.assertFalse(st["tracking"])
         self.assertEqual(st["sales"]["carts"], 1)
+
+    def _fake_ebay(self, fail=False):
+        calls = []
+        async def token(user_id):
+            return "tok"
+        async def withdraw(card, access_token):
+            calls.append(card["id"])
+            if fail:
+                raise RuntimeError("eBay down")
+            card_row = next(c for c in self.db.t["cards"] if c["id"] == card["id"])
+            card_row["ebay_offer_id"] = None
+            return {"withdrawn": True}
+        self._saved = (salon.get_valid_access_token, salon.ebay_selling.withdraw_card)
+        salon.get_valid_access_token = token
+        salon.ebay_selling.withdraw_card = withdraw
+        self.addCleanup(lambda: (setattr(salon, "get_valid_access_token", self._saved[0]), setattr(salon.ebay_selling, "withdraw_card", self._saved[1])))
+        return calls
+
+    def test_pay_withdraws_ebay_and_lists_vinted(self):
+        a, b = self.db.t["cards"][0], self.db.t["cards"][1]
+        a["ebay_offer_id"], b["vinted_url"] = "OFF1", "https://vinted.fr/items/1"
+        calls = self._fake_ebay()
+        self.client.post(f"/api/salon/{self.token}/carts", json={"card_ids": [a["id"], b["id"]]})
+        cid = self.db.t["salon_carts"][0]["id"]
+        out = self.client.post(f"/api/salon/carts/{cid}/pay").json()
+        self.assertEqual(calls, [a["id"]])
+        self.assertEqual(out["marketplaces"], {"ebay_withdrawn": 1, "ebay_failed": [], "vinted": [b["id"]]})
+        todo = self.client.get("/api/salon/delist").json()
+        self.assertEqual([(c["id"], bool(c["vinted_url"]), c["ebay_listed"]) for c in todo], [(b["id"], True, False)])
+        self.client.post(f"/api/salon/delist/{b['id']}", json={"market": "vinted"})
+        self.assertEqual(self.client.get("/api/salon/delist").json(), [])
+
+    def test_ebay_failure_never_blocks_payment(self):
+        a = self.db.t["cards"][0]
+        a["ebay_offer_id"] = "OFF1"
+        self._fake_ebay(fail=True)
+        self.client.post(f"/api/salon/{self.token}/carts", json={"card_ids": [a["id"]]})
+        cid = self.db.t["salon_carts"][0]["id"]
+        out = self.client.post(f"/api/salon/carts/{cid}/pay").json()
+        self.assertEqual((out["status"], out["marketplaces"]["ebay_failed"]), ("paid", [a["id"]]))
+        self.assertTrue(self.client.get("/api/salon/delist").json()[0]["ebay_listed"])
+        self.assertEqual(self.client.post(f"/api/salon/delist/{a['id']}", json={"market": "ebay"}).status_code, 502)
+
+    def test_quick_checkout(self):
+        a, b = (c["id"] for c in self.db.t["cards"][:2])
+        self._fake_ebay()
+        r = self.client.post("/api/salon/checkout", json={"card_ids": [a, b], "total": 24})
+        self.assertEqual(r.status_code, 201)
+        self.assertEqual((r.json()["status"], r.json()["total"], r.json()["pseudo"]), ("paid", 24, "Caisse"))
+        self.assertEqual([c["price"] for c in self.db.t["cards"][:2]], [8, 16])
+        self.assertEqual(self.client.post("/api/salon/checkout", json={"card_ids": [a]}).status_code, 409)
+        st = self.client.get("/api/salon/stats", params=self._day()).json()
+        self.assertEqual((st["sales"]["revenue"], st["sales"]["cards_sold"]), (24, 2))
+
+    def test_checkout_refuses_card_reserved_by_visitor(self):
+        a = self.db.t["cards"][0]["id"]
+        self.client.post(f"/api/salon/{self.token}/carts", json={"card_ids": [a]})
+        self.assertEqual(self.client.post("/api/salon/checkout", json={"card_ids": [a], "prices": {a: 9}}).status_code, 409)
+
+    def test_searches_in_stats(self):
+        ev = f"/api/salon/{self.token}/events"
+        send = lambda v, events: self.client.post(ev, content=json.dumps({"visitor": v, "events": events}))
+        send("visitor-one", [{"kind": "search_empty", "query": "wem"}, {"kind": "search_empty", "query": "Wemby"}, {"kind": "search", "query": "LeBron"}])
+        send("visitor-two", [{"kind": "search_empty", "query": "wemby "}, {"kind": "search_empty", "query": "x"}])
+        st = self.client.get("/api/salon/stats", params=self._day()).json()
+        self.assertEqual(st["searches_empty"], [{"query": "wemby", "count": 2}])
+        self.assertEqual(st["searches"], [{"query": "lebron", "count": 1}])
+
+    def test_events_survive_missing_query_column(self):
+        self.db.event_columns = {"user_id", "visitor", "kind", "card_id", "cart_id"}
+        self.client.post(f"/api/salon/{self.token}/events", content=json.dumps({"visitor": "visitor-one", "events": [{"kind": "visit"}, {"kind": "search", "query": "lebron"}]}))
+        self.assertEqual([e["kind"] for e in self.db.t["salon_events"]], ["visit"])
 
     def test_paypal_handle(self):
         r = self.client.patch("/api/salon/stand", json={"paypal_me": "https://paypal.me/xavier.a/"})

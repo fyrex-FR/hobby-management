@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, Eye, Filter, HandCoins, ShoppingBasket, Store, TrendingUp } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Eye, Filter, HandCoins, Search, ShoppingBasket, Store, TrendingUp } from 'lucide-react';
 import { EmptyState, Notice, Panel, Spinner, StatTile } from '../ui';
 import { formatEuro } from '../../lib/salon';
 import { funnelSteps, hourly, localDay, shiftDay, useSalonStats, type TopCard } from '../../lib/salonStats';
 import { errorMessage } from '../../lib/feedback';
 import { Thumb } from './parts';
 import { cardMeta } from './cardText';
+import { SalonDelist } from './SalonDelist';
 
 const pct = (v: number) => `${Math.round(v * 100)} %`;
 
@@ -52,6 +53,8 @@ export function SalonStats() {
 
   return (
     <div className="space-y-5">
+      <SalonDelist />
+
       <div className="flex items-center gap-2">
         <button className="ui-btn ui-btn-icon" onClick={() => setDay((d) => shiftDay(d, -1))} aria-label="Jour précédent"><ChevronLeft size={16} /></button>
         <label className="relative flex-1">
@@ -122,6 +125,27 @@ export function SalonStats() {
                 {data.tracking && <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-[var(--accent)] opacity-40" /> Visiteurs</span>}
                 <span className="inline-flex items-center gap-1.5"><span className="h-2 w-2 rounded-sm bg-[var(--green)]" /> Ventes</span>
               </div>
+            </Panel>
+          )}
+
+          {data.tracking && ((data.searches_empty?.length ?? 0) > 0 || (data.searches?.length ?? 0) > 0) && (
+            <Panel title="Ce que les visiteurs cherchent" icon={Search}>
+              {(data.searches_empty?.length ?? 0) > 0 && (
+                <div className="space-y-2">
+                  <p className="text-[13px] font-medium text-[var(--text-primary)]">Sans résultat <span className="font-normal text-[var(--text-muted)]">: des idées pour ton prochain stock</span></p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {data.searches_empty!.map((q) => <span key={q.query} className="ui-chip" data-active="true">{q.query}<span className="count">{q.count}</span></span>)}
+                  </div>
+                </div>
+              )}
+              {(data.searches?.length ?? 0) > 0 && (
+                <div className={`space-y-2 ${(data.searches_empty?.length ?? 0) > 0 ? 'mt-4' : ''}`}>
+                  <p className="text-[13px] font-medium text-[var(--text-primary)]">Les plus recherchés</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {data.searches!.map((q) => <span key={q.query} className="ui-chip">{q.query}<span className="count">{q.count}</span></span>)}
+                  </div>
+                </div>
+              )}
             </Panel>
           )}
 

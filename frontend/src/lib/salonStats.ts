@@ -23,6 +23,8 @@ export interface SalonStats {
   visits_at?: string[];
   top_viewed?: TopCard[];
   top_added?: TopCard[];
+  searches?: { query: string; count: number }[];
+  searches_empty?: { query: string; count: number }[];
 }
 
 /** « 2026-10-01 » (date locale) → bornes UTC de cette journée locale. */
