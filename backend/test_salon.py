@@ -321,6 +321,21 @@ class SalonTest(unittest.TestCase):
         self.client.post(f"/api/salon/{self.token}/events", content=json.dumps({"visitor": "visitor-one", "events": [{"kind": "visit"}, {"kind": "search", "query": "lebron"}]}))
         self.assertEqual([e["kind"] for e in self.db.t["salon_events"]], ["visit"])
 
+    def test_reset_stats_restarts_today_and_can_be_undone(self):
+        ev = f"/api/salon/{self.token}/events"
+        send = lambda v: self.client.post(ev, content=json.dumps({"visitor": v, "events": [{"kind": "visit"}]}))
+        send("visitor-early")
+        self.client.post(f"/api/salon/{self.token}/carts", json={"card_ids": [self.db.t["cards"][0]["id"]]})
+        r = self.client.post("/api/salon/stats/reset", json={})
+        self.assertTrue(r.json()["stats_reset_at"])
+        send("visitor-late")
+        st = self.client.get("/api/salon/stats", params=self._day()).json()
+        self.assertEqual((st["funnel"]["visitors"], st["sales"]["carts"]), (1, 0))
+        self.assertTrue(st["since"])
+        self.client.post("/api/salon/stats/reset", json={"undo": True})
+        st = self.client.get("/api/salon/stats", params=self._day()).json()
+        self.assertEqual((st["funnel"]["visitors"], st["sales"]["carts"], st["since"]), (2, 1, None))
+
     def test_paypal_handle(self):
         r = self.client.patch("/api/salon/stand", json={"paypal_me": "https://paypal.me/xavier.a/"})
         self.assertEqual(r.json()["paypal_me"], "xavier.a")

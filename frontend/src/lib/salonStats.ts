@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiFetch } from '../api/client';
 import type { Card } from '../types';
 
@@ -25,6 +25,8 @@ export interface SalonStats {
   top_added?: TopCard[];
   searches?: { query: string; count: number }[];
   searches_empty?: { query: string; count: number }[];
+  /** Début effectif du bilan quand il a été remis à zéro dans la journée. */
+  since?: string | null;
 }
 
 /** « 2026-10-01 » (date locale) → bornes UTC de cette journée locale. */
@@ -82,5 +84,14 @@ export function useSalonStats(day: string, live: boolean) {
       return apiFetch<SalonStats>(`/salon/stats?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}`);
     },
     refetchInterval: live ? 30000 : false,
+  });
+}
+
+/** Remise à zéro du bilan du jour (rien n'est supprimé ; `undo` l'annule). */
+export function useResetStats() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (undo: boolean) => apiFetch<unknown>('/salon/stats/reset', { method: 'POST', body: JSON.stringify({ undo }) }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['salon-stats'] }); void qc.invalidateQueries({ queryKey: ['salon-stand'] }); },
   });
 }

@@ -210,7 +210,9 @@ export function SalonView() {
   const active = carts
     .filter((c) => c.status === 'active')
     .sort((a, b) => Number(offerSummary(b.lines ?? []).offer_state === 'offered') - Number(offerSummary(a.lines ?? []).offer_state === 'offered'));
-  const paid = carts.filter((c) => c.status === 'paid');
+  // Après une remise à zéro du bilan, l'encaissé du jour repart aussi de là.
+  const resetAt = stand?.stats_reset_at ? Date.parse(stand.stats_reset_at) : 0;
+  const paid = carts.filter((c) => c.status === 'paid' && Date.parse(c.paid_at ?? c.created_at) >= resetAt);
   const earned = paid.reduce((s, c) => s + c.total, 0);
   // La liste est rafraîchie toutes les 5 s : on affiche sa version quand elle existe.
   const shown = selected ? { ...selected, ...(carts.find((c) => c.id === selected.id) ?? {}) } : null;
