@@ -1,9 +1,9 @@
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, Eye, Filter, HandCoins, Search, ShoppingBasket, Store, TrendingUp } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Eye, Filter, HandCoins, RotateCcw, Search, ShoppingBasket, Store, TrendingUp } from 'lucide-react';
 import { EmptyState, Notice, Panel, Spinner, StatTile } from '../ui';
 import { formatEuro } from '../../lib/salon';
-import { funnelSteps, hourly, localDay, shiftDay, useSalonStats, type TopCard } from '../../lib/salonStats';
-import { errorMessage } from '../../lib/feedback';
+import { funnelSteps, hourly, localDay, shiftDay, useResetStats, useSalonStats, type TopCard } from '../../lib/salonStats';
+import { confirmDialog, errorMessage, toast } from '../../lib/feedback';
 import { Thumb } from './parts';
 import { cardMeta } from './cardText';
 import { SalonDelist } from './SalonDelist';
@@ -42,6 +42,19 @@ export function SalonStats() {
   const [day, setDay] = useState(localDay);
   const today = localDay();
   const { data, isLoading, error } = useSalonStats(day, day === today);
+  const resetStats = useResetStats();
+
+  async function reset(undo: boolean) {
+    if (!undo && !(await confirmDialog({
+      title: 'Remettre le bilan à zéro ?',
+      description: "Le bilan d'aujourd'hui repartira de maintenant. Rien n'est supprimé (ventes, paniers) et tu pourras annuler.",
+      confirmLabel: 'Remettre à zéro',
+    }))) return;
+    resetStats.mutate(undo, {
+      onSuccess: () => toast.success(undo ? 'Bilan complet de la journée rétabli' : 'Bilan remis à zéro'),
+      onError: (e) => toast.error('Action impossible', { description: errorMessage(e) }),
+    });
+  }
 
   const s = data?.sales;
   const steps = data?.funnel ? funnelSteps(data.funnel) : null;
@@ -64,10 +77,30 @@ export function SalonStats() {
         <button className="ui-btn ui-btn-icon" disabled={day >= today} onClick={() => setDay((d) => shiftDay(d, 1))} aria-label="Jour suivant"><ChevronRight size={16} /></button>
       </div>
 
+      {day === today && data && (
+        <div className="-mt-2 flex items-center justify-between gap-2 text-xs text-[var(--text-muted)]">
+          {data.since ? (
+            <>
+              <span>Bilan depuis {new Date(data.since).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} (remis à zéro)</span>
+              <button className="font-medium text-[var(--accent)]" disabled={resetStats.isPending} onClick={() => void reset(true)}>Voir toute la journée</button>
+            </>
+          ) : (
+            <>
+              <span>Depuis minuit</span>
+              <button className="ui-btn ui-btn-ghost ui-btn-sm" disabled={resetStats.isPending} onClick={() => void reset(false)}><RotateCcw size={13} /> Remettre à zéro</button>
+            </>
+          )}
+        </div>
+      )}
+
       {isLoading ? <Spinner label="Calcul du bilan…" /> : error ? (
         <Notice tone="error">Bilan indisponible : {errorMessage(error)}</Notice>
       ) : !data || !s ? null : empty ? (
-        <EmptyState icon={Store} title="Aucune activité ce jour-là" description={data.tracking ? 'Ni visite ni panier sur le stand.' : 'Aucun panier ce jour-là.'} />
+        <EmptyState
+          icon={Store}
+          title={data.since ? 'Rien depuis la remise à zéro' : 'Aucune activité ce jour-là'}
+          description={data.since ? 'Les visites et les ventes apparaîtront ici au fil du salon.' : data.tracking ? 'Ni visite ni panier sur le stand.' : 'Aucun panier ce jour-là.'}
+        />
       ) : (
         <>
           <div className="grid grid-cols-2 gap-3">

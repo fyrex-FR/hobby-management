@@ -825,13 +825,49 @@ def build_stats(carts: list[dict], events: Optional[list[dict]], cards: dict) ->
     return out
 
 
+class StatsReset(BaseModel):
+    undo: bool = False
+
+
+@router.post("/salon/stats/reset")
+async def reset_stats(body: StatsReset, user: dict = Depends(require_admin)):
+    """Remise à zéro du bilan : il repart de maintenant. Rien n'est supprimé
+    (ventes, paniers, événements restent en base) et `undo` l'annule."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.patch(
+            f"{SUPABASE_URL}/rest/v1/salon_stands", headers=_headers(),
+            params={"user_id": f"eq.{user['sub']}"},
+            json={"stats_reset_at": None if body.undo else _iso(_now())},
+        )
+    if resp.status_code >= 300:
+        raise HTTPException(status_code=409, detail="Remise à zéro indisponible : exécute add_salon_stats_reset_migration.sql dans Supabase")
+    rows = resp.json()
+    if not rows:
+        raise HTTPException(status_code=404, detail="Stand introuvable")
+    return rows[0]
+
+
+def _parse_dt(v: str) -> datetime:
+    dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
 @router.get("/salon/stats")
 async def salon_stats(start: str, end: str, user: dict = Depends(require_admin)):
-    """Bilan entre `start` et `end` (ISO UTC, la journée locale est calculée côté navigateur)."""
+    """Bilan entre `start` et `end` (ISO UTC, la journée locale est calculée côté navigateur).
+    Une remise à zéro tombée dans la période la fait commencer à cet instant."""
     try:
-        start_dt, end_dt = datetime.fromisoformat(start.replace("Z", "+00:00")), datetime.fromisoformat(end.replace("Z", "+00:00"))
+        start_dt, end_dt = _parse_dt(start), _parse_dt(end)
     except ValueError:
         raise HTTPException(status_code=400, detail="Dates invalides")
+    since = None
+    async with httpx.AsyncClient() as client:
+        stand = _check(await client.get(f"{SUPABASE_URL}/rest/v1/salon_stands", headers=_headers(), params={"user_id": f"eq.{user['sub']}"}), (200,)).json()
+    reset_at = stand[0].get("stats_reset_at") if stand else None
+    if reset_at:
+        reset_dt = _parse_dt(reset_at)
+        if start_dt <= reset_dt < end_dt:
+            start_dt, since = reset_dt, _iso(reset_dt)
     # Valeurs entre guillemets : PostgREST l'exige dans and=(…) pour « : » et « . ».
     span = f'(created_at.gte."{_iso(start_dt)}",created_at.lt."{_iso(end_dt)}")'
     user_id = user["sub"]
@@ -847,4 +883,4 @@ async def salon_stats(start: str, end: str, user: dict = Depends(require_admin))
             chunk = ids[i:i + 150]
             rows = _check(await client.get(f"{SUPABASE_URL}/rest/v1/cards", headers=_headers(), params={"user_id": f"eq.{user_id}", "id": f"in.({','.join(chunk)})"}), (200,)).json()
             cards.update({c["id"]: _slim(c) for c in rows})
-    return build_stats(carts, events, cards)
+    return {**build_stats(carts, events, cards), "since": since}

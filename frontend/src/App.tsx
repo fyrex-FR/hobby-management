@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
 import { isStandalone } from './lib/scanHistory';
+import { launchedAsScan, syncInstallTarget } from './lib/pwa';
 import { useAppStore, viewFromHash } from './stores/appStore';
 import type { ActiveView } from './stores/appStore';
 import { useCards } from './hooks/useCards';
@@ -585,7 +586,11 @@ function AuthedShell({ userId, email, showShare, setShowShare }: { userId: strin
   // Réglages « photo vitrine » propres au compte connecté.
   useEffect(() => { setVitrineUser(userId); }, [userId]);
   const isAdmin = email === 'xavier.andrieux@gmail.com';
-  const bare = activeView === 'scan' && isStandalone();
+  // Scanner plein écran sans menu seulement quand on a lancé l'icône « Scan » ;
+  // depuis l'icône « CardVaults », le scan garde la navigation.
+  const bare = activeView === 'scan' && isStandalone() && launchedAsScan();
+  // « Ajouter à l'écran d'accueil » installe Scan depuis le scanner, CardVaults ailleurs.
+  useEffect(() => { syncInstallTarget(activeView === 'scan'); }, [activeView]);
 
   // Retour du flux OAuth eBay (?ebay=connected | ?ebay=error&reason=...) :
   // navigue vers la vue eBay, qui lit et nettoie ces paramètres elle-même.

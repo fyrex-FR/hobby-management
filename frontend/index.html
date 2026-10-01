@@ -5,11 +5,40 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#09090B" />
-    <link rel="manifest" href="/manifest.webmanifest" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/app.webmanifest" />
+    <link rel="apple-touch-icon" href="/app-apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-title" content="Scan" />
+    <meta name="apple-mobile-web-app-title" content="CardVaults" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <script>
+      // Deux apps installables depuis le même site : « Scan » (ouvre le scanner
+      // plein écran) et « CardVaults » (l'app complète). Le téléphone installe
+      // celle de la page en cours ; le mode de lancement est retenu pour la
+      // fenêtre (même logique que src/lib/pwa.ts).
+      (function () {
+        var params = new URLSearchParams(location.search);
+        var standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+        try {
+          if (!sessionStorage.getItem('cv-launch-mode')) {
+            var scan = params.get('app') === 'scan' || (standalone && params.get('app') !== 'main' && location.hash.indexOf('#/scan') === 0);
+            sessionStorage.setItem('cv-launch-mode', scan ? 'scan' : 'main');
+          }
+        } catch (e) {}
+        if (params.has('app')) {
+          params.delete('app');
+          var q = params.toString();
+          history.replaceState(null, '', location.pathname + (q ? '?' + q : '') + location.hash);
+        }
+        // Pages publiques (partage, stand) : pas de proposition d'installer une app qui demande un compte.
+        if (/^\/(share|salon)\//.test(location.pathname)) {
+          document.querySelector('link[rel="manifest"]').remove();
+        } else if (location.hash.indexOf('#/scan') === 0) {
+          document.querySelector('link[rel="manifest"]').setAttribute('href', '/manifest.webmanifest');
+          document.querySelector('link[rel="apple-touch-icon"]').setAttribute('href', '/apple-touch-icon.png');
+          document.querySelector('meta[name="apple-mobile-web-app-title"]').setAttribute('content', 'Scan');
+        }
+      })();
+    </script>
     <script>
       // Thème appliqué avant le premier rendu (pas de flash). Même logique que src/lib/theme.ts.
       (function () {

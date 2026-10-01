@@ -4,7 +4,7 @@ import QRCode from 'qrcode';
 import { apiFetch } from '../api/client';
 import type { Card } from '../types';
 
-export interface SalonStand { user_id: string; token: string; is_open: boolean; title: string | null; paypal_me: string | null }
+export interface SalonStand { user_id: string; token: string; is_open: boolean; title: string | null; paypal_me: string | null; stats_reset_at?: string | null }
 export interface SalonCart {
   id: string;
   code: string;
