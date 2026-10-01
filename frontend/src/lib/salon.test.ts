@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../api/client', () => ({ apiFetch: vi.fn() }));
-import { codeFromHash, minutesLeft, offerSuggestions, offerSummary, parseAmount, type SalonLine } from './salon';
+import { codeFromHash, formatEuro, minutesLeft, offerSuggestions, offerSummary, parseAmount, type SalonLine } from './salon';
 
 describe('salon', () => {
   it('lit le code du QR dans le hash', () => {
@@ -34,5 +34,9 @@ describe('salon', () => {
     expect(offerSummary([l('countered', 8), l('accepted', 7)]).offer_state).toBe('countered');
     expect(offerSummary([l('accepted', 8), l('accepted', 7)]).offer_state).toBe('accepted');
     expect(offerSummary([l('refused', 8)]).offer_state).toBe('refused');
+  });
+  it('formate les prix avec les centimes seulement si besoin', () => {
+    expect(formatEuro(12).replace(/\s/g, ' ')).toBe('12 €');
+    expect(formatEuro(1.5).replace(/\s/g, ' ')).toBe('1,50 €');
   });
 });

@@ -35,8 +35,10 @@ export interface PublicCart extends OfferSummary {
 /** Réservation du visiteur, gardée dans son navigateur : le code et la clé pour la modifier. */
 export interface SalonTicket { code: string; key: string }
 
-const euro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2, minimumFractionDigits: 0 });
-export const formatEuro = (v: number) => euro.format(v);
+const euroWhole = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+const euroCents = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 });
+/** « 12 € », « 1,50 € » : les centimes seulement quand il y en a. */
+export const formatEuro = (v: number) => (Number.isInteger(Math.round(v * 100) / 100) ? euroWhole : euroCents).format(v);
 
 export const standUrl = (token: string) => `${window.location.origin}/salon/${token}`;
 export const cartUrl = (code: string) => `${window.location.origin}/#/salon?c=${code}`;
@@ -164,7 +166,7 @@ async function publicCall<T>(path: string, init?: RequestInit): Promise<T> {
 
 export interface SalonStock { title: string | null; paypal_me: string | null; hold_minutes: number; cards: Card[]; reserved: string[] }
 export interface SalonLive { reserved: string[]; sold: string[] }
-export interface CartPayload { card_ids: string[]; pseudo?: string | null; offer?: number | null }
+export interface CartPayload { card_ids: string[]; pseudo?: string | null; offer?: number | null; visitor?: string | null }
 
 export const salonApi = (token: string) => ({
   stock: () => publicCall<SalonStock>(`${token}/stock`),

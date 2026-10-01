@@ -8,6 +8,8 @@ import {
 } from '../../lib/salon';
 import { Badge, EmptyState, Modal, Page, PageHeader, Panel, Spinner } from '../ui';
 import { Thumb } from '../salon/parts';
+import { SalonStats } from '../salon/SalonStats';
+import { markOwner } from '../../lib/salonTracker';
 import { cardMeta } from '../salon/cardText';
 
 const pct = (offer: number, asked: number) => Math.round((1 - offer / asked) * 100);
@@ -158,6 +160,7 @@ export function SalonView() {
   const [code, setCode] = useState('');
   const [selected, setSelected] = useState<SalonCart | null>(null);
   const [bigQr, setBigQr] = useState(false);
+  const [tab, setTab] = useState<'live' | 'stats'>('live');
   const seen = useRef<Map<string, string> | null>(null);
   const url = stand ? standUrl(stand.token) : null;
   const qr = useQrDataUrl(url);
@@ -170,6 +173,9 @@ export function SalonView() {
       toast.error('Panier introuvable', { description: errorMessage(e) });
     }
   }
+
+  // Ce navigateur est celui du vendeur : ses visites du stand ne comptent pas dans le bilan.
+  useEffect(() => { if (stand) markOwner(stand.token); }, [stand]);
 
   useEffect(() => {
     const c = codeFromHash();
@@ -207,6 +213,15 @@ export function SalonView() {
   return (
     <Page width="narrow">
       <PageHeader title="Salon" subtitle={`Encaissé aujourd'hui : ${formatEuro(earned)} · ${paid.length} panier${paid.length > 1 ? 's' : ''}`} />
+
+      <div className="ui-segmented w-full">
+        <button className="flex-1 justify-center" data-active={tab === 'live'} onClick={() => setTab('live')}>
+          En direct{active.length > 0 && <span className="count">{active.length}</span>}
+        </button>
+        <button className="flex-1 justify-center" data-active={tab === 'stats'} onClick={() => setTab('stats')}>Bilan</button>
+      </div>
+
+      {tab === 'stats' ? <SalonStats /> : (<>
 
       <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (code.trim().length === 4) void find(code.trim()); }}>
         <input className="ui-input h-10 flex-1 font-mono text-base uppercase tracking-widest" placeholder="Code du panier" maxLength={4} value={code} onChange={(e) => setCode(e.target.value)} autoCapitalize="characters" />
@@ -282,6 +297,8 @@ export function SalonView() {
           </div>
         </Panel>
       )}
+
+      </>)}
 
       <Modal open={bigQr} onClose={() => setBigQr(false)} size="md">
         <div className="flex flex-col items-center gap-4 py-4 text-center">
