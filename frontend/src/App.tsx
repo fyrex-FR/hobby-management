@@ -16,6 +16,7 @@ import {
   LogOut,
   Key,
   Share2,
+  Store,
   Inbox,
   ChevronDown,
   ChevronsUpDown,
@@ -51,6 +52,8 @@ import { PlayersView } from './components/views/PlayersView';
 import { GradingView } from './components/views/GradingView';
 import { RequestsView } from './components/views/RequestsView';
 import { ShareView } from './components/views/ShareView';
+import { SalonView } from './components/views/SalonView';
+import { SalonPublic } from './components/views/SalonPublic';
 import { ShareModal } from './components/shared/ShareModal';
 import { ResetPasswordView } from './components/views/ResetPasswordView';
 import MigrationView from './components/views/MigrationView';
@@ -168,6 +171,7 @@ function useNavItems(isAdmin: boolean) {
     { id: 'ebay', label: 'eBay', icon: ShoppingBag },
     { id: 'studio', label: 'Studio photo', icon: ScanLine },
     { id: 'batch', label: 'Import en lot', icon: Upload },
+    ...(isAdmin ? [{ id: 'salon' as const, label: 'Salon', icon: Store }] : []),
     ...(isAdmin ? [{ id: 'compare' as const, label: 'Comparer IA', icon: Database }] : []),
     ...(isAdmin ? [{ id: 'migration' as const, label: 'Migration R2', icon: HardDrive }] : []),
   ];
@@ -547,6 +551,10 @@ function AppShell() {
   if (shareTokenMatch) {
     return <ShareView token={shareTokenMatch[1]} />;
   }
+  const salonTokenMatch = window.location.pathname.match(/^\/salon\/([A-Za-z0-9_-]+)$/);
+  if (salonTokenMatch) {
+    return <SalonPublic token={salonTokenMatch[1]} />;
+  }
 
   if (loading) {
     return (
@@ -631,6 +639,7 @@ function AuthedShell({ userId, email, showShare, setShowShare }: { userId: strin
               {activeView === 'import_review' && <ImportReviewView />}
               {activeView === 'review' && <ReviewView />}
               {activeView === 'sales' && <SalesView />}
+              {activeView === 'salon' && isAdmin && <SalonView />}
               {activeView === 'compare' && isAdmin && <CompareView />}
               {activeView === 'players' && <PlayersView />}
               {activeView === 'grading' && <GradingView />}
