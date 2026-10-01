@@ -755,6 +755,7 @@ export function StudioView() {
     const staged = await applyVitrine(compressed);
     const form = new FormData();
     form.append('file', new File([staged], `${side}.jpg`, { type: 'image/jpeg' }));
+    if (staged !== compressed) form.append('original', compressed);
     form.append('card_id', cardId);
     form.append('side', side);
     const response = await fetch(`${API_BASE}/api/upload`, {

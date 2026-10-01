@@ -201,6 +201,7 @@ export function AddCardView() {
         const blob = staged === file ? await compressImage(file) : staged;
         const form = new FormData();
         form.append('file', new File([blob], `${side}.jpg`, { type: 'image/jpeg' }));
+        if (staged !== file) form.append('original', new File([await compressImage(file)], `${side}_orig.jpg`, { type: 'image/jpeg' }));
         form.append('card_id', newCard.id);
         form.append('side', side);
         const resp = await fetch(`${API_BASE}/api/upload`, {

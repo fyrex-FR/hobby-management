@@ -464,9 +464,10 @@ export function ScanView() {
         status: 'collection',
       });
       const { data } = await supabase.auth.getSession();
-      const upload = async (blob: Blob, which: 'front' | 'back'): Promise<string | null> => {
+      const upload = async (blob: Blob, which: 'front' | 'back', original?: Blob): Promise<string | null> => {
         const form = new FormData();
         form.append('file', new File([blob], `${which}.jpg`, { type: 'image/jpeg' }));
+        if (original && original !== blob) form.append('original', new File([original], `${which}_orig.jpg`, { type: 'image/jpeg' }));
         form.append('card_id', card.id);
         form.append('side', which);
         const resp = await fetch(`${API_BASE}/api/upload`, {
@@ -496,8 +497,8 @@ export function ScanView() {
         }
       }
       const [frontUrl, backUrl] = await Promise.all([
-        upload(frontBlob, 'front'),
-        backBlob ? upload(backBlob, 'back') : Promise.resolve(null),
+        upload(frontBlob, 'front', current.blob),
+        backBlob ? upload(backBlob, 'back', current.backBlob) : Promise.resolve(null),
       ]);
       const images = { ...(frontUrl ? { image_front_url: frontUrl } : {}), ...(backUrl ? { image_back_url: backUrl } : {}) };
       if (Object.keys(images).length) await updateCard.mutateAsync({ id: card.id, ...images });
