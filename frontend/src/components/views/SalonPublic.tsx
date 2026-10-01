@@ -5,7 +5,7 @@ import { cartUrl, formatEuro, useQrDataUrl } from '../../lib/salon';
 import type { Card } from '../../types';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
-interface Stock { title: string | null; hold_minutes: number; cards: Card[]; reserved: string[] }
+interface Stock { title: string | null; paypal_me: string | null; hold_minutes: number; cards: Card[]; reserved: string[] }
 interface Done { code: string; total: number; expires_at: string }
 
 const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
@@ -101,6 +101,9 @@ export function SalonPublic({ token }: { token: string }) {
         <div className="font-mono text-6xl font-bold tracking-[0.2em] text-[var(--text-primary)]">{done.code}</div>
         {qr && <img src={qr} alt={`QR du panier ${done.code}`} className="w-64 rounded-xl bg-white p-2" />}
         <div className="text-lg font-semibold">{formatEuro(done.total)}</div>
+        {stock.paypal_me && (
+          <a className="ui-btn" href={`https://www.paypal.me/${stock.paypal_me}/${done.total}EUR`} target="_blank" rel="noreferrer">Payer via PayPal</a>
+        )}
         <p className="text-sm text-[var(--text-secondary)]">Montre ce code ou ce QR au vendeur pour régler. Les cartes te sont réservées {stock.hold_minutes} min.</p>
         <button className="ui-btn" onClick={() => { setDone(null); try { localStorage.removeItem(`${storeKey}-done`); } catch { /* stockage indisponible */ } }}>Nouveau panier</button>
       </div>

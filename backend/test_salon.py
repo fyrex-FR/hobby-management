@@ -121,6 +121,13 @@ class SalonTest(unittest.TestCase):
         self.assertEqual(self.client.post(f"/api/salon/{self.token}/carts", json={"card_ids": ["x"]}).status_code, 400)
         self.assertEqual(self.client.post(f"/api/salon/{self.token}/carts", json={"card_ids": []}).status_code, 400)
 
+    def test_paypal_handle(self):
+        r = self.client.patch("/api/salon/stand", json={"paypal_me": "https://paypal.me/xavier.a/"})
+        self.assertEqual(r.json()["paypal_me"], "xavier.a")
+        self.assertEqual(self.client.get(f"/api/salon/{self.token}/stock").json()["paypal_me"], "xavier.a")
+        self.assertEqual(self.client.patch("/api/salon/stand", json={"paypal_me": "a/b?x=1"}).status_code, 400)
+        self.assertIsNone(self.client.patch("/api/salon/stand", json={"paypal_me": ""}).json()["paypal_me"])
+
     def test_admin_routes_need_admin(self):
         from fastapi import HTTPException
         def deny():

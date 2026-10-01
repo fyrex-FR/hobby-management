@@ -119,6 +119,13 @@ export function SalonView() {
             <button className="ui-btn" data-active={stand.is_open} onClick={() => updateStand.mutate({ is_open: !stand.is_open })}>{stand.is_open ? 'Ouvert' : 'Fermé'}</button>
           </div>
           <p className="mt-1 text-xs text-[var(--text-secondary)]">Les visiteurs voient tes cartes « à vendre » avec un prix. Ferme le stand pour couper l'accès.</p>
+          <input
+            key={stand.paypal_me ?? ''}
+            className="ui-input mt-3 w-full"
+            placeholder="Pseudo PayPal.me (facultatif)"
+            defaultValue={stand.paypal_me ?? ''}
+            onBlur={(e) => { if (e.target.value.trim() !== (stand.paypal_me ?? '')) updateStand.mutate({ paypal_me: e.target.value.trim() }); }}
+          />
           {qr && <img src={qr} alt="QR du stand" className="mx-auto mt-3 w-56 rounded-xl bg-white p-2" />}
           <div className="mt-2 flex items-center gap-2 text-xs">
             <code className="min-w-0 flex-1 truncate">{url}</code>

@@ -4,7 +4,7 @@ import QRCode from 'qrcode';
 import { apiFetch } from '../api/client';
 import type { Card } from '../types';
 
-export interface SalonStand { user_id: string; token: string; is_open: boolean; title: string | null }
+export interface SalonStand { user_id: string; token: string; is_open: boolean; title: string | null; paypal_me: string | null }
 export interface SalonCart {
   id: string;
   code: string;
@@ -47,7 +47,7 @@ export function useSalonStand() {
 export function useUpdateStand() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (body: Partial<Pick<SalonStand, 'is_open' | 'title'>>) => apiFetch<SalonStand>('/salon/stand', { method: 'PATCH', body: JSON.stringify(body) }),
+    mutationFn: (body: Partial<Pick<SalonStand, 'is_open' | 'title' | 'paypal_me'>>) => apiFetch<SalonStand>('/salon/stand', { method: 'PATCH', body: JSON.stringify(body) }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['salon-stand'] }),
   });
 }

@@ -4,6 +4,7 @@ Gestion réservée à l'admin (`require_admin`). Les routes publiques ne servent
 que le stock `a_vendre` du compte propriétaire du stand.
 """
 import os
+import re
 import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -82,7 +83,7 @@ async def public_stock(token: str):
     cards = [public_card(c, True) for c in cards]
     cards = [c for c in cards if c.get("price") is not None]
     reserved = sorted({cid for cart in carts for cid in cart["card_ids"]})
-    return {"title": stand.get("title"), "hold_minutes": HOLD_MINUTES, "cards": cards, "reserved": reserved}
+    return {"title": stand.get("title"), "hold_minutes": HOLD_MINUTES, "paypal_me": stand.get("paypal_me"), "cards": cards, "reserved": reserved}
 
 
 class CartCreate(BaseModel):
@@ -132,6 +133,7 @@ async def create_cart(token: str, body: CartCreate):
 class StandUpdate(BaseModel):
     is_open: Optional[bool] = None
     title: Optional[str] = None
+    paypal_me: Optional[str] = None
 
 
 @router.get("/salon/stand")
@@ -148,6 +150,11 @@ async def get_stand(user: dict = Depends(require_admin)):
 @router.patch("/salon/stand")
 async def update_stand(body: StandUpdate, user: dict = Depends(require_admin)):
     payload = body.model_dump(exclude_none=True)
+    if "paypal_me" in payload:
+        handle = payload["paypal_me"].strip().removeprefix("https://www.paypal.me/").removeprefix("https://paypal.me/").strip("/")
+        if handle and not re.fullmatch(r"[A-Za-z0-9.]{1,40}", handle):
+            raise HTTPException(status_code=400, detail="Pseudo PayPal.me invalide")
+        payload["paypal_me"] = handle or None
     async with httpx.AsyncClient() as client:
         resp = _check(await client.patch(f"{SUPABASE_URL}/rest/v1/salon_stands", headers=_headers(), params={"user_id": f"eq.{user['sub']}"}, json=payload))
     rows = resp.json()

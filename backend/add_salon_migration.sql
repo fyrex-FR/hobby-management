@@ -3,8 +3,10 @@ create table if not exists salon_stands (
   user_id uuid primary key,
   token text not null unique,
   is_open boolean not null default true,
-  title text
+  title text,
+  paypal_me text
 );
+alter table salon_stands add column if not exists paypal_me text;
 
 create table if not exists salon_carts (
   id uuid primary key default gen_random_uuid(),
