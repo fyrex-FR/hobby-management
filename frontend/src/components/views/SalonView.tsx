@@ -2,13 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { Check, Clock, Copy, HandCoins, Maximize2, Search, Store, X } from 'lucide-react';
 import { errorMessage, toast } from '../../lib/feedback';
 import {
-  codeFromHash, fetchCartByCode, formatEuro, minutesLeft, offerSummary, parseAmount, standUrl,
+  codeFromHash, fetchCartByCode, formatEuro, marketMessage, minutesLeft, offerSummary, parseAmount, standUrl, useDelist,
   useCartAction, useLineAction, useOfferAction, useQrDataUrl, useSalonCarts, useSalonStand, useUpdateStand,
   type SalonCart,
 } from '../../lib/salon';
 import { Badge, EmptyState, Modal, Page, PageHeader, Panel, Spinner } from '../ui';
 import { Thumb } from '../salon/parts';
 import { SalonStats } from '../salon/SalonStats';
+import { SalonCheckout } from '../salon/SalonCheckout';
 import { markOwner } from '../../lib/salonTracker';
 import { cardMeta } from '../salon/cardText';
 
@@ -85,7 +86,11 @@ function CartPanel({ cart, onSaved, onClose }: { cart: SalonCart; onSaved: (c: S
   const left = minutesLeft(cart.expires_at);
   const run = (action: 'pay' | 'cancel' | 'extend') =>
     act.mutate({ id: cart.id, action }, {
-      onSuccess: () => { toast.success(action === 'pay' ? `Encaissé · ${formatEuro(cart.total)}` : action === 'cancel' ? 'Panier annulé' : 'Réservation prolongée'); if (action !== 'extend') onClose?.(); },
+      onSuccess: (res) => {
+        const market = action === 'pay' ? marketMessage(res.marketplaces) : null;
+        toast.success(action === 'pay' ? `Encaissé · ${formatEuro(cart.total)}` : action === 'cancel' ? 'Panier annulé' : 'Réservation prolongée', market ? { description: market.text } : undefined);
+        if (action !== 'extend') onClose?.();
+      },
       onError: (e) => toast.error('Action impossible', { description: errorMessage(e) }),
     });
   const asked = offerSummary(cart.lines ?? []).asked;
@@ -160,7 +165,8 @@ export function SalonView() {
   const [code, setCode] = useState('');
   const [selected, setSelected] = useState<SalonCart | null>(null);
   const [bigQr, setBigQr] = useState(false);
-  const [tab, setTab] = useState<'live' | 'stats'>('live');
+  const [tab, setTab] = useState<'live' | 'checkout' | 'stats'>('live');
+  const { data: delist = [] } = useDelist();
   const seen = useRef<Map<string, string> | null>(null);
   const url = stand ? standUrl(stand.token) : null;
   const qr = useQrDataUrl(url);
@@ -218,10 +224,15 @@ export function SalonView() {
         <button className="flex-1 justify-center" data-active={tab === 'live'} onClick={() => setTab('live')}>
           En direct{active.length > 0 && <span className="count">{active.length}</span>}
         </button>
-        <button className="flex-1 justify-center" data-active={tab === 'stats'} onClick={() => setTab('stats')}>Bilan</button>
+        <button className="flex-1 justify-center" data-active={tab === 'checkout'} onClick={() => setTab('checkout')}>Caisse</button>
+        <button className="flex-1 justify-center" data-active={tab === 'stats'} onClick={() => setTab('stats')}>
+          Bilan{delist.length > 0 && <span className="count" style={{ color: 'var(--accent)' }}>{delist.length}</span>}
+        </button>
       </div>
 
-      {tab === 'stats' ? <SalonStats /> : (<>
+      {tab === 'stats' ? <SalonStats /> : tab === 'checkout' ? (
+        stand ? <SalonCheckout token={stand.token} carts={carts} /> : <Spinner />
+      ) : (<>
 
       <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (code.trim().length === 4) void find(code.trim()); }}>
         <input className="ui-input h-10 flex-1 font-mono text-base uppercase tracking-widest" placeholder="Code du panier" maxLength={4} value={code} onChange={(e) => setCode(e.target.value)} autoCapitalize="characters" />

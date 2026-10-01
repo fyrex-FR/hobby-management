@@ -36,4 +36,14 @@ describe('salonTracker', () => {
     t.flush();
     expect(sent).toHaveLength(0);
   });
+  it('note les recherches, en séparant celles sans résultat', () => {
+    const sent: string[] = [];
+    const t = createTracker('tok', { send: (b) => sent.push(b) });
+    t.search(' Wemby  ', 0);
+    t.search('wemby', 0);
+    t.search('lebron', 4);
+    t.search('a', 0);
+    t.flush();
+    expect(JSON.parse(sent[0]).events).toEqual([{ kind: 'search_empty', query: 'wemby' }, { kind: 'search', query: 'lebron' }]);
+  });
 });

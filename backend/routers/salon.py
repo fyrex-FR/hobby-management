@@ -3,8 +3,10 @@
 Gestion réservée à l'admin (`require_admin`). Les routes publiques ne servent
 que le stock `a_vendre` du compte propriétaire du stand.
 """
+import asyncio
 import hashlib
 import hmac
+import logging
 import json
 import os
 import re
@@ -19,9 +21,12 @@ from pydantic import BaseModel
 
 from .admin import require_admin
 from .cards import fetch_all_rows
+from services import ebay_selling
+from services.ebay_oauth import get_valid_access_token
 from services.share_public import public_card
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
@@ -357,7 +362,7 @@ async def accept_counter(token: str, code: str, body: BuyerKey):
 
 # ── Statistiques : événements anonymes ───────────────────────────────────────
 
-EVENT_KINDS = {"visit", "view", "add", "cart"}
+EVENT_KINDS = {"visit", "view", "add", "cart", "search", "search_empty"}
 MAX_EVENTS = 50
 VISITOR_RE = re.compile(r"[A-Za-z0-9_-]{8,64}")
 
@@ -367,9 +372,17 @@ async def _log_events(client: httpx.AsyncClient, user_id: str, visitor: str, eve
     d'erreur, la page du stand doit continuer de marcher."""
     if not VISITOR_RE.fullmatch(visitor or "") or not events:
         return
-    rows = [{"user_id": user_id, "visitor": visitor, "kind": e["kind"], "card_id": e.get("card_id"), "cart_id": e.get("cart_id")} for e in events]
+    rows = [{"user_id": user_id, "visitor": visitor, "kind": e["kind"], "card_id": e.get("card_id"), "cart_id": e.get("cart_id"), **({"query": e["query"]} if e.get("query") else {})} for e in events]
+    url = f"{SUPABASE_URL}/rest/v1/salon_events"
+    headers = {**_headers(), "Prefer": "return=minimal"}
     try:
-        await client.post(f"{SUPABASE_URL}/rest/v1/salon_events", headers={**_headers(), "Prefer": "return=minimal"}, json=rows)
+        resp = await client.post(url, headers=headers, json=rows)
+        # Colonne `query` absente (migration add_salon_search pas encore passée) :
+        # on garde au moins les autres événements.
+        if resp.status_code >= 300 and any("query" in r for r in rows):
+            rest = [r for r in rows if "query" not in r]
+            if rest:
+                await client.post(url, headers=headers, json=rest)
     except httpx.HTTPError:
         pass
 
@@ -394,7 +407,12 @@ async def public_events(token: str, request: Request):
             card_id = str(uuid.UUID(card_id)) if card_id else None
         except (ValueError, TypeError):
             card_id = None
-        events.append({"kind": kind, "card_id": card_id})
+        query = None
+        if kind in ("search", "search_empty"):
+            query = " ".join(str(e.get("query") or "").lower().split())[:60]
+            if len(query) < 2:
+                continue
+        events.append({"kind": kind, "card_id": card_id, "query": query})
     async with httpx.AsyncClient() as client:
         stand = await _stand_by_token(client, token)
         await _log_events(client, stand["user_id"], visitor, events)
@@ -557,6 +575,51 @@ async def answer_offer(cart_id: str, body: OfferAction, user: dict = Depends(req
         return await _set_cart(client, cart_id, user["sub"], {"lines": lines, "total": total})
 
 
+# ── Vente : statut, annonces en ligne ────────────────────────────────────────
+
+async def _withdraw_ebay(user_id: str, cards: list[dict]) -> dict:
+    """Retire les annonces eBay des cartes vendues au salon (évite la double
+    vente). Au mieux : un échec n'annule jamais l'encaissement, la carte reste
+    alors dans la liste « à retirer »."""
+    listed = [c for c in cards if c.get("ebay_offer_id")]
+    if not listed:
+        return {"withdrawn": 0, "failed": []}
+    try:
+        token = await get_valid_access_token(user_id)
+    except Exception:
+        logger.exception("Salon : jeton eBay indisponible")
+        token = None
+    if not token:
+        return {"withdrawn": 0, "failed": [c["id"] for c in listed]}
+    results = await asyncio.gather(*(ebay_selling.withdraw_card(c, token) for c in listed), return_exceptions=True)
+    failed = []
+    for c, r in zip(listed, results):
+        if isinstance(r, Exception):
+            logger.warning("Salon : retrait eBay impossible pour %s : %s", c["id"], r)
+            failed.append(c["id"])
+    return {"withdrawn": len(listed) - len(failed), "failed": failed}
+
+
+async def _sell_cards(client: httpx.AsyncClient, user_id: str, ids: list[str], finals: dict) -> dict:
+    """Passe les cartes en vendu au prix final, puis s'occupe des annonces :
+    retrait eBay automatique, liste des annonces Vinted à retirer à la main."""
+    rows = _check(await client.get(
+        f"{SUPABASE_URL}/rest/v1/cards",
+        headers=_headers(),
+        params={"user_id": f"eq.{user_id}", "status": "eq.a_vendre", "id": f"in.({','.join(ids)})"},
+    ), (200,)).json()
+    gone = [i for i in ids if i not in {c["id"] for c in rows}]
+    if gone:
+        raise HTTPException(status_code=409, detail={"unavailable": gone})
+    for cid in ids:
+        payload = {"status": "vendu", "is_listed": False}
+        if cid in finals:
+            payload["price"] = finals[cid]
+        _check(await client.patch(f"{SUPABASE_URL}/rest/v1/cards", headers=_headers(), params={"user_id": f"eq.{user_id}", "id": f"eq.{cid}"}, json=payload))
+    ebay = await _withdraw_ebay(user_id, rows)
+    return {"ebay_withdrawn": ebay["withdrawn"], "ebay_failed": ebay["failed"], "vinted": [c["id"] for c in rows if c.get("vinted_url")]}
+
+
 @router.post("/salon/carts/{cart_id}/pay")
 async def pay_cart(cart_id: str, user: dict = Depends(require_admin)):
     user_id = user["sub"]
@@ -564,22 +627,98 @@ async def pay_cart(cart_id: str, user: dict = Depends(require_admin)):
         cart = await _get_cart(client, cart_id, user_id)
         if cart["status"] == "paid":
             return cart
-        ids = cart["card_ids"]
-        rows = _check(await client.get(
-            f"{SUPABASE_URL}/rest/v1/cards",
-            headers=_headers(),
-            params={"user_id": f"eq.{user_id}", "status": "eq.a_vendre", "id": f"in.({','.join(ids)})"},
-        ), (200,)).json()
-        gone = [i for i in ids if i not in {c["id"] for c in rows}]
-        if gone:
-            raise HTTPException(status_code=409, detail={"unavailable": gone})
         finals = {l["card_id"]: l["final"] for l in (cart.get("lines") or [])}
-        for cid in ids:
-            payload = {"status": "vendu", "is_listed": False}
-            if cid in finals:
-                payload["price"] = finals[cid]
-            _check(await client.patch(f"{SUPABASE_URL}/rest/v1/cards", headers=_headers(), params={"user_id": f"eq.{user_id}", "id": f"eq.{cid}"}, json=payload))
-        return await _set_cart(client, cart_id, user_id, {"status": "paid", "paid_at": _iso(_now())})
+        market = await _sell_cards(client, user_id, cart["card_ids"], finals)
+        paid = await _set_cart(client, cart_id, user_id, {"status": "paid", "paid_at": _iso(_now())})
+    return {**paid, "marketplaces": market}
+
+
+class Checkout(BaseModel):
+    card_ids: list[str]
+    # Prix final par carte (prix affiché si absent)…
+    prices: dict[str, float] = {}
+    # …ou un prix pour tout le lot, réparti au prorata.
+    total: Optional[float] = None
+
+
+@router.post("/salon/checkout", status_code=201)
+async def quick_checkout(body: Checkout, user: dict = Depends(require_admin)):
+    """Caisse rapide : vente directe depuis le téléphone du vendeur, sans panier
+    visiteur. Enregistrée comme un panier encaissé pour le bilan."""
+    ids = _clean_ids(body.card_ids)
+    user_id = user["sub"]
+    async with httpx.AsyncClient() as client:
+        found, active = await _reservable(client, user_id, ids)
+        asked = [_money(_price(found[i])) for i in ids]
+        if body.total is not None:
+            if body.total <= 0:
+                raise HTTPException(status_code=400, detail="Prix invalide")
+            finals = spread(asked, _money(body.total))
+        else:
+            finals = [_money(body.prices.get(i, a)) for i, a in zip(ids, asked)]
+            if any(f <= 0 for f in finals):
+                raise HTTPException(status_code=400, detail="Prix invalide")
+        lines = [{"card_id": i, "asked": a, "offer": None, "final": f, "state": "none"} for i, a, f in zip(ids, asked, finals)]
+        market = await _sell_cards(client, user_id, ids, {l["card_id"]: l["final"] for l in lines})
+        mine = {c["code"] for c in active}
+        code = next(c for c in (("".join(secrets.choice(CODE_ALPHABET) for _ in range(4))) for _ in range(50)) if c not in mine)
+        now = _iso(_now())
+        cart = _check(await client.post(f"{SUPABASE_URL}/rest/v1/salon_carts", headers=_headers(), json={
+            "user_id": user_id,
+            "code": code,
+            "card_ids": ids,
+            "lines": lines,
+            "total": _money(sum(finals)),
+            "pseudo": "Caisse",
+            "status": "paid",
+            "paid_at": now,
+            "expires_at": now,
+        })).json()[0]
+    return {**cart, "marketplaces": market}
+
+
+@router.get("/salon/delist")
+async def to_delist(user: dict = Depends(require_admin)):
+    """Cartes vendues au salon dont une annonce est encore en ligne :
+    Vinted (à retirer à la main, pas d'API) ou eBay (retrait automatique raté)."""
+    user_id = user["sub"]
+    async with httpx.AsyncClient() as client:
+        carts = await fetch_all_rows(client, f"{SUPABASE_URL}/rest/v1/salon_carts", {"user_id": f"eq.{user_id}", "status": "eq.paid", "select": "card_ids,paid_at", "order": "paid_at.desc"})
+        sold_at = {}
+        for c in carts:
+            for cid in c["card_ids"]:
+                sold_at.setdefault(cid, c.get("paid_at"))
+        ids = list(sold_at)
+        out = []
+        for i in range(0, len(ids), 150):
+            rows = _check(await client.get(f"{SUPABASE_URL}/rest/v1/cards", headers=_headers(), params={"user_id": f"eq.{user_id}", "status": "eq.vendu", "id": f"in.({','.join(ids[i:i + 150])})"}), (200,)).json()
+            for c in rows:
+                if c.get("vinted_url") or c.get("ebay_offer_id"):
+                    out.append({**_slim(c), "price": c.get("price"), "vinted_url": c.get("vinted_url"), "ebay_url": c.get("ebay_url"), "ebay_listed": bool(c.get("ebay_offer_id")), "sold_at": sold_at[c["id"]]})
+    return sorted(out, key=lambda c: c["sold_at"] or "", reverse=True)
+
+
+class Delisted(BaseModel):
+    market: str  # vinted | ebay
+
+
+@router.post("/salon/delist/{card_id}")
+async def mark_delisted(card_id: str, body: Delisted, user: dict = Depends(require_admin)):
+    """Vinted : le vendeur confirme avoir retiré l'annonce. eBay : nouvel essai de retrait."""
+    user_id = user["sub"]
+    async with httpx.AsyncClient() as client:
+        rows = _check(await client.get(f"{SUPABASE_URL}/rest/v1/cards", headers=_headers(), params={"user_id": f"eq.{user_id}", "id": f"eq.{card_id}"}), (200,)).json()
+        if not rows:
+            raise HTTPException(status_code=404, detail="Carte introuvable")
+        if body.market == "vinted":
+            _check(await client.patch(f"{SUPABASE_URL}/rest/v1/cards", headers=_headers(), params={"user_id": f"eq.{user_id}", "id": f"eq.{card_id}"}, json={"vinted_url": None}))
+            return {"ok": True}
+    if body.market == "ebay":
+        res = await _withdraw_ebay(user_id, rows)
+        if res["failed"]:
+            raise HTTPException(status_code=502, detail="Retrait eBay impossible : vérifie la connexion eBay dans l'app")
+        return {"ok": True}
+    raise HTTPException(status_code=400, detail="Marketplace inconnue")
 
 
 @router.post("/salon/carts/{cart_id}/cancel")
@@ -604,6 +743,22 @@ async def extend_cart(cart_id: str, user: dict = Depends(require_admin)):
 
 def _distinct(events: list[dict], kind: str) -> set:
     return {e["visitor"] for e in events if e["kind"] == kind}
+
+
+def top_searches(events: list[dict], kind: str, limit: int = 10) -> list[dict]:
+    """Recherches les plus fréquentes (en visiteurs distincts). Les débuts de
+    frappe (« wem » avant « wemby ») d'un même visiteur ne comptent pas."""
+    by_visitor: dict = {}
+    for e in events:
+        if e["kind"] == kind and e.get("query"):
+            by_visitor.setdefault(e["visitor"], set()).add(e["query"])
+    counts: dict = {}
+    for queries in by_visitor.values():
+        for q in queries:
+            if not any(o != q and o.startswith(q) for o in queries):
+                counts[q] = counts.get(q, 0) + 1
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [{"query": q, "count": n} for q, n in ranked[:limit]]
 
 
 def build_stats(carts: list[dict], events: Optional[list[dict]], cards: dict) -> dict:
@@ -663,6 +818,8 @@ def build_stats(carts: list[dict], events: Optional[list[dict]], cards: dict) ->
         ranked = sorted(seen.items(), key=lambda kv: -len(kv[1]))
         return [{"card": cards[cid], "count": len(vs), "sold": cid in sold_ids} for cid, vs in ranked if cid in cards][:10]
 
+    out["searches"] = top_searches(events, "search")
+    out["searches_empty"] = top_searches(events, "search_empty")
     out["top_viewed"] = top("view")
     out["top_added"] = top("add")
     return out

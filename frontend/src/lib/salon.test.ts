@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../api/client', () => ({ apiFetch: vi.fn() }));
-import { codeFromHash, formatEuro, minutesLeft, offerSuggestions, offerSummary, parseAmount, type SalonLine } from './salon';
+import { codeFromHash, formatEuro, marketMessage, minutesLeft, offerSuggestions, offerSummary, parseAmount, type SalonLine } from './salon';
 
 describe('salon', () => {
   it('lit le code du QR dans le hash', () => {
@@ -38,5 +38,11 @@ describe('salon', () => {
   it('formate les prix avec les centimes seulement si besoin', () => {
     expect(formatEuro(12).replace(/\s/g, ' ')).toBe('12 €');
     expect(formatEuro(1.5).replace(/\s/g, ' ')).toBe('1,50 €');
+  });
+  it('résume ce qu’il reste à faire sur les annonces après une vente', () => {
+    expect(marketMessage(undefined)).toBeNull();
+    expect(marketMessage({ ebay_withdrawn: 0, ebay_failed: [], vinted: [] })).toBeNull();
+    expect(marketMessage({ ebay_withdrawn: 1, ebay_failed: [], vinted: [] })).toEqual({ text: 'Annonce eBay retirée', todo: false });
+    expect(marketMessage({ ebay_withdrawn: 2, ebay_failed: ['x'], vinted: ['a', 'b'] })).toEqual({ text: '2 annonces eBay retirées · 2 annonces Vinted à retirer · Annonce eBay à retirer', todo: true });
   });
 });

@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { ArrowRight, Check, HandCoins, Plus, Search, ShoppingBasket, SlidersHorizontal, Store, X } from 'lucide-react';
 import { ThemeToggleButton } from '../ui';
 import { confirmDialog, toast } from '../../lib/feedback';
-import { buildFilterContext } from '../../lib/collectionFilters';
+import { buildFilterContext, emptyFilters, filterCards } from '../../lib/collectionFilters';
 import {
   SalonError, formatEuro, salonApi,
   type PublicCart, type SalonLive, type SalonStock, type SalonTicket as Ticket,
@@ -194,6 +194,16 @@ export function SalonPublic({ token }: { token: string }) {
   const sport = fs.filters.facets.sport[0] ?? null;
 
   useEffect(() => { setLimit(PAGE); }, [fs]);
+
+  // Recherche notée quand le visiteur cesse de taper : ce qu'il cherche, et surtout ce qu'il ne trouve pas.
+  const searchText = fs.filters.search;
+  // Résultats de la recherche seule, sans les autres filtres : « rien trouvé » doit vouloir dire « pas en stock ».
+  const searchResults = useMemo(() => filterCards(forSale, { ...emptyFilters(), search: searchText }, ctx).length, [forSale, searchText, ctx]);
+  useEffect(() => {
+    if (!stock || searchText.trim().length < 2) return;
+    const id = window.setTimeout(() => tracker.search(searchText, searchResults), 1500);
+    return () => window.clearTimeout(id);
+  }, [stock, searchText, searchResults, tracker]);
   useEffect(() => {
     const el = sentinel.current;
     if (!el) return;
