@@ -8,6 +8,7 @@ import {
   SalonError, formatEuro, salonApi,
   type PublicCart, type SalonLive, type SalonStock, type SalonTicket as Ticket,
 } from '../../lib/salon';
+import { createTracker, isOwner, visitorId } from '../../lib/salonTracker';
 import type { Card } from '../../types';
 import { CardTags, ScrollRow, Thumb } from '../salon/parts';
 import { cardMeta, cardVariant } from '../salon/cardText';
@@ -104,6 +105,8 @@ export function SalonPublic({ token }: { token: string }) {
   const [busy, setBusy] = useState(false);
   const [replied, setReplied] = useState(false);
   const lastOfferState = useRef<string | null>(null);
+  const owner = useMemo(() => isOwner(token), [token]);
+  const tracker = useMemo(() => createTracker(token, { disabled: owner }), [token, owner]);
   const sentinel = useRef<HTMLDivElement>(null);
 
   useEffect(() => save(local, K.cart, cart), [K, cart]);
@@ -138,6 +141,19 @@ export function SalonPublic({ token }: { token: string }) {
     const id = window.setInterval(() => { if (!document.hidden) refreshPub(); }, screen === 'ticket' ? 5000 : 12000);
     return () => window.clearInterval(id);
   }, [ticket, screen, refreshPub]);
+
+  // Audience anonyme pour le bilan du vendeur ; envoi immédiat quand la page passe en arrière-plan.
+  useEffect(() => {
+    tracker.track('visit');
+    const onHide = () => { if (document.hidden) tracker.flush(); };
+    document.addEventListener('visibilitychange', onHide);
+    window.addEventListener('pagehide', tracker.flush);
+    return () => {
+      document.removeEventListener('visibilitychange', onHide);
+      window.removeEventListener('pagehide', tracker.flush);
+      tracker.flush();
+    };
+  }, [tracker]);
 
   // Retour sur la page (téléphone déverrouillé, onglet repris) : on rafraîchit tout de suite.
   useEffect(() => {
@@ -190,7 +206,13 @@ export function SalonPublic({ token }: { token: string }) {
 
   const toggle = (id: string) => {
     buzz();
+    if (!cart.includes(id)) tracker.track('add', id);
     setCart((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id]));
+  };
+  const openDetail = (i: number) => {
+    const c = data.shown[i];
+    if (c) tracker.track('view', c.id);
+    setDetail(i);
   };
   const update = (next: SalonFilterState) => setFs(next);
 
@@ -199,7 +221,7 @@ export function SalonPublic({ token }: { token: string }) {
     setSending(true);
     setSendError(null);
     try {
-      const body = { card_ids: ids, offer, pseudo: pseudo || null };
+      const body = { card_ids: ids, offer, pseudo: pseudo || null, visitor: owner ? null : visitorId() };
       const res = reservation && ticket ? await api.update(ticket, body) : await api.create(body);
       const next = { code: res.code, key: res.key ?? ticket?.key ?? '' };
       setTicket(next);
@@ -294,7 +316,11 @@ export function SalonPublic({ token }: { token: string }) {
   }
 
   const shown = data.shown;
-  const openCart = () => (reservation && !dirty ? setScreen('ticket') : setCartOpen(true));
+  const openCart = () => {
+    if (reservation && !dirty) return setScreen('ticket');
+    tracker.track('cart');
+    setCartOpen(true);
+  };
 
   return (
     <div className="min-h-dvh pb-28">
@@ -407,7 +433,7 @@ export function SalonPublic({ token }: { token: string }) {
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
             {shown.slice(0, limit).map((c, i) => (
-              <Tile key={c.id} card={c} inCart={cart.includes(c.id)} taken={unavailable.has(c.id)} onOpen={() => setDetail(i)} onToggle={() => toggle(c.id)} />
+              <Tile key={c.id} card={c} inCart={cart.includes(c.id)} taken={unavailable.has(c.id)} onOpen={() => openDetail(i)} onToggle={() => toggle(c.id)} />
             ))}
           </div>
         )}
@@ -440,7 +466,7 @@ export function SalonPublic({ token }: { token: string }) {
         <SalonCardSheet
           list={shown}
           index={detail}
-          onIndex={setDetail}
+          onIndex={openDetail}
           onClose={() => setDetail(null)}
           inCart={(id) => cart.includes(id)}
           unavailable={(id) => unavailable.has(id)}

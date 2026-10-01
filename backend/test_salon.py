@@ -17,14 +17,22 @@ class FakeDB:
     """Mini PostgREST en mémoire : eq./in./gt./gte. sur les colonnes utilisées par le module."""
 
     def __init__(self):
-        self.t = {"cards": [], "salon_stands": [], "salon_carts": []}
+        self.t = {"cards": [], "salon_stands": [], "salon_carts": [], "salon_events": []}
 
     def match(self, row, params):
+        params = dict(params)
+        if "and" in params:
+            for cond in unquote(params.pop("and")).strip("()").split(","):
+                col, _, rest = cond.partition(".")
+                if not self.match(row, {col: rest.replace('"', "")}):
+                    return False
         for k, v in params.items():
-            if k in ("order", "limit", "select"):
+            if k in ("order", "limit", "select", "offset"):
                 continue
             op, _, val = v.partition(".")
             cur = row.get(k)
+            if op == "lt" and not str(cur) < val:
+                return False
             if op == "eq" and str(cur) != val:
                 return False
             if op == "in" and str(cur) not in unquote(val).strip("()").split(","):
@@ -35,13 +43,21 @@ class FakeDB:
 
     def handler(self, request: httpx.Request) -> httpx.Response:
         table = request.url.path.rsplit("/", 1)[-1]
+        if table not in self.t:
+            return httpx.Response(404, json={"message": f"relation {table} does not exist"})
         rows = self.t[table]
         params = dict(request.url.params)
         if request.method == "GET":
             return httpx.Response(200, json=[r for r in rows if self.match(r, params)])
         body = json.loads(request.content or b"{}")
         if request.method == "POST":
-            row = {"id": str(uuid.uuid4()), "status": "active", "is_open": True, **body}
+            from datetime import datetime, timezone
+            stamp = {"created_at": datetime.now(timezone.utc).isoformat()}
+            if isinstance(body, list):
+                new = [{"id": str(uuid.uuid4()), **stamp, **b} for b in body]
+                rows.extend(new)
+                return httpx.Response(201, json=new)
+            row = {"id": str(uuid.uuid4()), "status": "active", "is_open": True, **stamp, **body}
             rows.append(row)
             return httpx.Response(201, json=[row])
         hit = [r for r in rows if self.match(r, params)]
@@ -187,6 +203,48 @@ class SalonTest(unittest.TestCase):
         self.client.post(f"{base}/{r['code']}/cancel", json={"key": r["key"]})
         self.assertEqual(self.client.get(f"/api/salon/{self.token}/live").json()["reserved"], [])
         self.assertEqual(self.client.put(f"{base}/{r['code']}", json={"card_ids": [a], "key": r["key"]}).status_code, 409)
+
+    def _day(self):
+        from datetime import datetime, timedelta, timezone
+        now = datetime.now(timezone.utc)
+        return {"start": (now - timedelta(hours=1)).isoformat(), "end": (now + timedelta(hours=1)).isoformat()}
+
+    def test_events_and_funnel(self):
+        a, b = (c["id"] for c in self.db.t["cards"][:2])
+        ev = f"/api/salon/{self.token}/events"
+        # Trois visiteurs : un regarde, un ajoute puis réserve et paie, un ajoute puis réserve sans payer.
+        for v, events in (
+            ("visitor-one", [{"kind": "visit"}, {"kind": "view", "card_id": a}]),
+            ("visitor-two", [{"kind": "visit"}, {"kind": "view", "card_id": a}, {"kind": "add", "card_id": a}, {"kind": "hack"}]),
+            ("visitor-three", [{"kind": "visit"}, {"kind": "add", "card_id": b}]),
+        ):
+            r = self.client.post(ev, content=json.dumps({"visitor": v, "events": events}), headers={"content-type": "text/plain"})
+            self.assertEqual(r.status_code, 204)
+        self.assertEqual(self.client.post(ev, content="nope").status_code, 400)
+        self.client.post(ev, content=json.dumps({"visitor": "x", "events": [{"kind": "visit"}]}))  # identifiant trop court : ignoré
+        base = f"/api/salon/{self.token}/carts"
+        self.client.post(base, json={"card_ids": [a], "visitor": "visitor-two", "offer": 8})
+        self.client.post(base, json={"card_ids": [b], "visitor": "visitor-three"})
+        paid_cart = next(c for c in self.db.t["salon_carts"] if c["card_ids"] == [a])
+        self.client.post(f"/api/salon/carts/{paid_cart['id']}/offer", json={"action": "accept"})
+        self.client.post(f"/api/salon/carts/{paid_cart['id']}/pay")
+        st = self.client.get("/api/salon/stats", params=self._day()).json()
+        self.assertTrue(st["tracking"])
+        self.assertEqual(st["funnel"], {"visitors": 3, "viewed": 2, "added": 2, "reserved": 2, "paid": 1})
+        self.assertEqual((st["sales"]["revenue"], st["sales"]["cards_sold"], st["sales"]["discount"], st["sales"]["offers_accepted"]), (8, 1, 2, 1))
+        self.assertEqual(st["sales"]["status"]["paid"], 1)
+        self.assertEqual(st["top_viewed"][0]["count"], 2)
+        self.assertTrue(st["top_viewed"][0]["sold"])
+        self.assertEqual(st["top_added"][0]["card"]["id"] in (a, b), True)
+
+    def test_stats_without_events_table(self):
+        del self.db.t["salon_events"]
+        self.assertEqual(self.client.post(f"/api/salon/{self.token}/events", content=json.dumps({"visitor": "visitor-one", "events": [{"kind": "visit"}]})).status_code, 204)
+        a = self.db.t["cards"][0]["id"]
+        self.assertEqual(self.client.post(f"/api/salon/{self.token}/carts", json={"card_ids": [a], "visitor": "visitor-one"}).status_code, 201)
+        st = self.client.get("/api/salon/stats", params=self._day()).json()
+        self.assertFalse(st["tracking"])
+        self.assertEqual(st["sales"]["carts"], 1)
 
     def test_paypal_handle(self):
         r = self.client.patch("/api/salon/stand", json={"paypal_me": "https://paypal.me/xavier.a/"})
