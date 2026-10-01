@@ -16,7 +16,13 @@ export interface SalonCart {
   expires_at: string;
   paid_at: string | null;
   cards: Card[];
+  lines: SalonLine[];
 }
+
+export type LineState = 'none' | 'offered' | 'accepted' | 'countered' | 'refused';
+export interface SalonLine { card_id: string; asked: number; offer: number | null; final: number; state: LineState }
+export interface PublicLine extends SalonLine { player: string | null; set_name: string | null; year: number | null }
+export interface PublicCart { code: string; status: 'active' | 'paid' | 'cancelled' | 'expired'; total: number; expires_at: string; lines: PublicLine[] }
 
 const euro = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2, minimumFractionDigits: 0 });
 export const formatEuro = (v: number) => euro.format(v);
@@ -68,4 +74,13 @@ export const fetchCartByCode = (code: string) => apiFetch<SalonCart>(`/salon/car
 
 export function minutesLeft(expiresAt: string, now = Date.now()): number {
   return Math.ceil((new Date(expiresAt).getTime() - now) / 60000);
+}
+
+export function useLineAction() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, cardId, ...body }: { id: string; cardId: string; final?: number; state?: 'accepted' | 'refused' }) =>
+      apiFetch<SalonCart>(`/salon/carts/${id}/lines/${cardId}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    onSuccess: () => { void qc.invalidateQueries({ queryKey: ['salon-carts'] }); },
+  });
 }

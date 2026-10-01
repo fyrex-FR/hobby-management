@@ -2,14 +2,23 @@ import { useEffect, useState } from 'react';
 import { Check, Clock, Copy, Search, Store, X } from 'lucide-react';
 import { errorMessage, toast } from '../../lib/feedback';
 import {
-  codeFromHash, fetchCartByCode, formatEuro, minutesLeft, standUrl, useCartAction, useQrDataUrl, useSalonCarts, useSalonStand, useUpdateStand,
-  type SalonCart,
+  codeFromHash, fetchCartByCode, formatEuro, minutesLeft, standUrl, useCartAction, useLineAction, useQrDataUrl, useSalonCarts, useSalonStand, useUpdateStand,
+  type SalonCart, type SalonLine,
 } from '../../lib/salon';
 import { cdnImg } from '../../lib/cdn';
 import { Badge, EmptyState, Page, PageHeader, Panel, Spinner } from '../ui';
 
 function CartPanel({ cart, onClose }: { cart: SalonCart; onClose?: () => void }) {
   const act = useCartAction();
+  const lineAct = useLineAction();
+  const [lines, setLines] = useState<SalonLine[]>(cart.lines ?? []);
+  const [sum, setSum] = useState(cart.total);
+  const lineOf = (id: string) => lines.find((l) => l.card_id === id);
+  const editLine = (cardId: string, body: { final?: number; state?: 'accepted' | 'refused' }) =>
+    lineAct.mutate({ id: cart.id, cardId, ...body }, {
+      onSuccess: (c) => { setLines(c.lines); setSum(c.total); },
+      onError: (e) => toast.error('Modification impossible', { description: errorMessage(e) }),
+    });
   const left = minutesLeft(cart.expires_at);
   const run = (action: 'pay' | 'cancel' | 'extend') =>
     act.mutate({ id: cart.id, action }, {
@@ -40,11 +49,35 @@ function CartPanel({ cart, onClose }: { cart: SalonCart; onClose?: () => void })
               <div className="truncate font-medium">{c.player ?? 'Carte'}</div>
               <div className="truncate text-xs text-[var(--text-secondary)]">{[c.year, c.set_name || c.brand, c.insert_name, c.parallel_name].filter(Boolean).join(' · ')}</div>
             </div>
-            <span className="font-medium">{formatEuro(c.price ?? 0)}</span>
+            {(() => {
+              const l = lineOf(c.id);
+              if (!l) return <span className="font-medium">{formatEuro(c.price ?? 0)}</span>;
+              return (
+                <div className="flex flex-col items-end gap-1">
+                  {l.offer != null && <span className="text-xs text-[var(--text-secondary)]">Offre {formatEuro(l.offer)}{l.state === 'accepted' ? ' ✓' : l.state === 'refused' ? ' ✗' : l.state === 'countered' ? ' → contre' : ''}</span>}
+                  {cart.status === 'active' ? (
+                    <input
+                      key={`${l.final}-${l.state}`}
+                      className="ui-input h-8 w-20 text-right text-sm"
+                      inputMode="decimal"
+                      defaultValue={l.final}
+                      aria-label="Prix final"
+                      onBlur={(e) => { const v = Number(e.target.value.replace(',', '.')); if (v > 0 && v !== l.final) editLine(c.id, { final: v }); }}
+                    />
+                  ) : <span className="font-medium">{formatEuro(l.final)}</span>}
+                  {cart.status === 'active' && l.offer != null && l.state === 'offered' && (
+                    <div className="flex gap-1">
+                      <button className="ui-btn h-7 px-2 text-xs" onClick={() => editLine(c.id, { state: 'accepted' })}>Accepter</button>
+                      <button className="ui-btn h-7 px-2 text-xs" onClick={() => editLine(c.id, { state: 'refused' })}>Refuser</button>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </li>
         ))}
       </ul>
-      <div className="mt-3 flex items-center justify-between text-lg font-semibold"><span>Total</span><span>{formatEuro(cart.total)}</span></div>
+      <div className="mt-3 flex items-center justify-between text-lg font-semibold"><span>Total</span><span>{formatEuro(sum)}</span></div>
       {cart.status === 'active' && (
         <div className="mt-3 flex gap-2">
           <button className="ui-btn ui-btn-primary flex-1" disabled={act.isPending} onClick={() => run('pay')}><Check size={16} /> Encaissé</button>

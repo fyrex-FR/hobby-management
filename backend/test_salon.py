@@ -121,6 +121,21 @@ class SalonTest(unittest.TestCase):
         self.assertEqual(self.client.post(f"/api/salon/{self.token}/carts", json={"card_ids": ["x"]}).status_code, 400)
         self.assertEqual(self.client.post(f"/api/salon/{self.token}/carts", json={"card_ids": []}).status_code, 400)
 
+    def test_offers_counter_and_pay_final_prices(self):
+        ids = [c["id"] for c in self.db.t["cards"][:2]]
+        base = f"/api/salon/{self.token}/carts"
+        for bad in (0, 10, 15):
+            self.assertEqual(self.client.post(base, json={"card_ids": ids, "offers": {ids[0]: bad}}).status_code, 400)
+        r = self.client.post(base, json={"card_ids": ids, "offers": {ids[0]: 8}})
+        self.assertEqual((r.status_code, r.json()["total"]), (201, 30))
+        code, cid = r.json()["code"], self.db.t["salon_carts"][0]["id"]
+        self.assertEqual(self.client.patch(f"/api/salon/carts/{cid}/lines/{ids[0]}", json={"final": 9}).json()["total"], 29)
+        pub = self.client.get(f"{base}/{code}").json()
+        self.assertEqual((pub["status"], pub["lines"][0]["state"], pub["lines"][0]["final"]), ("active", "countered", 9))
+        self.client.post(f"/api/salon/carts/{cid}/pay")
+        self.assertEqual(self.db.t["cards"][0]["price"], 9)
+        self.assertEqual(self.client.get(f"/api/salon/{self.token}/live").json()["sold"], sorted(ids))
+
     def test_paypal_handle(self):
         r = self.client.patch("/api/salon/stand", json={"paypal_me": "https://paypal.me/xavier.a/"})
         self.assertEqual(r.json()["paypal_me"], "xavier.a")
