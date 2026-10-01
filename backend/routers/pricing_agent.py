@@ -108,6 +108,8 @@ class RunRequest(BaseModel):
 async def create_run(body: RunRequest, user_id: str = Depends(agent_user_id)):
     if any(s.currency.upper() != "EUR" for s in body.kept):
         raise HTTPException(status_code=422, detail="Seules les ventes en EUR peuvent être retenues.")
+    if not body.kept and not body.rejected and not body.error:
+        raise HTTPException(status_code=422, detail="Aucune vente classée : renseigne `error` si eBay n'a rien renvoyé.")
     row = {
         "user_id": user_id, "card_id": body.card_id, "query": body.query,
         "kept": [s.model_dump() for s in body.kept], "rejected": [s.model_dump() for s in body.rejected],

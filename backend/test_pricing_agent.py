@@ -110,6 +110,12 @@ class PricingTest(unittest.TestCase):
         self.assertNotIn("proposed_price", run)
         self.assertEqual(self.c.post(f"/api/pricing-runs/{run['id']}/accept", json={}).status_code, 422)
 
+    def test_run_must_classify_sales(self):
+        card = self.card()
+        body = self.run_body(card, kept=[], rejected=[])
+        self.assertEqual(self.c.post("/api/pricing-agent/runs", headers=H, json=body).status_code, 422)
+        self.assertEqual(self.c.post("/api/pricing-agent/runs", headers=H, json={**body, "error": "eBay vide"}).status_code, 201)
+
     def test_foreign_card_and_currency(self):
         other = self.card(user_id=str(uuid.uuid4()))
         self.assertEqual(self.c.post("/api/pricing-agent/runs", headers=H, json=self.run_body(other)).status_code, 404)
