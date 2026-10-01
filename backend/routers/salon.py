@@ -5,6 +5,7 @@ que le stock `a_vendre` du compte propriétaire du stand.
 """
 import hashlib
 import hmac
+import json
 import os
 import re
 import secrets
@@ -13,7 +14,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from .admin import require_admin
@@ -171,6 +172,8 @@ class CartBody(BaseModel):
     # Ancien format : offre carte par carte. Gardé pour les pages déjà ouvertes.
     offers: dict[str, float] = {}
     key: Optional[str] = None
+    # Identifiant anonyme du navigateur, pour l'entonnoir des statistiques.
+    visitor: Optional[str] = None
 
 
 class BuyerKey(BaseModel):
@@ -238,7 +241,9 @@ async def create_cart(token: str, body: CartBody):
             "pseudo": (body.pseudo or "").strip()[:60] or None,
             "expires_at": _iso(_now() + timedelta(minutes=HOLD_MINUTES)),
         }))
-    cart = ins.json()[0]
+        cart = ins.json()[0]
+        if body.visitor:
+            await _log_events(client, user_id, body.visitor, [{"kind": "reserve", "cart_id": cart["id"]}])
     return {"code": cart["code"], "key": _buyer_key(cart["id"]), "total": cart["total"], "expires_at": cart["expires_at"]}
 
 
@@ -348,6 +353,52 @@ async def accept_counter(token: str, code: str, body: BuyerKey):
                 l["state"] = "accepted"
         await _set_cart(client, cart["id"], stand["user_id"], {"lines": lines})
     return {"status": "active", **offer_summary(lines)}
+
+
+# ── Statistiques : événements anonymes ───────────────────────────────────────
+
+EVENT_KINDS = {"visit", "view", "add", "cart"}
+MAX_EVENTS = 50
+VISITOR_RE = re.compile(r"[A-Za-z0-9_-]{8,64}")
+
+
+async def _log_events(client: httpx.AsyncClient, user_id: str, visitor: str, events: list[dict]):
+    """Écriture au mieux : sans la table (migration pas encore passée) ou en cas
+    d'erreur, la page du stand doit continuer de marcher."""
+    if not VISITOR_RE.fullmatch(visitor or "") or not events:
+        return
+    rows = [{"user_id": user_id, "visitor": visitor, "kind": e["kind"], "card_id": e.get("card_id"), "cart_id": e.get("cart_id")} for e in events]
+    try:
+        await client.post(f"{SUPABASE_URL}/rest/v1/salon_events", headers={**_headers(), "Prefer": "return=minimal"}, json=rows)
+    except httpx.HTTPError:
+        pass
+
+
+@router.post("/salon/{token}/events", status_code=204)
+async def public_events(token: str, request: Request):
+    """Lot d'événements de la page publique. Corps JSON envoyé en text/plain
+    (fetch keepalive sans pré-vol CORS) : on le lit à la main."""
+    try:
+        body = json.loads(await request.body() or b"{}")
+        visitor = str(body.get("visitor") or "")
+        raw = body.get("events") or []
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=400, detail="Corps invalide")
+    events = []
+    for e in raw[:MAX_EVENTS] if isinstance(raw, list) else []:
+        kind = e.get("kind") if isinstance(e, dict) else None
+        if kind not in EVENT_KINDS:
+            continue
+        card_id = e.get("card_id")
+        try:
+            card_id = str(uuid.UUID(card_id)) if card_id else None
+        except (ValueError, TypeError):
+            card_id = None
+        events.append({"kind": kind, "card_id": card_id})
+    async with httpx.AsyncClient() as client:
+        stand = await _stand_by_token(client, token)
+        await _log_events(client, stand["user_id"], visitor, events)
+    return Response(status_code=204)
 
 
 # ── Admin ────────────────────────────────────────────────────────────────────
@@ -547,3 +598,96 @@ async def extend_cart(cart_id: str, user: dict = Depends(require_admin)):
         if cart["status"] != "active":
             raise HTTPException(status_code=409, detail="Panier non actif")
         return await _set_cart(client, cart_id, user["sub"], {"expires_at": _iso(_now() + timedelta(minutes=HOLD_MINUTES))})
+
+
+# ── Bilan de la journée ──────────────────────────────────────────────────────
+
+def _distinct(events: list[dict], kind: str) -> set:
+    return {e["visitor"] for e in events if e["kind"] == kind}
+
+
+def build_stats(carts: list[dict], events: Optional[list[dict]], cards: dict) -> dict:
+    """Bilan d'une période : ventes (paniers) + entonnoir (événements anonymes).
+    `events` vaut None si la table n'existe pas encore."""
+    now = _iso(_now())
+    status = {"paid": 0, "cancelled": 0, "expired": 0, "active": 0}
+    for c in carts:
+        st = "expired" if c["status"] == "active" and c["expires_at"] <= now else c["status"]
+        status[st] = status.get(st, 0) + 1
+    paid = [c for c in carts if c["status"] == "paid"]
+    revenue = _money(sum(float(c["total"]) for c in paid))
+    asked_paid = _money(sum(offer_summary(c.get("lines") or [])["asked"] for c in paid if c.get("lines")))
+    with_offer = [offer_summary(c.get("lines") or []) for c in carts]
+    with_offer = [o for o in with_offer if o["offer"] is not None]
+    sold_ids = [cid for c in paid for cid in c["card_ids"]]
+
+    out = {
+        "sales": {
+            "carts": len(carts),
+            "status": status,
+            "revenue": revenue,
+            "cards_sold": len(sold_ids),
+            "avg_cart": _money(revenue / len(paid)) if paid else 0,
+            "discount": _money(max(asked_paid - sum(float(c["total"]) for c in paid if c.get("lines")), 0)),
+            "offers": len(with_offer),
+            "offers_accepted": sum(1 for o in with_offer if o["offer_state"] == "accepted"),
+            "offers_refused": sum(1 for o in with_offer if o["offer_state"] == "refused"),
+            "offers_countered": sum(1 for o in with_offer if o["offer_state"] == "countered"),
+        },
+        "paid_at": sorted(c["paid_at"] for c in paid if c.get("paid_at")),
+        "tracking": events is not None,
+    }
+    if events is None:
+        return out
+
+    paid_ids = {c["id"] for c in paid}
+    first_visit: dict = {}
+    for e in events:
+        v = e["visitor"]
+        if v not in first_visit or e["created_at"] < first_visit[v]:
+            first_visit[v] = e["created_at"]
+    out["funnel"] = {
+        "visitors": len(first_visit),
+        "viewed": len(_distinct(events, "view")),
+        "added": len(_distinct(events, "add")),
+        "reserved": len(_distinct(events, "reserve")),
+        "paid": len({e["visitor"] for e in events if e["kind"] == "reserve" and e.get("cart_id") in paid_ids}),
+    }
+    out["visits_at"] = sorted(first_visit.values())
+
+    def top(kind: str) -> list[dict]:
+        seen: dict = {}
+        for e in events:
+            if e["kind"] == kind and e.get("card_id"):
+                seen.setdefault(e["card_id"], set()).add(e["visitor"])
+        ranked = sorted(seen.items(), key=lambda kv: -len(kv[1]))
+        return [{"card": cards[cid], "count": len(vs), "sold": cid in sold_ids} for cid, vs in ranked if cid in cards][:10]
+
+    out["top_viewed"] = top("view")
+    out["top_added"] = top("add")
+    return out
+
+
+@router.get("/salon/stats")
+async def salon_stats(start: str, end: str, user: dict = Depends(require_admin)):
+    """Bilan entre `start` et `end` (ISO UTC, la journée locale est calculée côté navigateur)."""
+    try:
+        start_dt, end_dt = datetime.fromisoformat(start.replace("Z", "+00:00")), datetime.fromisoformat(end.replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Dates invalides")
+    # Valeurs entre guillemets : PostgREST l'exige dans and=(…) pour « : » et « . ».
+    span = f'(created_at.gte."{_iso(start_dt)}",created_at.lt."{_iso(end_dt)}")'
+    user_id = user["sub"]
+    async with httpx.AsyncClient() as client:
+        carts = await fetch_all_rows(client, f"{SUPABASE_URL}/rest/v1/salon_carts", {"user_id": f"eq.{user_id}", "and": span, "order": "created_at.asc"})
+        try:
+            events = await fetch_all_rows(client, f"{SUPABASE_URL}/rest/v1/salon_events", {"user_id": f"eq.{user_id}", "and": span, "order": "created_at.asc"})
+        except HTTPException:
+            events = None  # table absente : migration add_salon_events pas encore passée
+        ids = sorted({e["card_id"] for e in (events or []) if e.get("card_id")})
+        cards: dict = {}
+        for i in range(0, len(ids), 150):
+            chunk = ids[i:i + 150]
+            rows = _check(await client.get(f"{SUPABASE_URL}/rest/v1/cards", headers=_headers(), params={"user_id": f"eq.{user_id}", "id": f"in.({','.join(chunk)})"}), (200,)).json()
+            cards.update({c["id"]: _slim(c) for c in rows})
+    return build_stats(carts, events, cards)
