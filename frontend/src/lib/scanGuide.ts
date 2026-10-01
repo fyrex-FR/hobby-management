@@ -10,6 +10,8 @@ import type { Quad } from './cardQuad';
  * - Se réarme quand la carte quitte le cadre (3 images sans détection) ou
  *   change franchement de place (> 15 %) : retournement recto → verso,
  *   carte suivante.
+ * - Le suivi survit aux changements d'étape (recto → verso) : sans cela, la
+ *   carte encore dans le cadre déclenchait aussitôt une seconde photo.
  */
 export interface GuideState {
   corners: Quad | null;
@@ -27,7 +29,7 @@ export function createGuideTracker(opts: { stableFrames?: number; auto?: boolean
   let lost = 0;
   let armed = true;
 
-  return function update(corners: Quad | null): GuideState {
+  function update(corners: Quad | null): GuideState {
     if (!corners) {
       lost += 1;
       if (lost >= 3) { armed = true; prev = null; stable = 0; }
@@ -41,5 +43,8 @@ export function createGuideTracker(opts: { stableFrames?: number; auto?: boolean
     const shoot = auto && armed && stable >= stableFrames;
     if (shoot) { armed = false; stable = 0; }
     return { corners, stable: shoot ? 1 : Math.min(1, stable / stableFrames), shoot };
-  };
+  }
+  /** Après une photo (auto ou manuelle) : plus de déclenchement tant que la carte n'a pas bougé ou quitté le cadre. */
+  update.disarm = () => { armed = false; stable = 0; };
+  return update;
 }

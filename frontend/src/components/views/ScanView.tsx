@@ -395,6 +395,7 @@ export function ScanView() {
     const video = videoRef.current;
     const frame = frameRef.current;
     if (camera !== 'on' || !video || !frame || !video.videoWidth) { fileRef.current?.click(); return; }
+    trackerRef.current?.update.disarm();
     setFlash(true);
     window.setTimeout(() => setFlash(false), 180);
     navigator.vibrate?.(10);
@@ -523,6 +524,7 @@ export function ScanView() {
   // ou change de place (retournement recto → verso).
   const shootRef = useRef<() => void>(() => {});
   shootRef.current = () => { void shoot(); };
+  const trackerRef = useRef<{ auto: boolean; update: ReturnType<typeof createGuideTracker> } | null>(null);
   useEffect(() => {
     if (phase !== 'live' || camera !== 'on') { setGuide(null); return; }
     const video = videoRef.current;
@@ -530,7 +532,8 @@ export function ScanView() {
     if (!video || !frame) return;
     const small = document.createElement('canvas');
     const ctx = small.getContext('2d', { willReadFrequently: true })!;
-    const update = createGuideTracker({ stableFrames: 5, auto: autoShoot });
+    if (trackerRef.current?.auto !== autoShoot) trackerRef.current = { auto: autoShoot, update: createGuideTracker({ stableFrames: 5, auto: autoShoot }) };
+    const update = trackerRef.current.update;
     let busy = false;
     const tick = () => {
       if (busy || document.hidden || !video.videoWidth) return;

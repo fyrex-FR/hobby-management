@@ -38,3 +38,17 @@ describe('scanGuide', () => {
     expect(states.at(-1)!.stable).toBe(1);
   });
 });
+
+describe('disarm', () => {
+  it('ne redéclenche pas tant que la carte reste en place', () => {
+    const q = (o = 0) => [0, 1, 2, 3].map((i) => ({ x: 0.2 + o + (i % 2) * 0.5, y: 0.2 + (i > 1 ? 0.6 : 0) })) as never;
+    const update = createGuideTracker({ stableFrames: 5 });
+    let shots = 0;
+    for (let i = 0; i < 8; i++) if (update(q()).shoot) { shots++; update.disarm(); }
+    for (let i = 0; i < 20; i++) if (update(q()).shoot) shots++;
+    expect(shots).toBe(1);
+    for (let i = 0; i < 3; i++) update(null);
+    for (let i = 0; i < 8; i++) if (update(q()).shoot) shots++;
+    expect(shots).toBe(2);
+  });
+});
