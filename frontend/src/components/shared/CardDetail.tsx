@@ -10,6 +10,7 @@ import {
   Camera,
   Download,
   Rotate3d,
+  Undo2,
   RefreshCw,
   Sparkles,
   ChevronDown,
@@ -37,6 +38,7 @@ import { EbaySoldItems } from './EbaySoldItems';
 import { EbayPublishModal } from './EbayPublishModal';
 import { EbayLogo, VintedLogo } from './EbayLogo';
 import { supabase } from '../../lib/supabase';
+import { toast } from '../../lib/feedback';
 import { compressImage } from '../../lib/storage';
 import { cdnImg } from '../../lib/cdn';
 import { RookieBadge } from './RookieBadge';
@@ -476,6 +478,23 @@ export function CardDetail({ card, onClose }: Props) {
     }
   }
 
+  async function handleRestoreOriginal(side: 'front' | 'back') {
+    setUploadingImage(side);
+    try {
+      const { data } = await supabase.auth.getSession();
+      const form = new FormData();
+      form.append('card_id', card.id);
+      form.append('side', side);
+      const r = await fetch(`${API_BASE}/api/upload/restore`, { method: 'POST', headers: { Authorization: `Bearer ${data.session?.access_token ?? ''}` }, body: form });
+      if (!r.ok) { toast.error(r.status === 404 ? "Pas d'original conservé pour cette photo" : 'Restauration impossible'); return; }
+      const { url } = await r.json();
+      await updateCard.mutateAsync({ id: card.id, [side === 'front' ? 'image_front_url' : 'image_back_url']: url });
+      toast.success('Photo originale restaurée');
+    } finally {
+      setUploadingImage(null);
+    }
+  }
+
   function handleDelete() {
     deleteWithUndo([card.id], `${card.player ?? 'Carte'} supprimée`);
     onClose();
@@ -691,6 +710,17 @@ export function CardDetail({ card, onClose }: Props) {
                   className="ui-btn ui-btn-icon"
                 >
                   {downloadingPhotos ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                </button>
+              )}
+              {shownUrl && (
+                <button
+                  onClick={() => void handleRestoreOriginal(side)}
+                  disabled={uploadingImage != null}
+                  title="Revenir à la photo originale (sans fond)"
+                  aria-label="Revenir à la photo originale"
+                  className="ui-btn ui-btn-icon"
+                >
+                  <Undo2 size={15} />
                 </button>
               )}
               {shownUrl && canTilt && !gyroOn && (

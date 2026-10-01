@@ -1,4 +1,5 @@
 import os
+import time
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from .auth import current_user
@@ -35,6 +36,7 @@ async def upload_image(
     file: UploadFile = File(...),
     card_id: str = Form(...),
     side: str = Form(...),
+    original: Optional[UploadFile] = File(None),
     user: dict = Depends(current_user),
 ):
     user_id = user["sub"]
@@ -42,6 +44,8 @@ async def upload_image(
     content = await file.read()
 
     try:
+        if original is not None:
+            _get_s3().put_object(Bucket=R2_BUCKET_NAME, Key=f"{user_id}/{card_id}_{side}_orig.jpg", Body=await original.read(), ContentType="image/jpeg")
         _get_s3().put_object(
             Bucket=R2_BUCKET_NAME,
             Key=path,
@@ -53,6 +57,20 @@ async def upload_image(
 
     public_url = f"{R2_PUBLIC_URL}/{path}"
     return {"url": public_url}
+
+
+@router.post("/upload/restore")
+async def restore_original(card_id: str = Form(...), side: str = Form(...), user: dict = Depends(current_user)):
+    if side not in ("front", "back"):
+        raise HTTPException(status_code=400, detail="side invalide")
+    base = f"{user['sub']}/{card_id}_{side}"
+    s3 = _get_s3()
+    try:
+        s3.head_object(Bucket=R2_BUCKET_NAME, Key=f"{base}_orig.jpg")
+    except Exception:
+        raise HTTPException(status_code=404, detail="Pas d'original pour cette photo")
+    s3.copy_object(Bucket=R2_BUCKET_NAME, Key=f"{base}.jpg", CopySource={"Bucket": R2_BUCKET_NAME, "Key": f"{base}_orig.jpg"}, ContentType="image/jpeg", MetadataDirective="REPLACE")
+    return {"url": f"{R2_PUBLIC_URL}/{base}.jpg?v={int(time.time())}"}
 
 
 # ── Fond personnalisé des photos vitrine (un par ton, propre à chaque compte) ──
