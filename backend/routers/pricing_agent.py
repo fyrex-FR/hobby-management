@@ -53,7 +53,7 @@ def agent_user_id(x_agent_token: str = Header(default="")) -> str:
 
 
 def search_text(card: dict) -> str:
-    parts = [card.get(k) for k in ("player", "year", "set_name", "insert_name", "parallel_name", "numbered")]
+    parts = [card.get(k) for k in ("player", "year", "set_name", "insert_name", "numbered")]
     parts.insert(3, card.get("card_number"))
     return " ".join(str(p) for p in parts if p).strip()
 
