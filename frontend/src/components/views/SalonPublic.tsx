@@ -341,6 +341,17 @@ export function SalonPublic({ token }: { token: string }) {
               <h1 className="truncate text-[15px] font-semibold tracking-tight text-[var(--text-primary)]">{title}</h1>
               <p className="text-xs text-[var(--text-muted)]">{stock ? `${forSale.length} cartes à vendre` : 'Chargement…'}</p>
             </div>
+            {stock?.paypal_me && (
+              <a
+                href={`https://www.paypal.me/${encodeURIComponent(stock.paypal_me)}`}
+                target="_blank"
+                rel="noreferrer"
+                aria-label="Payer directement avec PayPal"
+                className="flex h-9 items-center rounded-lg bg-white px-2.5 text-[15px] font-extrabold italic leading-none tracking-tight"
+              >
+                <span className="text-[#003087]">Pay</span><span className="text-[#009cde]">Pal</span>
+              </a>
+            )}
             <ThemeToggleButton />
             <motion.button
               key={cartCards.length}
