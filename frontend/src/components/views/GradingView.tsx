@@ -151,7 +151,7 @@ function GradingModal({
     await updateCard.mutateAsync({
       id: card.id,
       grading_company: (form.grading_company || null) as GradingCompany | null,
-      grading_status: (form.grading_status || null) as GradingStatus | null,
+      grading_status: (form.grading_company ? form.grading_status || 'submitted' : null) as GradingStatus | null,
       grading_submitted_at: form.grading_submitted_at || null,
       grading_returned_at: form.grading_returned_at || null,
       grading_grade: form.grading_grade || null,

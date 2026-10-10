@@ -391,7 +391,7 @@ export function CardDetail({ card, onClose }: Props) {
       folder_ids: folderIds,
       is_rookie: fields.is_rookie,
       grading_company: (fields.grading_company || null) as GradingCompany | null,
-      grading_status: (fields.grading_status || null) as GradingStatus | null,
+      grading_status: (fields.grading_company ? fields.grading_status || 'submitted' : null) as GradingStatus | null,
       grading_grade: fields.grading_grade || null,
       grading_cert: fields.grading_cert || null,
       grading_submitted_at: fields.grading_submitted_at || null,
