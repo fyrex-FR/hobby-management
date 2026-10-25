@@ -556,7 +556,7 @@ def build_aspects(card: dict) -> dict:
         if value:
             aspects[name] = [str(value)]
 
-    sport, league = EBAY_SPORTS.get(card.get("sport") or "Basket", (None, None))
+    sport, league = EBAY_SPORTS.get(card.get("sport") or "Basket", ("Autre", None))
     add("Sport", sport)
     add("Type", "Carte à collectionner sportive")
     add("Ligue", league)
