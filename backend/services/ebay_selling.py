@@ -537,6 +537,15 @@ def build_listing_description(card: dict, title: str, description: Optional[str]
     return _html_description_from_text(text)
 
 
+EBAY_SPORTS = {
+    "Basket": ("Basket-ball", "National Basketball Association (NBA)"),
+    "Foot": ("Football", None),
+    "Baseball": ("Baseball", "Major League Baseball (MLB)"),
+    "Football US": ("Football américain", "National Football League (NFL)"),
+    "Hockey": ("Hockey sur glace", "National Hockey League (NHL)"),
+}
+
+
 def build_aspects(card: dict) -> dict:
     """Item specifics standards pour des cartes de sport. Les valeurs qui ne
     correspondent à aucune liste attendue par eBay pour la catégorie sont
@@ -547,9 +556,10 @@ def build_aspects(card: dict) -> dict:
         if value:
             aspects[name] = [str(value)]
 
-    add("Sport", "Basket-ball")
+    sport, league = EBAY_SPORTS.get(card.get("sport") or "Basket", (None, None))
+    add("Sport", sport)
     add("Type", "Carte à collectionner sportive")
-    add("Ligue", "National Basketball Association (NBA)")
+    add("Ligue", league)
     add("Équipe", card.get("team"))
     add("Joueur ou athlète", card.get("player"))
     add("Saison", card.get("year"))
