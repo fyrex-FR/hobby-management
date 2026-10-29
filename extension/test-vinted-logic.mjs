@@ -83,4 +83,8 @@ assert.equal(V.parsePrice("0"), null);
 assert.equal(V.parsePrice("abc"), null);
 assert.equal(V.parsePrice("12,555"), null);
 
+// Recherche eBay : celle de l'API, sinon reconstruite depuis la carte
+assert.equal(V.ebayQueryOf({ ebay_query: "API", player: "X" }), "API");
+assert.equal(V.ebayQueryOf({ player: "Ben Saraf", year: "2025-26", set_name: "Topps Chrome", variant: "Gold", numbered: "/50" }), "Ben Saraf 2025-26 Topps Chrome Gold /50");
+
 console.log("vinted-logic : tous les tests passent");

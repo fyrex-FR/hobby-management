@@ -79,6 +79,16 @@
     return `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(text).replace(/%20/g, "+")}&LH_Sold=1&LH_Complete=1`;
   }
 
+  /**
+   * Recherche eBay d'une carte : celle fournie par l'API, sinon reconstruite
+   * à partir des champs de la file (serveur pas encore à jour).
+   */
+  function ebayQueryOf(card) {
+    if (card?.ebay_query) return card.ebay_query;
+    return [card?.player, card?.year, card?.set_name, card?.variant, card?.numbered]
+      .filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+  }
+
   /** Prix saisi (« 12,50 », « 12 € », « 1 200 ») → nombre > 0, ou null. */
   function parsePrice(raw) {
     const text = String(raw ?? "").replace(/[€\s\u00a0\u202f]/g, "").replace(",", ".");
@@ -138,7 +148,7 @@
   }
 
   root.CVVinted = {
-    listingUrl, isNewItemUrl, shouldAutoLink, cdnUrl, numberedBadge, filterQueue, ebaySoldUrl, parsePrice,
+    listingUrl, isNewItemUrl, shouldAutoLink, cdnUrl, numberedBadge, filterQueue, ebaySoldUrl, ebayQueryOf, parsePrice,
     GROUPS, groupKey, groupCards, inGroup, sortCards,
     SUBMIT_WINDOW_MS, FILL_WINDOW_MS,
   };
