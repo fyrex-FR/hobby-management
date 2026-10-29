@@ -114,7 +114,7 @@
     const awaiting = v.phase === "awaiting" && v.currentId === card.id;
     const typed = v.priceInput[card.id] ?? priceText(card.price);
     const price = CVVinted.parsePrice(typed);
-    const ebay = CVVinted.ebaySoldUrl(card.ebay_query);
+    const ebay = CVVinted.ebaySoldUrl(CVVinted.ebayQueryOf(card));
     const img = card.image_front_url ? `<img src="${escapeAttr(CVVinted.cdnUrl(card.image_front_url))}" alt="">` : "";
     box.innerHTML = `
       <div class="v-card">
@@ -148,7 +148,7 @@
 
   function itemHtml(c, card) {
     const active = card && c.id === card.id;
-    const ebay = CVVinted.ebaySoldUrl(c.ebay_query);
+    const ebay = CVVinted.ebaySoldUrl(CVVinted.ebayQueryOf(c));
     return `<li class="v-row${active ? " active" : ""}"><button class="v-item" data-id="${escapeAttr(c.id)}" aria-current="${Boolean(active)}">
         ${c.image_front_url ? `<img src="${escapeAttr(CVVinted.cdnUrl(c.image_front_url))}" alt="" loading="lazy">` : "<span class=\"v-thumb\"></span>"}
         <span class="v-item-text"><b>${escapeHtml(c.player || "Carte")}</b><span>${escapeHtml(metaOf(c))}</span></span>
