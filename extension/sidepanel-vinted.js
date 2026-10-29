@@ -320,10 +320,11 @@
     }
   }
 
-  async function attach(url) {
-    const card = current();
+  async function attach(url, cardId = null) {
+    const card = (cardId && v.cards.find((c) => c.id === cardId)) || current();
     const listing = CVVinted.listingUrl(url);
     if (!card) return;
+    show("v-detect", false);
     if (!listing) { setStatus("Ce n’est pas l’adresse d’une annonce Vinted (vinted.fr/items/…).", "error"); return; }
     try {
       await api(`/cards/${encodeURIComponent(card.id)}/vinted-listing`, { method: "PATCH", body: JSON.stringify({ url: listing }) });
@@ -364,6 +365,19 @@
       onLinked(message);
     } else if (message.event === "link_error") {
       setStatus(`Annonce détectée mais non associée (${message.error}). Utilise « Associer l’annonce ouverte ».`, "error");
+      $("v-manual").open = true;
+    } else if (message.event === "detected") {
+      // Retrouvée sur le profil mais pas certaine (prix différent, pas en tête) : on demande.
+      $("v-detect").innerHTML = `<span>Annonce trouvée sur ton profil : <b>${escapeHtml(message.title || message.url)}</b>. C’est celle de ${escapeHtml(message.player || "cette carte")} ?</span>
+        <div><button id="v-detect-yes">Associer</button><button id="v-detect-no" class="secondary">Ce n’est pas elle</button></div>`;
+      show("v-detect");
+      $("v-detect-yes").addEventListener("click", () => attach(message.url, message.cardId));
+      $("v-detect-no").addEventListener("click", () => {
+        show("v-detect", false); $("v-manual").open = true;
+        setStatus("Ouvre la bonne annonce sur Vinted puis « Associer l’annonce ouverte ».");
+      });
+    } else if (message.event === "not_found") {
+      setStatus("Annonce publiée, mais introuvable sur ton profil. Ouvre-la sur Vinted puis « Associer l’annonce ouverte ».", "error");
       $("v-manual").open = true;
     }
   });

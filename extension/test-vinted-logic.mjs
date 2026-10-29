@@ -87,4 +87,27 @@ assert.equal(V.parsePrice("12,555"), null);
 assert.equal(V.ebayQueryOf({ ebay_query: "API", player: "X" }), "API");
 assert.equal(V.ebayQueryOf({ player: "Ben Saraf", year: "2025-26", set_name: "Topps Chrome", variant: "Gold", numbered: "/50" }), "Ben Saraf 2025-26 Topps Chrome Gold /50");
 
+// Redirection vers le profil après « Ajouter »
+assert.ok(V.isMemberUrl("https://www.vinted.fr/member/123456-fyrex"));
+assert.ok(!V.isMemberUrl("https://www.vinted.fr/items/123"));
+const waiting = { phase: "awaiting_publish", tabId: 3, filledAt: now - 60_000, leftFormAt: now - 20_000, submittedAt: null };
+assert.ok(V.expectsNewListing(waiting, 3, now));
+assert.ok(!V.expectsNewListing(waiting, 4, now), "autre onglet");
+assert.ok(!V.expectsNewListing({ ...waiting, leftFormAt: now - 10 * 60_000 }, 3, now), "trop ancien");
+assert.ok(V.expectsNewListing({ ...waiting, leftFormAt: null, submittedAt: now - 30_000 }, 3, now));
+
+const profile = [
+  { url: "https://www.vinted.fr/items/7001-ben-saraf-2025-26-topps-chrome-next-stop-signatures-75?referrer=member", title: "Ben Saraf 2025-26 Topps Chrome Next Stop Signatures /75, marque: Topps, 20,00 €" },
+  { url: "https://www.vinted.fr/items/6990-luka-doncic-prizm", title: "Luka Dončić Prizm, 80,00 €" },
+  { url: "https://www.vinted.fr/items/6800-ben-saraf-obsidian", title: "Ben Saraf Obsidian, 2,00 €" },
+];
+const found = V.pickPublishedListing(profile, { player: "Ben Saraf", price: 20 });
+assert.equal(found.url, "https://www.vinted.fr/items/7001-ben-saraf-2025-26-topps-chrome-next-stop-signatures-75");
+assert.ok(found.confident);
+assert.ok(!V.pickPublishedListing(profile, { player: "Ben Saraf", price: 25 }).confident, "prix différent : à confirmer");
+assert.equal(V.pickPublishedListing(profile, { player: "Luka Dončić", price: 80 }).url, "https://www.vinted.fr/items/6990-luka-doncic-prizm");
+assert.equal(V.pickPublishedListing(profile, { player: "Victor Wembanyama", price: 5 }), null);
+const late = [profile[1], { url: "https://www.vinted.fr/items/2-a", title: "a" }, profile[2]];
+assert.ok(!V.pickPublishedListing(late, { player: "Ben Saraf", price: 2 }).confident, "trop loin dans la liste : à confirmer");
+
 console.log("vinted-logic : tous les tests passent");

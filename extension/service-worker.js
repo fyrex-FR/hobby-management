@@ -63,6 +63,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return false;
   }
 
+  if (message?.type === "VINTED_PROFILE_LISTINGS") {
+    if (_sender.tab?.id) onProfileListings(_sender.tab.id, message.listings || []).catch(() => {});
+    return false;
+  }
+
   if (message?.type === "VINTED_LISTING_PUBLISHED") {
     // Double sécurité avec tabs.onUpdated : la même règle décide, rien n'est associé deux fois.
     if (_sender.tab?.id) onVintedTabUrl(_sender.tab.id, message.url).catch(() => {});
@@ -105,7 +110,7 @@ async function startFill({ cardId, player, prevStatus, draft }) {
   let tab = active && /^https:\/\/(?:www\.)?vinted\.fr\//.test(active.url || "") ? active : null;
   if (!tab) tab = await chrome.tabs.create({ url: "about:blank", active: true });
   await chrome.storage.session.set({
-    vintedSession: { tabId: tab.id, cardId, player, prevStatus, draft: { ...draft, cardId }, phase: "filling", lastUrl: VINTED_NEW_URL, filledAt: null, submittedAt: null },
+    vintedSession: { tabId: tab.id, cardId, player, price: draft.price ?? null, prevStatus, draft: { ...draft, cardId }, phase: "filling", lastUrl: VINTED_NEW_URL, filledAt: null, submittedAt: null, leftFormAt: null },
   });
   if (CVVinted.isNewItemUrl(tab.url)) await chrome.tabs.reload(tab.id);
   else await chrome.tabs.update(tab.id, { url: VINTED_NEW_URL, active: true });
@@ -117,12 +122,35 @@ async function onVintedTabUrl(tabId, url) {
   if (!session || session.tabId !== tabId) return;
   const prevUrl = session.lastUrl;
   if (url === prevUrl) return;
+  // Moment où l'onglet quitte le formulaire : la page suivante (annonce ou profil) vient de la publication.
+  const leftFormAt = CVVinted.isNewItemUrl(prevUrl) && !CVVinted.isNewItemUrl(url) ? Date.now() : session.leftFormAt ?? null;
+  const seen = { ...session, lastUrl: url, leftFormAt };
   if (!CVVinted.shouldAutoLink(session, tabId, url, prevUrl, Date.now())) {
-    await chrome.storage.session.set({ vintedSession: { ...session, lastUrl: url } });
+    await chrome.storage.session.set({ vintedSession: seen });
     return;
   }
-  const listing = CVVinted.listingUrl(url);
-  await chrome.storage.session.set({ vintedSession: { ...session, phase: "linking", lastUrl: url } });
+  await linkListing(seen, CVVinted.listingUrl(url));
+}
+
+/** Profil affiché juste après la publication : on y cherche l'annonce créée. */
+async function onProfileListings(tabId, listings) {
+  const session = await vintedSession();
+  if (!CVVinted.expectsNewListing(session, tabId, Date.now())) return;
+  const found = CVVinted.pickPublishedListing(listings, { player: session.player, price: session.price });
+  if (!found) {
+    notifyPanel("not_found", { cardId: session.cardId });
+    return;
+  }
+  if (found.confident) {
+    await linkListing(session, found.url);
+  } else {
+    notifyPanel("detected", { cardId: session.cardId, player: session.player, url: found.url, title: found.title, prevStatus: session.prevStatus });
+  }
+}
+
+async function linkListing(session, listing) {
+  await chrome.storage.session.set({ vintedSession: { ...session, phase: "linking" } });
+  const url = session.lastUrl;
   try {
     await extensionApi(`/cards/${encodeURIComponent(session.cardId)}/vinted-listing`, {
       method: "PATCH", body: JSON.stringify({ url: listing }),

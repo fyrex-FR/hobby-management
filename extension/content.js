@@ -542,10 +542,50 @@
   let lastUrl = location.href;
   let bootstrapRan = false;
 
+  /**
+   * Articles affichés sur un profil, dans l'ordre (le plus récent en premier) :
+   * adresse + titre (Vinted y met titre, marque et prix). Attend que la grille
+   * apparaisse, l'annonce tout juste créée pouvant arriver un peu après.
+   */
+  async function profileListings(timeoutMs = 10000) {
+    const collect = () => {
+      const seen = new Set();
+      const out = [];
+      for (const link of document.querySelectorAll('main a[href*="/items/"], a[href*="/items/"]')) {
+        const href = link.href.split("?")[0];
+        if (!/\/items\/\d+/.test(href) || seen.has(href)) continue;
+        seen.add(href);
+        const img = link.closest("[data-testid]")?.querySelector("img") || link.querySelector("img");
+        out.push({ url: href, title: link.getAttribute("title") || link.getAttribute("aria-label") || img?.getAttribute("alt") || link.textContent.trim().slice(0, 200) });
+        if (out.length >= 12) break;
+      }
+      return out;
+    };
+    const start = Date.now();
+    let items = collect();
+    while (items.length === 0 && Date.now() - start < timeoutMs) {
+      await delay(400);
+      items = collect();
+    }
+    await delay(600);
+    return collect();
+  }
+
+  let profileScannedFor = null;
+
   async function bootstrap() {
     const published = location.pathname.match(/^\/items\/\d+(?:-[^/?#]+)?\/?$/);
     if (published) {
       chrome.runtime.sendMessage({ type: "VINTED_LISTING_PUBLISHED", url: `${location.origin}${location.pathname}` }).catch(() => {});
+      return;
+    }
+    // Vinted renvoie parfois sur le profil après « Ajouter » : l'extension y
+    // retrouve l'annonce créée (elle n'en tient compte que juste après une publication).
+    if (/^\/member\/\d+/.test(location.pathname)) {
+      if (profileScannedFor === location.href) return;
+      profileScannedFor = location.href;
+      const listings = await profileListings();
+      chrome.runtime.sendMessage({ type: "VINTED_PROFILE_LISTINGS", url: location.href, listings }).catch(() => {});
       return;
     }
     if (!location.pathname.includes("/items/new")) return;

@@ -6,6 +6,9 @@
 (function (root) {
   const LISTING_RE = /^https:\/\/(?:www\.)?vinted\.fr\/items\/(\d+)(?:-[^/?#]+)?\/?(?:[?#].*)?$/;
   const NEW_ITEM_RE = /^https:\/\/(?:www\.)?vinted\.fr\/items\/new(?:[/?#].*)?$/;
+  const MEMBER_RE = /^https:\/\/(?:www\.)?vinted\.fr\/member\/\d+/;
+  // Après « Ajouter », Vinted peut renvoyer sur le profil au lieu de l'annonce.
+  const LEFT_FORM_WINDOW_MS = 2 * 60 * 1000;
   // Après le clic sur « Ajouter », Vinted ouvre l'annonce créée : on n'associe
   // automatiquement que dans cette fenêtre, et seulement dans l'onglet rempli.
   const SUBMIT_WINDOW_MS = 5 * 60 * 1000;
@@ -36,6 +39,54 @@
     const fromForm = isNewItemUrl(prevUrl);
     const justSubmitted = session.submittedAt != null && now - session.submittedAt < SUBMIT_WINDOW_MS;
     return fromForm || justSubmitted;
+  }
+
+  function isMemberUrl(url) {
+    return MEMBER_RE.test(String(url || ""));
+  }
+
+  /**
+   * Le profil s'affiche-t-il juste après la publication (formulaire quitté ou
+   * clic « Ajouter » récents, dans l'onglet rempli) ? Alors l'annonce créée est
+   * en tête de ses articles.
+   */
+  function expectsNewListing(session, tabId, now) {
+    if (!session || session.phase !== "awaiting_publish" || session.tabId !== tabId) return false;
+    const leftForm = session.leftFormAt != null && now - session.leftFormAt < LEFT_FORM_WINDOW_MS;
+    const justSubmitted = session.submittedAt != null && now - session.submittedAt < SUBMIT_WINDOW_MS;
+    return leftForm || justSubmitted;
+  }
+
+  const slugTokens = (value) => fold(value).replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter(Boolean);
+
+  /** « 20,00 € » → 20 */
+  function priceIn(text) {
+    const match = String(text || "").match(/(\d+(?:[.,]\d{1,2})?)\s*€/);
+    return match ? Number(match[1].replace(",", ".")) : null;
+  }
+
+  /**
+   * Parmi les articles du profil (dans l'ordre affiché, le plus récent en
+   * premier), retrouve l'annonce de la carte : nom du joueur dans l'adresse ou
+   * le titre, et même prix si Vinted l'affiche. `confident` seulement si c'est
+   * l'un des tout premiers articles et que le prix ne contredit pas.
+   */
+  function pickPublishedListing(candidates, { player, price } = {}) {
+    const wanted = slugTokens(player);
+    if (!wanted.length) return null;
+    const seen = new Set();
+    const list = (candidates || [])
+      .map((c) => ({ ...c, url: listingUrl(c.url) }))
+      .filter((c) => c.url && !seen.has(c.url) && seen.add(c.url));
+    const index = list.findIndex((c) => {
+      const words = new Set(slugTokens(`${c.url} ${c.title || ""}`));
+      return wanted.every((w) => words.has(w));
+    });
+    if (index < 0) return null;
+    const match = list[index];
+    const shownPrice = priceIn(match.title);
+    const priceOk = shownPrice == null || price == null || Math.abs(shownPrice - price) < 0.01;
+    return { url: match.url, title: match.title || "", confident: index < 2 && priceOk };
   }
 
   /** Les images passent par le proxy même origine de l'app (CORS ouvert). */
@@ -148,7 +199,7 @@
   }
 
   root.CVVinted = {
-    listingUrl, isNewItemUrl, shouldAutoLink, cdnUrl, numberedBadge, filterQueue, ebaySoldUrl, ebayQueryOf, parsePrice,
+    listingUrl, isNewItemUrl, isMemberUrl, shouldAutoLink, expectsNewListing, pickPublishedListing, cdnUrl, numberedBadge, filterQueue, ebaySoldUrl, ebayQueryOf, parsePrice,
     GROUPS, groupKey, groupCards, inGroup, sortCards,
     SUBMIT_WINDOW_MS, FILL_WINDOW_MS,
   };
