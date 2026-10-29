@@ -464,16 +464,18 @@ async function analyzeListing({ refine = null } = {}) {
 /** Onglet du panneau : « Analyser » (Scout) ou « Publier sur Vinted ». */
 async function selectTab(tab) {
   document.querySelectorAll("#tabs [role=tab]").forEach((button) => button.setAttribute("aria-selected", String(button.dataset.tab === tab)));
-  show("scout", tab === "scout"); show("vinted", tab === "vinted");
+  show("scout", tab === "scout"); show("vinted", tab === "vinted"); show("sync", tab === "sync");
   await chrome.storage.local.set({ panel_tab: tab });
   if (tab === "vinted") await window.CVVintedPanel?.open();
+  if (tab === "sync") window.CVSyncPanel?.open();
 }
 
 async function boot() {
   const token = await storageGet("scout_token");
   show("pairing", !token); show("logout", !!token); show("tabs", !!token);
-  if (!token) { show("scout", false); show("vinted", false); return; }
-  const tab = (await storageGet("panel_tab")) === "vinted" ? "vinted" : "scout";
+  if (!token) { show("scout", false); show("vinted", false); show("sync", false); return; }
+  const saved = await storageGet("panel_tab");
+  const tab = saved === "vinted" || saved === "sync" ? saved : "scout";
   await selectTab(tab);
   await readListing();
 }

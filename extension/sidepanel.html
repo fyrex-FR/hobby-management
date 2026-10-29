@@ -1,6 +1,6 @@
 <!doctype html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CardVaults Scout</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&display=swap" rel="stylesheet"><link rel="stylesheet" href="sidepanel.css"></head>
 <body><header><div><span class="brand-mark" aria-hidden="true">C</span><strong>Scout</strong></div><button id="logout" class="icon hidden" title="Déconnecter">↪</button></header>
-<nav id="tabs" class="tabs hidden" role="tablist" aria-label="Mode du panneau"><button role="tab" id="tab-scout" data-tab="scout" aria-selected="true">Analyser</button><button role="tab" id="tab-vinted" data-tab="vinted" aria-selected="false">Publier sur Vinted</button></nav>
+<nav id="tabs" class="tabs hidden" role="tablist" aria-label="Mode du panneau"><button role="tab" id="tab-scout" data-tab="scout" aria-selected="true">Analyser</button><button role="tab" id="tab-vinted" data-tab="vinted" aria-selected="false">Publier</button><button role="tab" id="tab-sync" data-tab="sync" aria-selected="false">Synchroniser</button></nav>
 <main>
 <section id="pairing" class="panel hidden"><div class="eyebrow">CardVaults</div><h1>Connecter Scout</h1><p>Associe cette extension à ton compte. Aucun mot de passe n’est stocké.</p><button id="pair">Générer un code</button><div id="pair-code" class="pair-code hidden"></div><a id="approve" class="button secondary hidden" target="_blank">Ouvrir CardVaults</a><button id="exchange" class="secondary hidden">J’ai validé le code</button></section>
 <section id="scout" class="hidden"><div id="empty" class="empty"><div class="radar">⌁</div><h1>Ouvre une annonce</h1><p>Scout détecte automatiquement les cartes sur Vinted et eBay.</p></div><div id="workspace" class="hidden">
@@ -33,4 +33,5 @@
 <button id="v-attach-url" class="secondary">Associer cette adresse</button>
 </details>
 </section>
-</main><script src="vinted-logic.js"></script><script src="sidepanel.js"></script><script src="sidepanel-vinted.js"></script></body></html>
+<section id="sync" class="hidden" aria-labelledby="tab-sync"><div id="s-root"></div></section>
+</main><script src="vinted-logic.js"></script><script src="sidepanel.js"></script><script src="sidepanel-vinted.js"></script><script src="sidepanel-sync.js"></script></body></html>

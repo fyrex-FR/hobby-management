@@ -110,6 +110,29 @@ tient pas, le reste du formulaire est quand même rempli et un bandeau orange
 (et le panneau) indique le prix à saisir. Banc d'essai :
 `extension/test-vinted-fill.html` (5 types de champs prix, servi en http).
 
+## Synchroniser l'historique Vinted (onglet du panneau)
+
+Pour les annonces publiées avant que l'association marche (ou avec une URL
+saisie à la main), l'onglet **Synchroniser** relit tout le profil Vinted et
+propose de remettre CardVaults d'accord :
+
+1. Ouvrir son profil Vinted (photo → Mon profil) dans l'onglet actif, puis
+   `Lire mon profil Vinted`. Le script de la page lit la garde-robe via l'API
+   de Vinted (`/api/v2/wardrobe/{id}/items`, avec la session du navigateur) ;
+   à défaut, il lit les annonces affichées (sans leur état).
+2. Chaque annonce est rapprochée d'une carte (`matchWardrobe` dans
+   `vinted-logic.js`) : même identifiant d'annonce, sinon tous les mots du
+   joueur présents dans le titre et numérotation identique (/75 ≠ /50).
+   Les cas ambigus (deux cartes identiques) passent en `À vérifier`.
+3. Selon l'état de l'annonce : vendue → carte `vendu` au prix Vinted (et
+   annonce eBay retirée) ; active → `a_vendre`, lien corrigé ou ajouté ;
+   réservée / masquée → au choix (`Vendues hors Vinted`, `Réservées`,
+   `Retirées de Vinted`, `Ne rien changer`). Les liens de cartes qui ne
+   correspondent à aucune annonce sont listés et peuvent être retirés.
+4. Rien n'est écrit avant `Appliquer` : chaque ligne se décoche, puis
+   `POST /api/extension/vinted-sync/apply` met à jour les cartes cochées.
+
 Tests : `node extension/test-vinted-logic.mjs` (règles d'association, file,
 URL), `node extension/test-vinted-worker.mjs` (service worker réel, faux
-Chrome : annonce ouverte, retour sur le profil, prix différent) et `backend/tests/test_vinted_draft.py` (texte d'annonce, routes).
+Chrome : annonce ouverte, retour sur le profil, prix différent) et `backend/tests/test_vinted_draft.py` (texte d'annonce, routes,
+synchronisation).

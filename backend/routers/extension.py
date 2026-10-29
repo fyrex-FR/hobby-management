@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field, field_validator
 from .auth import current_user
 from .cards import supabase_headers
 from .upload import _get_s3, R2_BUCKET_NAME, R2_PUBLIC_URL
+from .salon import _withdraw_ebay
 from services.card_taxonomy import apply_refine, card_fields, classify, refine_keywords, strip_grading
 from services.vinted_draft import build_draft, ebay_sold_query, listing_price
 from services.ebay_service import search_ebay_listings, search_ebay_sold
@@ -304,6 +305,15 @@ class ExtensionCardCreate(BaseModel):
     grading_grade: Optional[str] = Field(default=None, max_length=10)
 
 
+def canonical_vinted_url(value: str) -> str:
+    parsed = urlparse(value)
+    if parsed.scheme != "https" or parsed.hostname not in {"vinted.fr", "www.vinted.fr"}:
+        raise ValueError("URL Vinted invalide")
+    if not re.fullmatch(r"/items/\d+(?:-[^/?#]+)?/?", parsed.path):
+        raise ValueError("L'URL ne correspond pas à une annonce Vinted")
+    return f"https://www.vinted.fr{parsed.path.rstrip('/')}"
+
+
 class VintedListingAttach(BaseModel):
     # None détache l'annonce (bouton « Annuler » du panneau).
     url: Optional[str] = Field(default=None, min_length=20, max_length=500)
@@ -315,12 +325,7 @@ class VintedListingAttach(BaseModel):
     def validate_listing_url(cls, value: Optional[str]) -> Optional[str]:
         if value is None:
             return None
-        parsed = urlparse(value)
-        if parsed.scheme != "https" or parsed.hostname not in {"vinted.fr", "www.vinted.fr"}:
-            raise ValueError("URL Vinted invalide")
-        if not re.fullmatch(r"/items/\d+(?:-[^/?#]+)?/?", parsed.path):
-            raise ValueError("L'URL ne correspond pas à une annonce Vinted")
-        return f"https://www.vinted.fr{parsed.path.rstrip('/')}"
+        return canonical_vinted_url(value)
 
 
 @router.patch("/cards/{card_id}/vinted-listing")
@@ -387,6 +392,93 @@ async def vinted_queue(user: dict = Depends(current_extension_user)):
             "ebay_query": ebay_sold_query(card),
         })
     return out
+
+
+# ── Rattrapage : synchroniser les annonces Vinted existantes ────────────────
+
+SYNC_FIELDS = VINTED_QUEUE_FIELDS + ",vinted_url,ebay_offer_id"
+
+
+@router.get("/vinted-sync/cards")
+async def vinted_sync_cards(user: dict = Depends(current_extension_user)):
+    """Toutes les cartes (hors brouillons) avec leur lien Vinted actuel, pour
+    les rapprocher des annonces du profil : liens à vérifier, statuts à mettre
+    à jour. Le titre est celui que l'extension met dans l'annonce."""
+    rows = await _rest("GET", "cards", params={
+        "user_id": f"eq.{user['sub']}",
+        "status": "in.(collection,a_vendre,reserve,vendu)",
+        "select": SYNC_FIELDS,
+        "limit": "5000",
+    }) or []
+    return [{
+        "id": c["id"],
+        "status": c["status"],
+        "player": c.get("player"),
+        "team": c.get("team"),
+        "year": c.get("year"),
+        "set_name": c.get("set_name") or c.get("brand"),
+        "variant": c.get("insert_name") or (c.get("parallel_name") if c.get("parallel_name") not in (None, "Base") else None),
+        "numbered": c.get("numbered"),
+        "price": listing_price(c),
+        "vinted_url": c.get("vinted_url"),
+        "image_front_url": c.get("image_front_url"),
+        "title": build_draft(c)["title"],
+    } for c in rows]
+
+
+class SyncAction(BaseModel):
+    card_id: str = Field(min_length=1, max_length=64)
+    vinted_url: Optional[str] = Field(default=None, max_length=500)
+    clear_url: bool = False
+    status: Optional[Literal["collection", "a_vendre", "reserve", "vendu"]] = None
+    price: Optional[float] = Field(default=None, gt=0, le=100000)
+
+    @field_validator("vinted_url")
+    @classmethod
+    def validate_url(cls, value: Optional[str]) -> Optional[str]:
+        return canonical_vinted_url(value) if value else None
+
+
+class SyncBody(BaseModel):
+    actions: list[SyncAction] = Field(max_length=500)
+
+
+@router.post("/vinted-sync/apply")
+async def vinted_sync_apply(body: SyncBody, user: dict = Depends(current_extension_user)):
+    """Applique les changements validés dans le panneau : lien Vinted (corrigé
+    ou retiré), statut, prix de vente. Une carte passée en « vendu » perd aussi
+    son annonce eBay (retrait automatique, comme au Salon)."""
+    user_id = user["sub"]
+    updated, errors, sold_ids = 0, [], []
+    for action in body.actions:
+        payload: dict = {}
+        if action.clear_url:
+            payload["vinted_url"] = None
+        elif action.vinted_url:
+            payload["vinted_url"] = action.vinted_url
+        if action.status:
+            payload["status"] = action.status
+        if action.price is not None:
+            payload["price"] = payload["vinted_price"] = round(action.price, 2)
+        if not payload:
+            continue
+        try:
+            rows = await _rest("PATCH", "cards", params={"id": f"eq.{action.card_id}", "user_id": f"eq.{user_id}"}, json=payload, prefer="return=representation")
+        except HTTPException:
+            rows = None
+        if not rows:
+            errors.append(action.card_id)
+            continue
+        updated += 1
+        if action.status == "vendu":
+            sold_ids.append(action.card_id)
+    ebay = {"withdrawn": 0, "failed": []}
+    if sold_ids:
+        sold = await _rest("GET", "cards", params={
+            "user_id": f"eq.{user_id}", "id": f"in.({','.join(sold_ids)})", "select": "*",
+        }) or []
+        ebay = await _withdraw_ebay(user_id, sold)
+    return {"updated": updated, "errors": errors, "ebay_withdrawn": ebay["withdrawn"], "ebay_failed": ebay["failed"]}
 
 
 class PriceUpdate(BaseModel):
