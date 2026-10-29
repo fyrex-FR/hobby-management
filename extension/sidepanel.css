@@ -1084,3 +1084,53 @@ button.link:hover:not(:disabled) {
 .v-manual p {
   margin: 4px 0 0;
 }
+
+.v-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.v-check input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+.v-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  margin: -2px 0 10px;
+}
+.v-tools label {
+  margin-top: 0;
+}
+.v-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  font-size: 12px;
+}
+.v-group-head b {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.v-group-head .count {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.v-group-head button.link {
+  font-size: 12px;
+}

@@ -7,6 +7,8 @@ const context = { URL };
 context.globalThis = context;
 vm.runInNewContext(readFileSync(new URL("./vinted-logic.js", import.meta.url), "utf8"), context);
 const V = context.CVVinted;
+// Les tableaux créés dans le contexte vm ont un autre prototype : on compare des copies simples.
+const plain = (value) => JSON.parse(JSON.stringify(value));
 
 // URL d'annonce
 assert.equal(V.listingUrl("https://www.vinted.fr/items/123456-carte-wemby?referrer=catalog"), "https://www.vinted.fr/items/123456-carte-wemby");
@@ -46,5 +48,23 @@ assert.deepEqual(V.filterQueue(cards).map((c) => c.id), ["a", "c"]);
 assert.deepEqual(V.filterQueue(cards, { selection: ["c", "b", "zz"] }).map((c) => c.id), ["c", "b"]);
 assert.deepEqual(V.filterQueue(cards, { search: "jokic" }).map((c) => c.id), ["a"]);
 assert.deepEqual(V.filterQueue(cards, { search: "doncic prizm" }).map((c) => c.id), ["c"]);
+
+// Groupes : équipe par équipe, « Sans équipe » en dernier, ordre conservé dans un groupe
+const teamCards = [
+  { id: "1", team: "Lakers", player: "LeBron James", price: 5, year: "2023-24" },
+  { id: "2", team: "", player: "Inconnu", price: 1, year: null },
+  { id: "3", team: "Bulls", player: "Zach LaVine", price: 9, year: "2024-25" },
+  { id: "4", team: "Lakers", player: "Anthony Davis", price: 2, year: "2024-25" },
+];
+const groups = V.groupCards(teamCards, "team");
+assert.deepEqual(plain(groups.map((g) => g.label)), ["Bulls", "Lakers", "Sans équipe"]);
+assert.deepEqual(plain(groups[1].cards.map((c) => c.id)), ["1", "4"]);
+assert.deepEqual(plain(V.groupCards(teamCards, "year").map((g) => g.label)), ["2024-25", "2023-24", "Sans année"]);
+assert.equal(V.groupCards(teamCards, "none").length, 1);
+assert.deepEqual(plain(V.inGroup(teamCards, { by: "team", key: "Lakers" }).map((c) => c.id)), ["1", "4"]);
+assert.deepEqual(plain(V.inGroup(teamCards, { by: "team", key: null }).map((c) => c.id)), ["2"]);
+assert.deepEqual(plain(V.sortCards(teamCards, "price_desc").map((c) => c.id)), ["3", "1", "4", "2"]);
+assert.deepEqual(plain(V.sortCards(teamCards, "player").map((c) => c.id)), ["4", "2", "1", "3"]);
+assert.deepEqual(plain(V.sortCards(teamCards, "recent").map((c) => c.id)), ["1", "2", "3", "4"]);
 
 console.log("vinted-logic : tous les tests passent");

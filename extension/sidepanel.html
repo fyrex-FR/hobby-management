@@ -13,10 +13,16 @@
 <div class="actions"><button id="add" class="hidden">Ajouter à ma Collection</button><button id="reset" class="secondary hidden">Nouvelle analyse</button></div></div></section>
 <section id="vinted" class="hidden" aria-labelledby="tab-vinted">
 <div id="v-selection" class="v-selection hidden"></div>
+<div id="v-scope" class="v-selection hidden"></div>
 <div id="v-current"></div>
 <div id="v-status" class="status" role="status" aria-live="polite"></div>
 <div id="v-undo" class="v-undo hidden" role="status"></div>
+<label class="v-check"><input id="v-chain" type="checkbox"> Remplir la suivante automatiquement après chaque annonce</label>
 <div id="v-list-head" class="v-list-head"><span id="v-count" class="section-label"></span><input id="v-search" type="search" placeholder="Rechercher une carte" aria-label="Rechercher une carte à publier"></div>
+<div class="v-tools">
+<label>Grouper par<select id="v-group"><option value="team">Équipe</option><option value="player">Joueur</option><option value="set">Set</option><option value="year">Année</option><option value="none">Aucun groupe</option></select></label>
+<label>Trier<select id="v-sort"><option value="recent">Ajout récent</option><option value="price_desc">Prix décroissant</option><option value="price_asc">Prix croissant</option><option value="player">Joueur A → Z</option></select></label>
+</div>
 <ul id="v-list" class="v-list"></ul>
 <details id="v-manual" class="v-manual"><summary>Associer une annonce à la main</summary>
 <p>Si l’annonce publiée n’a pas été détectée : ouvre-la sur Vinted puis associe-la à la carte en cours.</p>

@@ -12,17 +12,43 @@
  */
 (() => {
   const UNDO_MS = 8000;
+  const CHAIN_DELAY_MS = 1500;
+  const PREFS_KEY = "vinted_panel_prefs";
   const v = {
     cards: [], selection: null, search: "", currentId: null,
     phase: "idle", // idle | preparing | filling | awaiting | error
     loading: false, loaded: false, undo: null, undoTimer: null,
+    // Préférences gardées entre deux ouvertures du panneau.
+    groupBy: "team", sort: "recent", chain: false,
+    // « Publier ce groupe » : la file se limite à une équipe (ou un joueur, un set…).
+    scope: null,
+    published: 0, chainTimer: null,
   };
 
-  const visible = () => CVVinted.filterQueue(v.cards, { selection: v.selection, search: v.search });
+  /** Cartes de la file, filtrées puis triées, avant découpage en groupes. */
+  const visible = () => CVVinted.sortCards(
+    CVVinted.inGroup(CVVinted.filterQueue(v.cards, { selection: v.selection, search: v.search }), v.scope),
+    v.sort,
+  );
+  const groups = () => CVVinted.groupCards(visible(), v.scope ? "none" : v.groupBy);
+  /** Ordre d'affichage (groupes à la suite) : c'est aussi l'ordre de publication. */
+  const ordered = () => groups().flatMap((g) => g.cards);
   const current = () => {
-    const list = visible();
+    const list = ordered();
     return list.find((c) => c.id === v.currentId) || list[0] || null;
   };
+
+  async function loadPrefs() {
+    const prefs = (await chrome.storage.local.get(PREFS_KEY))[PREFS_KEY] || {};
+    if (prefs.groupBy in CVVinted.GROUPS || prefs.groupBy === "none") v.groupBy = prefs.groupBy;
+    if (["recent", "price_desc", "price_asc", "player"].includes(prefs.sort)) v.sort = prefs.sort;
+    v.chain = prefs.chain === true;
+    $("v-group").value = v.groupBy; $("v-sort").value = v.sort; $("v-chain").checked = v.chain;
+  }
+
+  function savePrefs() {
+    chrome.storage.local.set({ [PREFS_KEY]: { groupBy: v.groupBy, sort: v.sort, chain: v.chain } }).catch(() => {});
+  }
   const metaOf = (c) => [c.year, c.set_name, c.variant, c.numbered].filter(Boolean).join(" · ");
 
   function setStatus(text, tone = "") {
@@ -39,6 +65,7 @@
     if (v.loading) return;
     v.loading = true;
     try {
+      if (!v.loaded) await loadPrefs();
       await loadSelection();
       v.cards = await api("/vinted-queue");
       v.loaded = true;
@@ -62,13 +89,22 @@
     });
   }
 
+  function renderScope() {
+    if (!v.scope) { show("v-scope", false); return; }
+    const left = visible().length;
+    $("v-scope").innerHTML = `<span>${escapeHtml(CVVinted.GROUPS[v.scope.by].label)} : <b>${escapeHtml(v.scope.label)}</b> · ${left} restante${left > 1 ? "s" : ""}</span><button id="v-clear-scope" class="link">Tout afficher</button>`;
+    show("v-scope");
+    $("v-clear-scope").addEventListener("click", () => { v.scope = null; render(); });
+  }
+
   function renderCurrent() {
     const card = current();
     const box = $("v-current");
     if (!card) {
       box.innerHTML = v.loaded
-        ? `<div class="empty compact"><h1>Tout est publié</h1><p>${v.selection ? "Toute la sélection est en ligne sur Vinted." : "Aucune carte à vendre sans annonce Vinted (avec photo et prix)."}</p></div>`
+        ? `<div class="empty compact"><h1>${v.scope ? `${escapeHtml(v.scope.label)} : tout est publié` : "Tout est publié"}</h1><p>${v.scope ? "Toutes les cartes de ce groupe sont en ligne sur Vinted." : v.selection ? "Toute la sélection est en ligne sur Vinted." : "Aucune carte à vendre sans annonce Vinted (avec photo et prix)."}</p>${v.scope ? '<button id="v-scope-done" class="secondary">Voir les autres cartes</button>' : ""}</div>`
         : `<div class="loader"><i></i><span>Chargement des cartes…</span></div>`;
+      $("v-scope-done")?.addEventListener("click", () => { v.scope = null; render(); });
       return;
     }
     const busy = v.phase === "preparing" || v.phase === "filling";
@@ -90,26 +126,43 @@
     $("v-skip").addEventListener("click", () => skip(card));
   }
 
-  function renderList() {
-    const list = visible();
-    const card = current();
-    $("v-count").textContent = `${list.length} carte${list.length > 1 ? "s" : ""} à publier`;
-    $("v-list").innerHTML = list.map((c) => `
-      <li><button class="v-item${card && c.id === card.id ? " active" : ""}" data-id="${escapeAttr(c.id)}" aria-current="${card && c.id === card.id}">
+  function itemHtml(c, card) {
+    const active = card && c.id === card.id;
+    return `<li><button class="v-item${active ? " active" : ""}" data-id="${escapeAttr(c.id)}" aria-current="${Boolean(active)}">
         ${c.image_front_url ? `<img src="${escapeAttr(CVVinted.cdnUrl(c.image_front_url))}" alt="" loading="lazy">` : "<span class=\"v-thumb\"></span>"}
         <span class="v-item-text"><b>${escapeHtml(c.player || "Carte")}</b><span>${escapeHtml(metaOf(c))}</span></span>
         <span class="v-item-price">${currency(c.price)}</span>
-      </button></li>`).join("");
+      </button></li>`;
+  }
+
+  function renderList() {
+    const list = groups();
+    const total = list.reduce((n, g) => n + g.cards.length, 0);
+    const card = current();
+    $("v-count").textContent = `${total} à publier${v.published ? ` · ${v.published} publiée${v.published > 1 ? "s" : ""}` : ""}`;
+    $("v-list").innerHTML = list.map((g) => [
+      g.label !== null
+        ? `<li class="v-group-head"><b>${escapeHtml(g.label)}</b><span class="count">${g.cards.length}</span><button class="link" data-group="${escapeAttr(g.key ?? "")}" data-null="${g.key === null}" data-label="${escapeAttr(g.label)}">Publier ce groupe</button></li>`
+        : "",
+      ...g.cards.map((c) => itemHtml(c, card)),
+    ].join("")).join("");
     $("v-list").querySelectorAll(".v-item").forEach((button) => button.addEventListener("click", () => {
       if (v.phase === "preparing" || v.phase === "filling") return;
       v.currentId = button.dataset.id; v.phase = "idle"; setStatus(""); render();
+    }));
+    $("v-list").querySelectorAll("[data-group]").forEach((button) => button.addEventListener("click", () => {
+      if (v.phase === "preparing" || v.phase === "filling") return;
+      v.scope = { by: v.groupBy, key: button.dataset.null === "true" ? null : button.dataset.group, label: button.dataset.label };
+      v.currentId = null; v.phase = "idle"; setStatus("");
+      render();
+      $("v-current").scrollIntoView({ block: "start", behavior: "smooth" });
     }));
   }
 
   function render() {
     const card = current();
     if (card && v.currentId !== card.id && v.phase !== "awaiting") v.currentId = card.id;
-    renderSelection(); renderCurrent(); renderList();
+    renderSelection(); renderScope(); renderCurrent(); renderList();
     show("v-manual", !!card);
   }
 
@@ -179,7 +232,7 @@
   }
 
   function skip(card) {
-    const list = visible();
+    const list = ordered();
     const i = list.findIndex((c) => c.id === card.id);
     const next = list[(i + 1) % list.length];
     v.currentId = next && next.id !== card.id ? next.id : card.id;
@@ -187,7 +240,7 @@
   }
 
   function advanceAfter(cardId) {
-    const list = visible();
+    const list = ordered();
     const i = list.findIndex((c) => c.id === cardId);
     const next = list[i + 1] || list.find((c) => c.id !== cardId);
     v.cards = v.cards.filter((c) => c.id !== cardId);
@@ -207,7 +260,8 @@
   async function undoLink() {
     const undo = v.undo;
     if (!undo) return;
-    clearTimeout(v.undoTimer); show("v-undo", false); v.undo = null;
+    clearTimeout(v.undoTimer); clearTimeout(v.chainTimer); show("v-undo", false); v.undo = null;
+    v.published = Math.max(0, v.published - 1);
     try {
       await api(`/cards/${encodeURIComponent(undo.cardId)}/vinted-listing`, {
         method: "PATCH",
@@ -238,7 +292,16 @@
   function onLinked(detail) {
     showUndo(detail);
     advanceAfter(detail.cardId);
-    setStatus(v.currentId ? "Annonce associée. Carte suivante prête." : "Annonce associée.");
+    v.published += 1;
+    const next = current();
+    if (v.chain && next) {
+      setStatus("Annonce associée. Ouverture de la suivante…");
+      clearTimeout(v.chainTimer);
+      // Laisse le temps de voir la confirmation (et d'annuler) avant d'enchaîner.
+      v.chainTimer = setTimeout(() => fill(next), CHAIN_DELAY_MS);
+    } else {
+      setStatus(next ? "Annonce associée. Carte suivante prête." : "Annonce associée.");
+    }
     render();
   }
 
@@ -265,6 +328,9 @@
   });
 
   $("v-search").addEventListener("input", (event) => { v.search = event.target.value; render(); });
+  $("v-group").addEventListener("change", (event) => { v.groupBy = event.target.value; v.scope = null; savePrefs(); render(); });
+  $("v-sort").addEventListener("change", (event) => { v.sort = event.target.value; savePrefs(); render(); });
+  $("v-chain").addEventListener("change", (event) => { v.chain = event.target.checked; savePrefs(); });
   $("v-attach-tab").addEventListener("click", async () => {
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     attach(tab?.url);
