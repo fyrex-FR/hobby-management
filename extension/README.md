@@ -67,3 +67,28 @@ l'annonce.
    - Prix
 4. Un bandeau vert confirme: `Carte pré-remplie ✓`
 5. Un bandeau photos propose `Télécharger photos` (2 fichiers séparés front/back dans `Téléchargements`)
+
+## Publier sur Vinted en chaîne (onglet du panneau)
+
+L'onglet **Publier sur Vinted** du panneau publie les cartes une par une :
+
+1. La file affiche les cartes « à vendre » sans annonce Vinted (avec photo et
+   prix). Depuis la Collection, `Vendre → Vinted` y envoie à la place la
+   sélection en cours (bandeau « Sélection envoyée depuis CardVaults »).
+2. `Remplir l'annonce sur Vinted` ouvre une page de création vierge dans
+   l'onglet Vinted actif (ou un nouvel onglet) et la remplit : titre,
+   description avec hashtags, prix, marque, état, photos recto/verso (pastille
+   de numérotation sur le recto). Le texte vient de l'API
+   (`GET /api/extension/vinted-queue`, `services/vinted_draft.py`) ; le
+   brouillon passe par `chrome.storage.session`, plus par l'adresse de la page.
+3. Après le clic sur « Ajouter » dans Vinted, l'annonce créée est associée à la
+   carte automatiquement (`PATCH /cards/{id}/vinted-listing`), avec un bouton
+   `Annuler` pendant quelques secondes, puis la carte suivante est proposée.
+   L'association n'a lieu que dans l'onglet rempli, juste après le formulaire
+   ou un clic « Ajouter » récent (`vinted-logic.js`) : une autre annonce
+   consultée entre-temps n'est jamais associée par erreur.
+4. Secours : `Associer une annonce à la main` associe l'annonce ouverte dans
+   l'onglet actif, ou une adresse collée.
+
+Tests : `node extension/test-vinted-logic.mjs` (règles d'association, file,
+URL) et `backend/tests/test_vinted_draft.py` (texte d'annonce, routes).

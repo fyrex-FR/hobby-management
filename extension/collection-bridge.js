@@ -5,21 +5,19 @@
     window.postMessage({ source: "cardvaults-extension", type, ...detail }, ORIGIN);
   }
 
+  // Sélection de cartes envoyée depuis la Collection (« Vendre → Vinted ») :
+  // le panneau de l'extension l'affiche dans l'onglet « Publier sur Vinted ».
   window.addEventListener("message", (event) => {
     if (event.source !== window || event.origin !== ORIGIN) return;
     const message = event.data;
-    if (!message || message.source !== "cardvaults-app" || message.type !== "VINTED_QUEUE_DRAFT") return;
-    chrome.runtime.sendMessage({ type: "VINTED_QUEUE_DRAFT", draft: message.draft })
+    if (!message || message.source !== "cardvaults-app" || message.type !== "VINTED_QUEUE_SET") return;
+    chrome.runtime.sendMessage({ type: "VINTED_QUEUE_SET", cardIds: message.cardIds })
       .then((response) => {
-        if (response?.error) post("VINTED_QUEUE_ERROR", { cardId: message.draft?.cardId, error: response.error });
-        else post("VINTED_QUEUE_ACCEPTED", { cardId: message.draft?.cardId });
+        if (response?.error) post("VINTED_QUEUE_SET_ERROR", { error: response.error });
+        else post("VINTED_QUEUE_SET_ACCEPTED", { count: response?.count ?? 0 });
       })
-      .catch((error) => post("VINTED_QUEUE_ERROR", { cardId: message.draft?.cardId, error: error.message }));
+      .catch((error) => post("VINTED_QUEUE_SET_ERROR", { error: error.message }));
   });
 
-  chrome.runtime.onMessage.addListener((message) => {
-    if (message?.type === "VINTED_QUEUE_EVENT") post(message.eventType, message.detail || {});
-  });
-
-  post("VINTED_BRIDGE_READY");
+  post("VINTED_BRIDGE_READY", { version: chrome.runtime.getManifest().version });
 })();

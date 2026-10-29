@@ -15,6 +15,7 @@ from .auth import current_user
 from .cards import supabase_headers
 from .upload import _get_s3, R2_BUCKET_NAME, R2_PUBLIC_URL
 from services.card_taxonomy import apply_refine, card_fields, classify, refine_keywords, strip_grading
+from services.vinted_draft import build_draft, listing_price
 from services.ebay_service import search_ebay_listings, search_ebay_sold
 from services.extension_helpers import (
     allowed_image_url, allowed_source_url, annotate_comparables, build_browse_queries,
@@ -304,11 +305,16 @@ class ExtensionCardCreate(BaseModel):
 
 
 class VintedListingAttach(BaseModel):
-    url: str = Field(min_length=20, max_length=500)
+    # None détache l'annonce (bouton « Annuler » du panneau).
+    url: Optional[str] = Field(default=None, min_length=20, max_length=500)
+    # Statut à remettre en détachant (celui d'avant l'association).
+    restore_status: Optional[Literal["collection", "a_vendre"]] = None
 
     @field_validator("url")
     @classmethod
-    def validate_listing_url(cls, value: str) -> str:
+    def validate_listing_url(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
         parsed = urlparse(value)
         if parsed.scheme != "https" or parsed.hostname not in {"vinted.fr", "www.vinted.fr"}:
             raise ValueError("URL Vinted invalide")
@@ -328,16 +334,59 @@ async def attach_vinted_listing(
     })
     if not rows:
         raise HTTPException(status_code=404, detail="Carte introuvable")
+    status = "a_vendre" if body.url else (body.restore_status or "a_vendre")
     updated = await _rest(
         "PATCH",
         "cards",
         params={"id": f"eq.{card_id}", "user_id": f"eq.{user['sub']}"},
-        json={"vinted_url": body.url, "status": "a_vendre"},
+        json={"vinted_url": body.url, "status": status},
         prefer="return=representation",
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Carte introuvable")
-    return {"card_id": card_id, "vinted_url": body.url, "status": "a_vendre"}
+    return {"card_id": card_id, "vinted_url": body.url, "status": status}
+
+
+VINTED_QUEUE_FIELDS = (
+    "id,status,player,team,year,brand,set_name,insert_name,parallel_name,card_number,numbered,"
+    "is_rookie,card_type,condition_notes,image_front_url,image_back_url,price,vinted_price,created_at"
+)
+
+
+@router.get("/vinted-queue")
+async def vinted_queue(user: dict = Depends(current_extension_user)):
+    """Cartes publiables sur Vinted (pas encore en ligne, avec photo et prix),
+    avec le texte d'annonce prêt à coller. Le panneau de l'extension filtre
+    ensuite (à vendre par défaut, ou la sélection envoyée depuis l'app)."""
+    rows = await _rest("GET", "cards", params={
+        "user_id": f"eq.{user['sub']}",
+        "status": "in.(collection,a_vendre)",
+        "vinted_url": "is.null",
+        "image_front_url": "not.is.null",
+        "select": VINTED_QUEUE_FIELDS,
+        "order": "created_at.desc",
+        "limit": "1000",
+    }) or []
+    out = []
+    for card in rows:
+        price = listing_price(card)
+        if not price or price <= 0:
+            continue
+        out.append({
+            "id": card["id"],
+            "status": card["status"],
+            "player": card.get("player"),
+            "team": card.get("team"),
+            "year": card.get("year"),
+            "set_name": card.get("set_name") or card.get("brand"),
+            "variant": card.get("insert_name") or (card.get("parallel_name") if card.get("parallel_name") not in (None, "Base") else None),
+            "numbered": card.get("numbered"),
+            "image_front_url": card.get("image_front_url"),
+            "image_back_url": card.get("image_back_url"),
+            "price": price,
+            "draft": build_draft(card),
+        })
+    return out
 
 
 @router.post("/cards", status_code=201)

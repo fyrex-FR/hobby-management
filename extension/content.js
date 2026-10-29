@@ -71,7 +71,14 @@
       }
     } catch { /* no-op */ }
 
-    // Méthode 2 : window.name (legacy)
+    // Méthode 2 : brouillon confié par le panneau de l'extension (publication
+    // en chaîne). Prioritaire sur les anciens mécanismes ci-dessous.
+    try {
+      const response = await chrome.runtime.sendMessage({ type: "VINTED_GET_PENDING_DRAFT" });
+      if (response?.draft && typeof response.draft === "object") return response.draft;
+    } catch { /* no-op */ }
+
+    // Méthode 3 : window.name (legacy)
     try {
       if (window.name && window.name.startsWith(WINDOW_NAME_PREFIX)) {
         const decoded = decodeURIComponent(window.name.slice(WINDOW_NAME_PREFIX.length));
@@ -80,20 +87,13 @@
       }
     } catch { /* no-op */ }
 
-    // Méthode 3 : localStorage
+    // Méthode 4 : localStorage (legacy)
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed === "object") return parsed;
       }
-    } catch { /* no-op */ }
-
-    // Méthode 4 : stockage interne de l'extension. Vinted peut retirer le hash
-    // avant l'exécution du content script lors de certaines navigations SPA.
-    try {
-      const response = await chrome.runtime.sendMessage({ type: "VINTED_GET_PENDING_DRAFT" });
-      if (response?.draft && typeof response.draft === "object") return response.draft;
     } catch { /* no-op */ }
 
     return null;
@@ -525,7 +525,19 @@
     }
 
     localStorage.removeItem(STORAGE_KEY);
+    chrome.runtime.sendMessage({ type: "VINTED_FORM_FILLED", cardId: activeCardId }).catch(() => {});
   }
+
+  const SUBMIT_LABELS = ["ajouter", "publier", "mettre en ligne", "upload"];
+  document.addEventListener("click", (event) => {
+    if (!location.pathname.includes("/items/new")) return;
+    const button = event.target instanceof Element ? event.target.closest('button, [role="button"], input[type="submit"]') : null;
+    if (!button) return;
+    const text = normalizeText(`${button.textContent || ""} ${button.getAttribute("aria-label") || ""} ${button.value || ""}`);
+    // Libellé exact : « Ajouter des photos » ne doit pas compter comme une publication.
+    const isSubmit = button.getAttribute("type") === "submit" || SUBMIT_LABELS.includes(text);
+    if (isSubmit) chrome.runtime.sendMessage({ type: "VINTED_SUBMITTED" }).catch(() => {});
+  }, true);
 
   let lastUrl = location.href;
   let bootstrapRan = false;

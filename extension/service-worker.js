@@ -1,3 +1,5 @@
+importScripts("vinted-logic.js");
+
 chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
 });
@@ -13,6 +15,7 @@ function notifyNavigation(tabId, url) {
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === "complete" || changeInfo.url) notifyNavigation(tabId, changeInfo.url || tab.url || "");
+  if (changeInfo.url) onVintedTabUrl(tabId, changeInfo.url).catch(() => {});
 });
 chrome.tabs.onActivated.addListener(({ tabId }) => {
   chrome.tabs.get(tabId).then((tab) => notifyNavigation(tabId, tab.url || "")).catch(() => {});
@@ -27,59 +30,109 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
-  if (message?.type === "VINTED_QUEUE_DRAFT") {
-    startVintedDraft(message.draft, _sender.tab).then(sendResponse).catch((error) => sendResponse({ error: error.message }));
+  if (message?.type === "VINTED_QUEUE_SET") {
+    // Sélection envoyée depuis la Collection : le panneau l'affiche en priorité.
+    const cardIds = Array.isArray(message.cardIds) ? message.cardIds.filter((id) => typeof id === "string").slice(0, 500) : [];
+    chrome.storage.local.set({ vintedSelection: { cardIds, at: Date.now() } })
+      .then(() => sendResponse({ accepted: true, count: cardIds.length }))
+      .catch((error) => sendResponse({ error: error.message }));
+    return true;
+  }
+
+  if (message?.type === "VINTED_FILL") {
+    startFill(message).then(sendResponse).catch((error) => sendResponse({ error: error.message }));
     return true;
   }
 
   if (message?.type === "VINTED_GET_PENDING_DRAFT") {
-    queueState().then((state) => {
-      const draft = _sender.tab?.id === state.vintedTabId ? state.draft || null : null;
-      sendResponse({ draft });
+    vintedSession().then((session) => {
+      const mine = session && session.tabId === _sender.tab?.id && session.phase === "filling";
+      sendResponse({ draft: mine ? session.draft : null });
     }).catch((error) => sendResponse({ error: error.message }));
     return true;
   }
 
+  if (message?.type === "VINTED_FORM_FILLED") {
+    updateSession((s) => (s && s.tabId === _sender.tab?.id ? { ...s, phase: "awaiting_publish", filledAt: Date.now(), draft: null } : s))
+      .then((s) => s && notifyPanel("filled", { cardId: s.cardId }));
+    return false;
+  }
+
+  if (message?.type === "VINTED_SUBMITTED") {
+    updateSession((s) => (s && s.tabId === _sender.tab?.id && s.phase === "awaiting_publish" ? { ...s, submittedAt: Date.now() } : s));
+    return false;
+  }
+
   if (message?.type === "VINTED_LISTING_PUBLISHED") {
-    completeVintedDraft(message.url, _sender.tab).then(sendResponse).catch(async (error) => {
-      const state = await queueState();
-      await notifyCollection("VINTED_QUEUE_ERROR", { cardId: state.cardId, error: error.message });
-      sendResponse({ error: error.message });
-    });
-    return true;
+    // Double sécurité avec tabs.onUpdated : la même règle décide, rien n'est associé deux fois.
+    if (_sender.tab?.id) onVintedTabUrl(_sender.tab.id, message.url).catch(() => {});
+    return false;
   }
 
   if (message?.type === "VINTED_DRAFT_ERROR") {
-    notifyCollection("VINTED_QUEUE_ERROR", { cardId: message.cardId, error: message.error || "Préremplissage impossible" });
+    vintedSession().then((s) => {
+      if (s && s.tabId === _sender.tab?.id) notifyPanel("fill_error", { cardId: s.cardId, error: message.error || "Préremplissage impossible" });
+    });
   }
   return false;
 });
 
 const VINTED_NEW_URL = "https://www.vinted.fr/items/new";
 
-async function queueState() {
-  return (await chrome.storage.session.get("vintedQueue")).vintedQueue || {};
+async function vintedSession() {
+  return (await chrome.storage.session.get("vintedSession")).vintedSession || null;
 }
 
-async function setQueueState(value) {
-  await chrome.storage.session.set({ vintedQueue: value });
+async function updateSession(update) {
+  const next = update(await vintedSession());
+  await chrome.storage.session.set({ vintedSession: next });
+  return next;
 }
 
-async function startVintedDraft(draft, sourceTab) {
-  if (!sourceTab?.id || !draft?.cardId) throw new Error("Brouillon Vinted incomplet");
-  const state = await queueState();
-  let vintedTab = state.vintedTabId ? await chrome.tabs.get(state.vintedTabId).catch(() => null) : null;
-  const encoded = encodeURIComponent(JSON.stringify(draft));
-  const url = `${VINTED_NEW_URL}#vinted_pending=${encoded}`;
-  if (vintedTab?.id) {
-    await setQueueState({ collectionTabId: sourceTab.id, vintedTabId: vintedTab.id, cardId: draft.cardId, draft });
-    await chrome.tabs.update(vintedTab.id, { url, active: true });
-  } else {
-    vintedTab = await chrome.tabs.create({ url: "about:blank", active: true });
-    await setQueueState({ collectionTabId: sourceTab.id, vintedTabId: vintedTab.id, cardId: draft.cardId, draft });
-    await chrome.tabs.update(vintedTab.id, { url });
-  }
+function notifyPanel(event, detail = {}) {
+  chrome.runtime.sendMessage({ type: "VINTED_EVENT", event, ...detail }).catch(() => {});
+}
+
+/**
+ * Remplit l'annonce d'une carte : réutilise l'onglet Vinted actif (sinon en
+ * ouvre un), recharge une page de création vierge, et garde le brouillon
+ * (photos comprises) dans le stockage de session de l'extension plutôt que
+ * dans l'adresse de la page.
+ */
+async function startFill({ cardId, player, prevStatus, draft }) {
+  if (!cardId || !draft) throw new Error("Brouillon Vinted incomplet");
+  const [active] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+  let tab = active && /^https:\/\/(?:www\.)?vinted\.fr\//.test(active.url || "") ? active : null;
+  if (!tab) tab = await chrome.tabs.create({ url: "about:blank", active: true });
+  await chrome.storage.session.set({
+    vintedSession: { tabId: tab.id, cardId, player, prevStatus, draft: { ...draft, cardId }, phase: "filling", lastUrl: VINTED_NEW_URL, filledAt: null, submittedAt: null },
+  });
+  if (CVVinted.isNewItemUrl(tab.url)) await chrome.tabs.reload(tab.id);
+  else await chrome.tabs.update(tab.id, { url: VINTED_NEW_URL, active: true });
   return { accepted: true };
+}
+
+async function onVintedTabUrl(tabId, url) {
+  const session = await vintedSession();
+  if (!session || session.tabId !== tabId) return;
+  const prevUrl = session.lastUrl;
+  if (url === prevUrl) return;
+  if (!CVVinted.shouldAutoLink(session, tabId, url, prevUrl, Date.now())) {
+    await chrome.storage.session.set({ vintedSession: { ...session, lastUrl: url } });
+    return;
+  }
+  const listing = CVVinted.listingUrl(url);
+  await chrome.storage.session.set({ vintedSession: { ...session, phase: "linking", lastUrl: url } });
+  try {
+    await extensionApi(`/cards/${encodeURIComponent(session.cardId)}/vinted-listing`, {
+      method: "PATCH", body: JSON.stringify({ url: listing }),
+    });
+    await chrome.storage.session.set({ vintedSession: { ...session, phase: "linked", lastUrl: url, linkedUrl: listing } });
+    notifyPanel("linked", { cardId: session.cardId, player: session.player, url: listing, prevStatus: session.prevStatus });
+  } catch (error) {
+    await chrome.storage.session.set({ vintedSession: { ...session, lastUrl: url } });
+    notifyPanel("link_error", { cardId: session.cardId, url: listing, error: error.message });
+  }
 }
 
 async function extensionApi(path, options = {}) {
@@ -91,21 +144,4 @@ async function extensionApi(path, options = {}) {
   });
   if (!response.ok) throw new Error((await response.json().catch(() => ({}))).detail || `Erreur ${response.status}`);
   return response.json();
-}
-
-async function notifyCollection(eventType, detail) {
-  const state = await queueState();
-  if (!state.collectionTabId) return;
-  await chrome.tabs.sendMessage(state.collectionTabId, { type: "VINTED_QUEUE_EVENT", eventType, detail }).catch(() => {});
-}
-
-async function completeVintedDraft(url, sourceTab) {
-  const state = await queueState();
-  if (!sourceTab?.id || sourceTab.id !== state.vintedTabId || !state.cardId) throw new Error("Session Vinted inconnue");
-  const result = await extensionApi(`/cards/${encodeURIComponent(state.cardId)}/vinted-listing`, {
-    method: "PATCH", body: JSON.stringify({ url }),
-  });
-  await notifyCollection("VINTED_QUEUE_PUBLISHED", result);
-  await setQueueState({ ...state, cardId: null, draft: null });
-  return result;
 }

@@ -461,11 +461,24 @@ async function analyzeListing({ refine = null } = {}) {
   } finally { if (run === state.run) show("loader", false); $("analyze").disabled = false; }
 }
 
+/** Onglet du panneau : « Analyser » (Scout) ou « Publier sur Vinted ». */
+async function selectTab(tab) {
+  document.querySelectorAll("#tabs [role=tab]").forEach((button) => button.setAttribute("aria-selected", String(button.dataset.tab === tab)));
+  show("scout", tab === "scout"); show("vinted", tab === "vinted");
+  await chrome.storage.local.set({ panel_tab: tab });
+  if (tab === "vinted") await window.CVVintedPanel?.open();
+}
+
 async function boot() {
   const token = await storageGet("scout_token");
-  show("pairing", !token); show("scout", !!token); show("logout", !!token);
-  if (token) await readListing();
+  show("pairing", !token); show("logout", !!token); show("tabs", !!token);
+  if (!token) { show("scout", false); show("vinted", false); return; }
+  const tab = (await storageGet("panel_tab")) === "vinted" ? "vinted" : "scout";
+  await selectTab(tab);
+  await readListing();
 }
+
+document.querySelectorAll("#tabs [role=tab]").forEach((button) => button.addEventListener("click", () => selectTab(button.dataset.tab)));
 
 $("pair").addEventListener("click", async () => { try { state.pairing = await api("/pairings", { method: "POST", body: JSON.stringify({ label: "Chrome" }) }, false); $("pair-code").textContent = state.pairing.code; $("approve").href = state.pairing.approve_url; ["pair-code", "approve", "exchange"].forEach((id) => show(id)); } catch (e) { alert(e.message); } });
 $("exchange").addEventListener("click", async () => { try { const result = await api("/pairings/exchange", { method: "POST", body: JSON.stringify(state.pairing) }, false); await chrome.storage.local.set({ scout_token: result.token }); await boot(); } catch (e) { alert(e.message); } });
