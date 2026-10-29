@@ -1,0 +1,62 @@
+<!doctype html>
+<!--
+  Banc d'essai de la saisie du prix (vinted-fill.js) : ouvrir ce fichier dans
+  Chrome (servi en http, ex. `python3 -m http.server` dans extension/). Le
+  résultat s'affiche dans la page et dans window.__results.
+-->
+<html lang="fr">
+<head><meta charset="utf-8"><title>Test saisie prix Vinted</title>
+<style>body{font:14px system-ui;margin:24px;background:#111;color:#eee}label{display:block;margin:8px 0}input{margin-left:8px;padding:6px}.ok{color:#3dd68c}.ko{color:#ff6369}</style>
+</head>
+<body>
+<h1>Saisie du prix</h1>
+<label>Texte simple <input id="plain" type="text"></label>
+<label>Champ numérique <input id="number" type="number" step="0.01"></label>
+<label>Masque qui retire les points <input id="nodot" type="text" inputmode="decimal"></label>
+<label>Masque qui reformate en « 7,50 € » <input id="format" type="text" inputmode="decimal"></label>
+<label>Masque à état interne (ne suit que la frappe) <input id="sticky" type="text" inputmode="decimal"></label>
+<pre id="out"></pre>
+<script src="vinted-fill.js"></script>
+<script>
+  // Retire les points (bug supposé : « 7.5 » devient « 75 »).
+  const nodot = document.getElementById("nodot");
+  nodot.addEventListener("input", () => { nodot.value = nodot.value.replace(/[^\d,]/g, ""); });
+
+  // Reformate à la sortie du champ, retire le suffixe en y revenant.
+  const format = document.getElementById("format");
+  format.addEventListener("input", () => { format.value = format.value.replace(/[^\d,]/g, ""); });
+  format.addEventListener("blur", () => {
+    const n = Number(format.value.replace(",", "."));
+    format.value = format.value && Number.isFinite(n) ? `${n.toFixed(2).replace(".", ",")} €` : "";
+  });
+  format.addEventListener("focus", () => { format.value = format.value.replace(/\s*€$/, ""); });
+
+  // État interne alimenté seulement par la frappe (beforeinput) : une
+  // affectation directe de la valeur est écrasée au prochain événement input.
+  const sticky = document.getElementById("sticky");
+  let inner = "";
+  sticky.addEventListener("beforeinput", (e) => {
+    if (e.inputType.startsWith("delete")) inner = "";
+    else if (e.inputType === "insertText" || e.inputType === "insertReplacementText") inner = (sticky.selectionStart === 0 && sticky.selectionEnd === sticky.value.length ? "" : inner) + (e.data || "");
+    inner = inner.replace(/[^\d,]/g, "");
+  });
+  sticky.addEventListener("input", () => { sticky.value = inner; });
+
+  (async () => {
+    const results = [];
+    for (const id of ["plain", "number", "nodot", "format", "sticky"]) {
+      for (const price of [20, 7.5, 12.34, 3]) {
+        const el = document.getElementById(id);
+        const accepted = await CVVintedFill.setPrice(el, price, (ms) => new Promise((r) => setTimeout(r, ms)));
+        const shown = CVVintedFill.readPrice(el);
+        results.push({ field: id, price, accepted, shown, ok: shown !== null && Math.abs(shown - price) < 0.001 });
+      }
+    }
+    window.__results = results;
+    document.getElementById("out").innerHTML = results.map((r) =>
+      `<span class="${r.ok ? "ok" : "ko"}">${r.ok ? "OK " : "KO "}</span>${r.field.padEnd(7)} ${String(r.price).padEnd(6)} → saisi « ${r.accepted} », affiché ${r.shown}`).join("\n");
+    document.title = results.every((r) => r.ok) ? "OK" : "KO";
+  })();
+</script>
+</body>
+</html>

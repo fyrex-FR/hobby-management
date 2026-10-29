@@ -2,6 +2,7 @@
   const STORAGE_KEY = "vinted_pending";
   const WINDOW_NAME_PREFIX = "vinted_pending:";
   const SUCCESS_BANNER_ID = "nba-vinted-prefill-success";
+  const PRICE_BANNER_ID = "nba-vinted-prefill-price";
   const PHOTOS_BANNER_ID = "nba-vinted-prefill-photos";
   const UPLOAD_ARROW_ID = "nba-vinted-prefill-upload-arrow";
   const ACTION_DELAY_MS = 400;
@@ -109,9 +110,6 @@
     return null;
   }
 
-  function formatPriceForVinted(value) {
-    return String(value ?? "").trim().replace(/\s/g, "");
-  }
 
   function findVintedFields() {
     const title = queryFirst([
@@ -268,40 +266,6 @@
     else element.value = text;
     element.dispatchEvent(new Event("input", { bubbles: true }));
     element.dispatchEvent(new Event("change", { bubbles: true }));
-  }
-
-  function normalizedPrice(value) {
-    let text = String(value ?? "")
-      .trim()
-      .replace(/[\s\u00a0\u202f]/g, "")
-      .replace(/[^\d,.-]/g, "");
-    const lastComma = text.lastIndexOf(",");
-    const lastDot = text.lastIndexOf(".");
-    if (lastComma >= 0 && lastDot >= 0) {
-      const decimalSeparator = lastComma > lastDot ? "," : ".";
-      const thousandsSeparator = decimalSeparator === "," ? /\./g : /,/g;
-      text = text.replace(thousandsSeparator, "").replace(decimalSeparator, ".");
-    } else {
-      text = text.replace(",", ".");
-    }
-    const parsed = Number(text);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  async function setPriceValue(element, value) {
-    const expected = normalizedPrice(value);
-    if (expected === null) throw new Error("Prix Vinted invalide");
-    const candidates = [String(value).replace(",", "."), String(value).replace(".", ",")];
-    for (const candidate of [...new Set(candidates)]) {
-      setInputValue(element, candidate);
-      element.blur();
-      await delay(120);
-      const displayedValue = Number.isFinite(element.valueAsNumber)
-        ? element.valueAsNumber
-        : normalizedPrice(element.value);
-      if (displayedValue !== null && Math.abs(displayedValue - expected) < 0.001) return;
-    }
-    throw new Error("Vinted a refusé le prix prérempli");
   }
 
   function sanitizeFilenamePart(value) {
@@ -508,7 +472,10 @@
     const fields = await waitForFields();
     setInputValue(fields.title, pending.title || "");
     setInputValue(fields.description, pending.description || "");
-    await setPriceValue(fields.price, formatPriceForVinted(pending.price || ""));
+    // Prix tapé comme au clavier (vinted-fill.js). S'il ne tient pas, on
+    // remplit quand même le reste et on indique le prix à saisir.
+    const priceText = await CVVintedFill.setPrice(fields.price, pending.price);
+    const priceShown = String(Number(pending.price || 0).toFixed(2)).replace(".", ",").replace(/,00$/, "");
     await applyVintedSelections(pending);
 
     if (Array.isArray(pending.photos) && pending.photos.length > 0) {
@@ -524,8 +491,12 @@
       showBanner({ id: SUCCESS_BANNER_ID, text: "Carte pré-remplie ✓", background: "#16a34a", color: "#ffffff", top: 12 });
     }
 
+    if (!priceText) {
+      showBanner({ id: PRICE_BANNER_ID, text: `Prix à saisir à la main : ${priceShown} €`, background: "#f59e0b", color: "#111827", top: 64 });
+    }
+
     localStorage.removeItem(STORAGE_KEY);
-    chrome.runtime.sendMessage({ type: "VINTED_FORM_FILLED", cardId: activeCardId }).catch(() => {});
+    chrome.runtime.sendMessage({ type: "VINTED_FORM_FILLED", cardId: activeCardId, priceFailed: !priceText, price: pending.price }).catch(() => {});
   }
 
   const SUBMIT_LABELS = ["ajouter", "publier", "mettre en ligne", "upload"];
@@ -542,10 +513,50 @@
   let lastUrl = location.href;
   let bootstrapRan = false;
 
+  /**
+   * Articles affichés sur un profil, dans l'ordre (le plus récent en premier) :
+   * adresse + titre (Vinted y met titre, marque et prix). Attend que la grille
+   * apparaisse, l'annonce tout juste créée pouvant arriver un peu après.
+   */
+  async function profileListings(timeoutMs = 10000) {
+    const collect = () => {
+      const seen = new Set();
+      const out = [];
+      for (const link of document.querySelectorAll('main a[href*="/items/"], a[href*="/items/"]')) {
+        const href = link.href.split("?")[0];
+        if (!/\/items\/\d+/.test(href) || seen.has(href)) continue;
+        seen.add(href);
+        const img = link.closest("[data-testid]")?.querySelector("img") || link.querySelector("img");
+        out.push({ url: href, title: link.getAttribute("title") || link.getAttribute("aria-label") || img?.getAttribute("alt") || link.textContent.trim().slice(0, 200) });
+        if (out.length >= 12) break;
+      }
+      return out;
+    };
+    const start = Date.now();
+    let items = collect();
+    while (items.length === 0 && Date.now() - start < timeoutMs) {
+      await delay(400);
+      items = collect();
+    }
+    await delay(600);
+    return collect();
+  }
+
+  let profileScannedFor = null;
+
   async function bootstrap() {
     const published = location.pathname.match(/^\/items\/\d+(?:-[^/?#]+)?\/?$/);
     if (published) {
       chrome.runtime.sendMessage({ type: "VINTED_LISTING_PUBLISHED", url: `${location.origin}${location.pathname}` }).catch(() => {});
+      return;
+    }
+    // Vinted renvoie parfois sur le profil après « Ajouter » : l'extension y
+    // retrouve l'annonce créée (elle n'en tient compte que juste après une publication).
+    if (/^\/member\/\d+/.test(location.pathname)) {
+      if (profileScannedFor === location.href) return;
+      profileScannedFor = location.href;
+      const listings = await profileListings();
+      chrome.runtime.sendMessage({ type: "VINTED_PROFILE_LISTINGS", url: location.href, listings }).catch(() => {});
       return;
     }
     if (!location.pathname.includes("/items/new")) return;
