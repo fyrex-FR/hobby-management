@@ -54,7 +54,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message?.type === "VINTED_FORM_FILLED") {
     updateSession((s) => (s && s.tabId === _sender.tab?.id ? { ...s, phase: "awaiting_publish", filledAt: Date.now(), draft: null } : s))
-      .then((s) => s && notifyPanel("filled", { cardId: s.cardId }));
+      .then((s) => s && notifyPanel("filled", { cardId: s.cardId, priceFailed: Boolean(message.priceFailed), price: message.price ?? null }));
     return false;
   }
 

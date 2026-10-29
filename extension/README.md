@@ -104,6 +104,12 @@ L'onglet **Publier sur Vinted** du panneau publie les cartes une par une :
    suivante 1,5 s après chaque association (`Annuler` stoppe l'enchaînement).
    Ces réglages sont gardés (`chrome.storage.local`, clé `vinted_panel_prefs`).
 
+Le prix est tapé comme au clavier (`vinted-fill.js` : champ vidé, format
+français « 7,50 » d'abord, puis « 7.50 », valeur affichée vérifiée). S'il ne
+tient pas, le reste du formulaire est quand même rempli et un bandeau orange
+(et le panneau) indique le prix à saisir. Banc d'essai :
+`extension/test-vinted-fill.html` (5 types de champs prix, servi en http).
+
 Tests : `node extension/test-vinted-logic.mjs` (règles d'association, file,
 URL), `node extension/test-vinted-worker.mjs` (service worker réel, faux
 Chrome : annonce ouverte, retour sur le profil, prix différent) et `backend/tests/test_vinted_draft.py` (texte d'annonce, routes).

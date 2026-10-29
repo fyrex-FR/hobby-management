@@ -357,7 +357,11 @@
     if (message?.type !== "VINTED_EVENT") return;
     if (message.event === "filled") {
       v.phase = "awaiting"; v.currentId = message.cardId; render();
-      setStatus("Annonce remplie. Vérifie-la sur Vinted puis clique sur « Ajouter » : elle sera associée toute seule.");
+      if (message.priceFailed) {
+        setStatus(`Annonce remplie, mais Vinted n’a pas pris le prix : tape ${currency(message.price)} dans le champ Prix, puis clique sur « Ajouter ».`, "error");
+      } else {
+        setStatus("Annonce remplie. Vérifie-la sur Vinted puis clique sur « Ajouter » : elle sera associée toute seule.");
+      }
     } else if (message.event === "fill_error") {
       v.phase = "error"; render();
       setStatus(`Vinted n’a pas pu être rempli : ${message.error}. Réessaie ou remplis à la main.`, "error");
