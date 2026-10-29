@@ -1259,3 +1259,120 @@ button.link:hover:not(:disabled) {
   grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
+
+/* ---------- Synchroniser (rattrapage des annonces Vinted) ---------- */
+.tabs button {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+.s-summary b {
+  font-weight: 600;
+}
+.s-summary p {
+  margin: 6px 0 0;
+}
+.s-decisions {
+  margin-top: 14px;
+  padding: 12px;
+  border: 1px solid var(--border-accent);
+  border-radius: var(--radius-lg);
+  background: var(--accent-dim);
+}
+.s-decisions label:first-of-type {
+  margin-top: 8px;
+}
+.s-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.s-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+}
+.s-row + .s-row {
+  border-top: 1px solid var(--border);
+}
+.s-row img,
+.s-row .v-thumb {
+  flex: none;
+  width: 34px;
+  height: 46px;
+  object-fit: cover;
+  border-radius: 5px;
+  background: var(--bg-secondary);
+}
+.s-check {
+  margin: 12px 0 0;
+}
+.s-check input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--accent);
+}
+.s-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+  font-size: 12px;
+}
+.s-body b {
+  font-size: 13px;
+  font-weight: 600;
+}
+.s-body .muted {
+  margin: 0;
+}
+.s-listing {
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+.s-listing a,
+.s-body > a {
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 2px;
+}
+.s-changes {
+  color: var(--accent);
+  font-weight: 600;
+}
+.s-changes.muted {
+  color: var(--text-muted);
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+.s-review select {
+  margin-top: 6px;
+}
+.s-chip {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+}
+.s-sold { color: var(--green); background: color-mix(in srgb, var(--green) 12%, transparent); }
+.s-reserved { color: var(--blue); background: color-mix(in srgb, var(--blue) 12%, transparent); }
+.s-hidden { color: var(--orange); background: color-mix(in srgb, var(--orange) 12%, transparent); }
+.s-active { color: var(--violet); background: color-mix(in srgb, var(--violet) 12%, transparent); }
+.s-actions {
+  position: sticky;
+  bottom: 0;
+  margin: 16px -16px -16px;
+  padding: 4px 16px 16px;
+  background: var(--bg-primary);
+  border-top: 1px solid var(--border);
+}

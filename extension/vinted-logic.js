@@ -198,9 +198,133 @@
     return out;
   }
 
+  /* ---------- Rattrapage : profil Vinted ↔ cartes CardVaults ---------- */
+
+  function listingId(url) {
+    const match = String(url || "").match(/vinted\.fr\/items\/(\d+)/);
+    return match ? match[1] : null;
+  }
+
+  const tokenize = (value) => fold(value).replace(/[^a-z0-9/]+/g, " ").split(" ").filter((t) => t && t !== "/");
+  const numberedOf = (value) => (String(value || "").match(/\/\s*(\d+)/) || [])[1] || null;
+
+  /**
+   * Ressemblance entre une carte et une annonce (0 à 1). Le titre des annonces
+   * créées par l'extension reprend celui de la carte : on compare les mots.
+   * Le nom du joueur doit y être en entier, et le tirage (/75) ne doit pas différer.
+   */
+  function matchScore(card, listing) {
+    const listed = new Set(tokenize(listing.title));
+    const player = tokenize(card.player);
+    if (!player.length || !player.every((t) => listed.has(t))) return 0;
+    const cardNum = numberedOf(card.numbered);
+    const listNum = numberedOf(listing.title);
+    if (cardNum && listNum && cardNum !== listNum) return 0;
+    const words = [...new Set(tokenize(card.title || [card.player, card.year, card.set_name, card.variant, card.numbered].filter(Boolean).join(" ")))];
+    const common = words.filter((t) => listed.has(t)).length;
+    let score = 0.75 * (common / words.length) + 0.25 * (common / Math.max(listed.size, 1));
+    if (cardNum && !listNum) score *= 0.6;
+    if (card.price > 0 && listing.price > 0 && Math.abs(card.price - listing.price) < 0.01) score += 0.05;
+    return Math.min(1, Math.round(score * 1000) / 1000);
+  }
+
+  /**
+   * Rapproche les annonces du profil et les cartes :
+   * - `pairs` : lien déjà bon (même identifiant d'annonce) ou correspondance sûre ;
+   * - `review` : annonce avec plusieurs cartes possibles, à choisir ;
+   * - `orphans` : annonce sans carte ressemblante ;
+   * - `broken` : carte dont le lien Vinted ne mène à aucune annonce du profil.
+   */
+  function matchWardrobe(listings, cards) {
+    const byId = new Map(listings.map((l) => [listingId(l.url), l]).filter(([id]) => id));
+    const usedListings = new Set();
+    const usedCards = new Set();
+    const pairs = [];
+    for (const card of cards) {
+      const listing = byId.get(listingId(card.vinted_url));
+      if (listing && !usedListings.has(listing)) {
+        pairs.push({ card, listing, kind: "linked", score: 1 });
+        usedListings.add(listing); usedCards.add(card.id);
+      }
+    }
+    const scored = [];
+    for (const listing of listings) {
+      if (usedListings.has(listing)) continue;
+      for (const card of cards) {
+        if (usedCards.has(card.id)) continue;
+        const score = matchScore(card, listing);
+        if (score >= 0.5) scored.push({ card, listing, score });
+      }
+    }
+    scored.sort((a, b) => b.score - a.score);
+    const bestFor = (listing, except) => Math.max(0, ...scored.filter((s) => s.listing === listing && s.card !== except && !usedCards.has(s.card.id)).map((s) => s.score));
+    for (const s of scored) {
+      if (usedListings.has(s.listing) || usedCards.has(s.card.id)) continue;
+      if (s.score >= 0.8 && s.score - bestFor(s.listing, s.card) >= 0.1) {
+        pairs.push({ card: s.card, listing: s.listing, kind: "matched", score: s.score });
+        usedListings.add(s.listing); usedCards.add(s.card.id);
+      }
+    }
+    const review = [];
+    const orphans = [];
+    for (const listing of listings) {
+      if (usedListings.has(listing)) continue;
+      const options = scored.filter((s) => s.listing === listing && !usedCards.has(s.card.id)).slice(0, 3);
+      if (options.length) review.push({ listing, options: options.map(({ card, score }) => ({ card, score })) });
+      else orphans.push(listing);
+    }
+    const broken = cards.filter((c) => c.vinted_url && !usedCards.has(c.id));
+    return { pairs, review, orphans, broken };
+  }
+
+  /**
+   * Changements à appliquer pour une paire carte ↔ annonce, selon l'état de
+   * l'annonce et les choix faits dans le panneau :
+   * decisions.reserved = "sold_outside" | "reserve" | "keep"
+   * decisions.hidden   = "sold_outside" | "unlink" | "keep"
+   * Renvoie { action, changes, warning } ; action null si rien ne change.
+   */
+  function planPair(card, listing, decisions = {}) {
+    const action = { card_id: card.id };
+    const changes = [];
+    let warning = null;
+    const url = listingUrl(listing.url);
+    const relink = url && listingId(card.vinted_url) !== listingId(url);
+    const setStatus = (status, label) => {
+      if (card.status !== status) { action.status = status; changes.push(label); }
+    };
+    const state = listing.state || "unknown";
+    let unlink = false;
+    if (state === "sold") {
+      if (card.status !== "vendu") {
+        action.status = "vendu";
+        if (listing.price > 0) action.price = listing.price;
+        changes.push(listing.price > 0 ? `Vendue sur Vinted (${String(listing.price).replace(".", ",")} €)` : "Vendue sur Vinted");
+      }
+    } else if (state === "reserved" || state === "hidden") {
+      const choice = decisions[state] || "keep";
+      if (choice === "sold_outside") setStatus("vendu", "Vendue hors Vinted");
+      else if (choice === "reserve") setStatus("reserve", "Réservée");
+      else if (choice === "unlink") { unlink = true; changes.push("Lien Vinted retiré"); }
+    } else if (state === "active") {
+      if (card.status === "vendu") warning = "Vendue dans CardVaults mais encore en ligne sur Vinted : pense à retirer l'annonce.";
+      else setStatus("a_vendre", "À vendre");
+    }
+    if (unlink) {
+      if (card.vinted_url) action.clear_url = true;
+      else changes.pop();
+    } else if (relink) {
+      action.vinted_url = url;
+      changes.unshift(card.vinted_url ? "Lien corrigé" : "Lien ajouté");
+    }
+    const hasChange = action.status || action.vinted_url || action.clear_url || action.price;
+    return { action: hasChange ? action : null, changes, warning };
+  }
+
   root.CVVinted = {
     listingUrl, isNewItemUrl, isMemberUrl, shouldAutoLink, expectsNewListing, pickPublishedListing, cdnUrl, numberedBadge, filterQueue, ebaySoldUrl, ebayQueryOf, parsePrice,
     GROUPS, groupKey, groupCards, inGroup, sortCards,
+    listingId, matchScore, matchWardrobe, planPair,
     SUBMIT_WINDOW_MS, FILL_WINDOW_MS,
   };
 })(typeof globalThis !== "undefined" ? globalThis : self);

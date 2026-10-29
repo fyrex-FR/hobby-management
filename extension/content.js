@@ -544,6 +544,84 @@
 
   let profileScannedFor = null;
 
+  /* ---------- Rattrapage : lecture de toutes les annonces du profil ---------- */
+
+  function wardrobeState(item) {
+    const status = String(item.status || item.item_status || "").toLowerCase();
+    if (item.is_closed || item.is_sold || item.item_closing_action === "sold" || /sold|vendu/.test(status)) return "sold";
+    if (item.is_reserved || item.reserved || /reserv/.test(status)) return "reserved";
+    if (item.is_hidden || item.hidden || /hidden|masqu/.test(status)) return "hidden";
+    return "active";
+  }
+
+  function wardrobeItem(item) {
+    const amount = item.price?.amount ?? item.price_numeric ?? item.price;
+    const price = Number(String(amount ?? "").replace(",", "."));
+    return {
+      url: item.url || (item.path ? `${location.origin}${item.path}` : `${location.origin}/items/${item.id}`),
+      title: item.title || "",
+      price: Number.isFinite(price) && price > 0 ? price : null,
+      state: wardrobeState(item),
+      photo: item.photo?.url || item.photos?.[0]?.url || item.photo?.thumbnails?.[0]?.url || null,
+    };
+  }
+
+  /** API utilisée par le site lui-même pour la penderie (cookies de session). */
+  async function wardrobeFromApi(memberId) {
+    const items = [];
+    let page = 1;
+    let pages = 1;
+    do {
+      const response = await fetch(`/api/v2/wardrobe/${memberId}/items?page=${page}&per_page=96&order=relevance`, {
+        credentials: "include", headers: { Accept: "application/json" },
+      });
+      if (!response.ok) throw new Error(`API Vinted ${response.status}`);
+      const data = await response.json();
+      items.push(...(data.items || []).map(wardrobeItem));
+      pages = data.pagination?.total_pages || 1;
+      page += 1;
+    } while (page <= pages && page <= 30);
+    return items;
+  }
+
+  /** Repli : fait défiler le profil pour charger toute la grille, puis la lit (sans les statuts). */
+  async function wardrobeFromPage() {
+    let previous = -1;
+    let stable = 0;
+    for (let i = 0; i < 60 && stable < 3; i++) {
+      window.scrollTo(0, document.body.scrollHeight);
+      await delay(700);
+      const count = document.querySelectorAll('a[href*="/items/"]').length;
+      stable = count === previous ? stable + 1 : 0;
+      previous = count;
+    }
+    window.scrollTo(0, 0);
+    const seen = new Set();
+    const out = [];
+    for (const link of document.querySelectorAll('a[href*="/items/"]')) {
+      const href = link.href.split("?")[0];
+      if (!/\/items\/\d+/.test(href) || seen.has(href)) continue;
+      seen.add(href);
+      const title = link.getAttribute("title") || link.getAttribute("aria-label") || "";
+      const price = (title.match(/(\d+(?:[.,]\d{1,2})?)\s*€/) || [])[1];
+      const img = link.closest("[data-testid]")?.querySelector("img") || link.querySelector("img");
+      out.push({ url: href, title, price: price ? Number(price.replace(",", ".")) : null, state: "unknown", photo: img?.src || null });
+    }
+    return out;
+  }
+
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    if (message?.type !== "VINTED_SCAN_WARDROBE") return false;
+    const memberId = (location.pathname.match(/^\/member\/(\d+)/) || [])[1];
+    if (!memberId) { sendResponse({ error: "Ouvre ton profil Vinted (ta photo → Mon profil) puis relance." }); return false; }
+    wardrobeFromApi(memberId)
+      .then((listings) => ({ source: "api", listings }))
+      .catch(async (error) => ({ source: "page", apiError: error.message, listings: await wardrobeFromPage() }))
+      .then(sendResponse)
+      .catch((error) => sendResponse({ error: error.message }));
+    return true;
+  });
+
   async function bootstrap() {
     const published = location.pathname.match(/^\/items\/\d+(?:-[^/?#]+)?\/?$/);
     if (published) {

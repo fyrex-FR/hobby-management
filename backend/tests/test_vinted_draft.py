@@ -93,6 +93,50 @@ class VintedRoutesTest(unittest.TestCase):
         params = self.calls[0][1]
         self.assertEqual((params["vinted_url"], params["status"]), ("is.null", "in.(collection,a_vendre)"))
 
+    def test_sync_cards_bring_links_and_titles(self):
+        self.cards[0].update({"vinted_url": "https://www.vinted.fr/items/1-bidon", "year": "2023-24"})
+        cards = self.client.get("/api/extension/vinted-sync/cards").json()
+        self.assertEqual([c["id"] for c in cards], ["c1", "c2", "c3"])
+        self.assertEqual(cards[0]["vinted_url"], "https://www.vinted.fr/items/1-bidon")
+        self.assertEqual(cards[0]["title"], "A 2023-24")
+        self.assertEqual(self.calls[-1][1]["status"], "in.(collection,a_vendre,reserve,vendu)")
+
+    def test_sync_apply_links_sells_and_withdraws_ebay(self):
+        withdrawn = []
+
+        async def fake_withdraw(user_id, cards):
+            withdrawn.extend(c["id"] for c in cards)
+            return {"withdrawn": len(cards), "failed": []}
+
+        saved = extension._withdraw_ebay
+        extension._withdraw_ebay = fake_withdraw
+        self.addCleanup(lambda: setattr(extension, "_withdraw_ebay", saved))
+
+        async def fake_rest(method, table, *, params=None, json=None, prefer=None):
+            if method == "GET":
+                ids = params["id"][4:-1].split(",")
+                return [c for c in self.cards if c["id"] in ids]
+            card = next((c for c in self.cards if c["id"] == params["id"][3:]), None)
+            if not card:
+                return []
+            card.update(json)
+            return [card]
+
+        extension._rest = fake_rest
+        r = self.client.post("/api/extension/vinted-sync/apply", json={"actions": [
+            {"card_id": "c1", "vinted_url": "https://www.vinted.fr/items/77-a?ref=x", "status": "vendu", "price": 6},
+            {"card_id": "c2", "clear_url": True},
+            {"card_id": "c3", "status": "a_vendre", "vinted_url": "https://www.vinted.fr/items/78-c"},
+            {"card_id": "inconnue", "status": "vendu"},
+        ]}).json()
+        self.assertEqual((r["updated"], r["errors"], r["ebay_withdrawn"]), (3, ["inconnue"], 1))
+        self.assertEqual((self.cards[0]["vinted_url"], self.cards[0]["status"], self.cards[0]["price"], self.cards[0]["vinted_price"]),
+                         ("https://www.vinted.fr/items/77-a", "vendu", 6, 6))
+        self.assertIsNone(self.cards[1]["vinted_url"])
+        self.assertEqual(withdrawn, ["c1"])
+        bad = self.client.post("/api/extension/vinted-sync/apply", json={"actions": [{"card_id": "c1", "vinted_url": "https://evil.example/items/1"}]})
+        self.assertEqual(bad.status_code, 422)
+
     def test_set_price_mirrors_vinted_price(self):
         r = self.client.patch("/api/extension/cards/c3/price", json={"price": 12.345})
         self.assertEqual(r.json(), {"card_id": "c3", "price": 12.35})

@@ -63,6 +63,18 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return false;
   }
 
+  if (message?.type === "VINTED_SCAN") {
+    // Rattrapage : demande au script de la page Vinted active de lire tout le profil.
+    chrome.tabs.query({ active: true, lastFocusedWindow: true })
+      .then(([tab]) => {
+        if (!tab?.id || !CVVinted.isMemberUrl(tab.url)) throw new Error("Ouvre ton profil Vinted (ta photo → Mon profil) dans l'onglet actif, puis relance.");
+        return chrome.tabs.sendMessage(tab.id, { type: "VINTED_SCAN_WARDROBE" });
+      })
+      .then((result) => sendResponse(result || { error: "Pas de réponse de la page Vinted : recharge-la puis relance." }))
+      .catch((error) => sendResponse({ error: error.message }));
+    return true;
+  }
+
   if (message?.type === "VINTED_PROFILE_LISTINGS") {
     if (_sender.tab?.id) onProfileListings(_sender.tab.id, message.listings || []).catch(() => {});
     return false;

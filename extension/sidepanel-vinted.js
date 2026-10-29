@@ -406,6 +406,7 @@
 
   window.CVVintedPanel = {
     open: () => (v.loaded ? load() : (render(), load())),
+    refresh: () => (v.loaded ? load() : null),
   };
   if (!$("vinted").classList.contains("hidden")) window.CVVintedPanel.open();
 })();
