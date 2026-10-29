@@ -197,7 +197,7 @@ function NavButton({ item, active, onClick }: { item: NavItem; active: boolean; 
       <item.icon size={17} className={active ? 'text-[var(--accent)]' : 'text-[var(--text-muted)] group-hover:text-[var(--text-secondary)]'} />
       <span className="flex-1 truncate text-left">{item.label}</span>
       {!!item.badge && (
-        <span className="tabular flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--accent)] px-1.5 text-[11px] font-semibold text-[var(--on-accent)]">
+        <span className="tabular flex h-5 min-w-5 items-center justify-center rounded-full bg-[var(--accent-strong)] px-1.5 text-[11px] font-semibold text-[var(--on-accent)]">
           {item.badge}
         </span>
       )}
@@ -395,7 +395,7 @@ function MobileTabBar({ isAdmin }: { isAdmin: boolean }) {
             <item.icon size={21} />
             {item.label === 'Vue d\'ensemble' ? 'Accueil' : item.label}
             {!!item.badge && (
-              <span className="absolute left-1/2 top-1 ml-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--accent)] px-1 text-[10px] font-semibold text-[var(--on-accent)]">
+              <span className="absolute left-1/2 top-1 ml-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-[var(--accent-strong)] px-1 text-[10px] font-semibold text-[var(--on-accent)]">
                 {item.badge}
               </span>
             )}
@@ -404,7 +404,7 @@ function MobileTabBar({ isAdmin }: { isAdmin: boolean }) {
         <button onClick={() => setMoreOpen(true)} className={`${tab(overflowActive || moreOpen)} h-14`}>
           <Menu size={21} />
           Plus
-          {overflowBadge > 0 && <span className="absolute left-1/2 top-1.5 ml-2 h-2 w-2 rounded-full bg-[var(--accent)]" />}
+          {overflowBadge > 0 && <span className="absolute left-1/2 top-1.5 ml-2 h-2 w-2 rounded-full bg-[var(--accent-strong)]" />}
         </button>
       </nav>
 

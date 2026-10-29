@@ -126,7 +126,7 @@ function FacetMenu({
     <>
       <button
         ref={anchor}
-        className="ui-chip max-w-[220px]"
+        className="ui-chip max-w-[220px] shrink-0"
         data-active={selected.length > 0}
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
@@ -141,7 +141,16 @@ function FacetMenu({
               autoFocus
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder={`Chercher un ${FACET_LABELS[facet].toLowerCase()}…`}
+              onKeyDown={(e) => {
+                // Entrée coche la première valeur trouvée : filtrer sans quitter le clavier.
+                if (e.key === 'Enter' && query.trim() && visible[0]) {
+                  e.preventDefault();
+                  toggleFacet(facet, visible[0].value);
+                  setQuery('');
+                }
+              }}
+              placeholder={`Rechercher (${FACET_LABELS[facet].toLowerCase()})…`}
+              aria-label={`Rechercher une valeur : ${FACET_LABELS[facet].toLowerCase()}`}
               className="ui-input h-8"
             />
           </div>
@@ -150,10 +159,16 @@ function FacetMenu({
           {visible.length === 0 && (
             <p className="px-3 py-6 text-center text-[13px] text-[var(--text-muted)]">Aucun résultat</p>
           )}
-          {visible.map((o) => {
+          {visible.map((o, i) => {
             const active = selected.includes(o.value);
             return (
-              <button key={o.value} className="ui-menu-item" onClick={() => toggleFacet(facet, o.value)}>
+              <button
+                key={o.value}
+                className="ui-menu-item"
+                data-highlight={i === 0 && query.trim() !== ''}
+                aria-pressed={active}
+                onClick={() => toggleFacet(facet, o.value)}
+              >
                 <span
                   className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
                     active ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--on-accent)]' : 'border-[var(--border-strong)]'
@@ -196,7 +211,7 @@ function ListingMenu({ cards, ctx }: { cards: Card[]; ctx: FilterContext }) {
 
   return (
     <>
-      <button ref={anchor} className="ui-chip" data-active={active} onClick={() => setOpen((v) => !v)} aria-expanded={open}>
+      <button ref={anchor} className="ui-chip shrink-0" data-active={active} onClick={() => setOpen((v) => !v)} aria-expanded={open}>
         {active ? LISTING_LABELS[filters.listing as Exclude<ListingFilter, 'all'>] : 'Annonce'}
         <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
@@ -245,7 +260,7 @@ export function FilterRow({
   const flagN = useMemo(() => flagCounts(cards, filters, ctx), [cards, filters, ctx]);
 
   return (
-    <div className="-mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-0.5 no-scrollbar sm:-mx-6 sm:px-6">
+    <div className="scroll-fade-x -mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-0.5 no-scrollbar sm:-mx-6 sm:px-6">
       {FACETS_SHOWN.map((f) => (
         <FacetMenu
           key={f}
@@ -260,9 +275,10 @@ export function FilterRow({
       <span className="mx-1 h-5 w-px shrink-0 bg-[var(--border-strong)]" />
       {FLAGS_SHOWN.map((flag) => {
         const active = filters.flags.includes(flag);
-        if (!active && flagN[flag] === 0) return null;
+        // Grisée plutôt que masquée : les puces ne changent pas de place quand on filtre.
+        const empty = !active && flagN[flag] === 0;
         return (
-          <button key={flag} className="ui-chip" data-active={active} onClick={() => toggleFlag(flag)} aria-pressed={active}>
+          <button key={flag} className="ui-chip shrink-0" data-active={active} disabled={empty} onClick={() => toggleFlag(flag)} aria-pressed={active}>
             {FLAG_LABELS[flag]}
             <span className="count">{flagN[flag]}</span>
           </button>
@@ -295,19 +311,16 @@ export function ActiveFilterChips({ folders, resultCount }: { folders: Folder[];
   if (chips.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span className="mr-1 text-[13px] text-[var(--text-secondary)]">
-        <span className="tabular font-semibold text-[var(--text-primary)]">{resultCount}</span> carte{resultCount !== 1 ? 's' : ''}
-      </span>
+    <div className="flex flex-wrap items-center gap-1.5" aria-label={`${resultCount} carte${resultCount !== 1 ? 's' : ''} pour ces filtres`}>
       {chips.map((c) => (
-        <span key={c.key} className="inline-flex h-7 items-center gap-1 rounded-full bg-[var(--bg-elevated)] pl-2.5 pr-1 text-xs text-[var(--text-primary)] ring-1 ring-[var(--border)]">
+        <span key={c.key} className="inline-flex h-7 items-center gap-0.5 rounded-full bg-[var(--bg-elevated)] pl-2.5 text-xs text-[var(--text-primary)] ring-1 ring-[var(--border)]">
           <span className="max-w-[220px] truncate">{c.text}</span>
-          <button onClick={c.onRemove} className="rounded-full p-0.5 text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]" aria-label={`Retirer ${c.text}`}>
+          <button onClick={c.onRemove} className="-my-1 flex h-7 w-7 items-center justify-center rounded-full text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]" aria-label={`Retirer ${c.text}`}>
             <X size={13} />
           </button>
         </span>
       ))}
-      <button onClick={() => { reset(); }} className="ml-1 text-xs font-medium text-[var(--accent)] hover:underline">
+      <button onClick={() => { reset(); }} className="ml-1 h-7 rounded-md px-1.5 text-xs font-medium text-[var(--accent)] hover:underline">
         Tout effacer
       </button>
     </div>

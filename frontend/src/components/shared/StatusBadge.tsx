@@ -15,8 +15,8 @@ export function StatusBadge({ status, solid = false }: { status: CardStatus; sol
   const { label, color } = CONFIG[status];
   return (
     <span
-      className={`inline-flex h-5 items-center gap-1 rounded-md px-1.5 text-[10px] font-semibold ${
-        solid ? 'dark-scope bg-black/70 ring-1 ring-white/10 backdrop-blur-sm' : 'ring-1 ring-inset'
+      className={`inline-flex h-5 items-center gap-1 rounded-md px-1.5 text-[11px] font-semibold ${
+        solid ? 'dark-scope bg-black/75 ring-1 ring-white/10' : 'ring-1 ring-inset'
       }`}
       style={solid ? { color } : { color, background: `color-mix(in srgb, ${color} 12%, transparent)`, ['--tw-ring-color' as string]: `color-mix(in srgb, ${color} 25%, transparent)` }}
     >
