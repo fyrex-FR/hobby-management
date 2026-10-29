@@ -1,168 +1,121 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, AlertTriangle, CheckCircle2, Clock, ExternalLink, Info, Loader2, Play, RotateCcw, SkipForward } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertTriangle, CheckCircle2, ExternalLink, Loader2, PanelRight, RotateCcw } from 'lucide-react';
 import type { Card } from '../../types';
-import { buildVintedDraft, openVintedDraft } from '../../lib/vintedDraft';
 import { VintedLogo } from './EbayLogo';
 import { Modal, Notice } from '../ui';
 
-type FlowStatus = 'idle' | 'preparing' | 'waiting' | 'done' | 'error';
+type SendState = 'sending' | 'sent' | 'missing' | 'empty';
 
+const REQUIRED_VERSION = '2.9.0';
+
+/**
+ * Publication Vinted en chaîne : la sélection part dans le panneau de
+ * l'extension CardVaults Scout (onglet « Publier sur Vinted »), qui remplit
+ * chaque annonce sur Vinted et associe l'annonce publiée à la carte.
+ */
 export function VintedPublishFlow({ cards, onClose }: { cards: Card[]; onClose: () => void }) {
-  const [queue] = useState(() => cards.filter(
-    (card) => !card.vinted_url && Boolean(card.image_front_url) && (card.vinted_price ?? card.price ?? 0) > 0,
-  ));
-  const excludedCount = cards.length - queue.length;
-  const queryClient = useQueryClient();
-  const [index, setIndex] = useState(0);
-  const [status, setStatus] = useState<FlowStatus>('idle');
-  const [error, setError] = useState('');
-  const timeoutRef = useRef<number | null>(null);
-  const current = queue[index];
+  const eligible = useMemo(() => cards.filter((card) =>
+    !card.vinted_url
+    && Boolean(card.image_front_url)
+    && (card.vinted_price ?? card.price ?? 0) > 0
+    && card.status !== 'vendu' && card.status !== 'reserve' && card.status !== 'draft',
+  ), [cards]);
+  const excluded = cards.length - eligible.length;
+  const [state, setState] = useState<SendState>(eligible.length ? 'sending' : 'empty');
+  const [sentCount, setSentCount] = useState(0);
+  const timer = useRef<number | null>(null);
 
-  const clearBridgeTimeout = useCallback(() => {
-    if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current);
-    timeoutRef.current = null;
-  }, []);
-
-  const sendCard = useCallback(async (card: Card) => {
-    setStatus('preparing');
-    setError('');
-    try {
-      const draft = await buildVintedDraft(card);
-      window.postMessage({ source: 'cardvaults-app', type: 'VINTED_QUEUE_DRAFT', draft }, window.location.origin);
-      clearBridgeTimeout();
-      timeoutRef.current = window.setTimeout(() => {
-        setStatus('error');
-        setError('Extension CardVaults absente ou à recharger (version 2.7.0 requise).');
-      }, 2500);
-    } catch (cause) {
-      setStatus('error');
-      setError((cause as Error).message || 'Impossible de préparer la carte.');
-    }
-  }, [clearBridgeTimeout]);
+  // Envoi à l'extension (via collection-bridge.js) ; sans réponse sous 2,5 s,
+  // elle est considérée absente.
+  const postSelection = useCallback(() => {
+    if (!eligible.length) return;
+    window.postMessage({ source: 'cardvaults-app', type: 'VINTED_QUEUE_SET', cardIds: eligible.map((c) => c.id) }, window.location.origin);
+    if (timer.current) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setState('missing'), 2500);
+  }, [eligible]);
+  const retry = () => { setState('sending'); postSelection(); };
 
   useEffect(() => {
-    function handleMessage(event: MessageEvent) {
+    function onMessage(event: MessageEvent) {
       if (event.source !== window || event.origin !== window.location.origin) return;
       const message = event.data;
       if (!message || message.source !== 'cardvaults-extension') return;
-      if (message.cardId && current && message.cardId !== current.id) return;
-      if (message.type === 'VINTED_QUEUE_ACCEPTED') {
-        clearBridgeTimeout();
-        setStatus('waiting');
-      } else if (message.type === 'VINTED_QUEUE_ERROR') {
-        clearBridgeTimeout();
-        setStatus('error');
-        setError(message.error || 'Le brouillon Vinted a échoué.');
-      } else if (message.type === 'VINTED_QUEUE_PUBLISHED') {
-        clearBridgeTimeout();
-        queryClient.invalidateQueries({ queryKey: ['cards'] });
-        if (index + 1 >= queue.length) {
-          setStatus('done');
-        } else {
-          const nextIndex = index + 1;
-          setIndex(nextIndex);
-          void sendCard(queue[nextIndex]);
-        }
+      if (message.type === 'VINTED_QUEUE_SET_ACCEPTED') {
+        if (timer.current) window.clearTimeout(timer.current);
+        setSentCount(message.count ?? eligible.length);
+        setState('sent');
+      } else if (message.type === 'VINTED_QUEUE_SET_ERROR') {
+        if (timer.current) window.clearTimeout(timer.current);
+        setState('missing');
       }
     }
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
-  }, [clearBridgeTimeout, current, index, queryClient, queue, sendCard]);
-
-  useEffect(() => () => clearBridgeTimeout(), [clearBridgeTimeout]);
-
-  async function fallback() {
-    if (!current) return;
-    setStatus('preparing');
-    try {
-      openVintedDraft(await buildVintedDraft(current));
-      setStatus('error');
-      setError('Mode manuel ouvert : colle ensuite l’URL dans la fiche.');
-    } catch (cause) {
-      setStatus('error');
-      setError((cause as Error).message);
-    }
-  }
-
-  function skip() {
-    clearBridgeTimeout();
-    if (index + 1 >= queue.length) setStatus('done');
-    else {
-      const nextIndex = index + 1;
-      setIndex(nextIndex);
-      void sendCard(queue[nextIndex]);
-    }
-  }
-
-  const position = queue.length ? Math.min(index + 1, queue.length) : 0;
-  const progress = queue.length ? ((status === 'done' ? queue.length : index) / queue.length) * 100 : 0;
-  const price = current ? current.vinted_price ?? current.price : null;
-
-  const footer = (
-    <>
-      {status !== 'done' && current && <button onClick={onClose} disabled={status === 'preparing'} className="ui-btn ui-btn-ghost mr-auto">Annuler</button>}
-      {(status === 'waiting' || status === 'error') && current && <button onClick={skip} className="ui-btn"><SkipForward size={15} /> Ignorer</button>}
-      {status === 'error' && current && <button onClick={() => void sendCard(current)} className="ui-btn"><RotateCcw size={14} /> Réessayer</button>}
-      {status === 'idle' && current && <button onClick={() => void sendCard(current)} className="ui-btn ui-btn-primary"><Play size={14} /> Démarrer</button>}
-      {status === 'preparing' && <button disabled className="ui-btn ui-btn-primary"><Loader2 size={14} className="animate-spin" /> Préparation…</button>}
-      {status === 'error' && current && <button onClick={() => void fallback()} className="ui-btn ui-btn-primary"><ExternalLink size={14} /> Ouvrir manuellement</button>}
-      {status === 'done' && <button onClick={onClose} className="ui-btn ui-btn-primary">Fermer</button>}
-      {!current && status !== 'done' && <button onClick={onClose} className="ui-btn ui-btn-primary">Fermer</button>}
-    </>
-  );
+    window.addEventListener('message', onMessage);
+    postSelection();
+    return () => {
+      window.removeEventListener('message', onMessage);
+      if (timer.current) window.clearTimeout(timer.current);
+    };
+  }, [postSelection, eligible.length]);
 
   return (
     <Modal
       onClose={onClose}
       zIndex={120}
       icon={<VintedLogo width={55} height={16} />}
-      title="Publication en chaîne"
-      subtitle={queue.length ? `${queue.length} carte${queue.length > 1 ? 's' : ''} à publier sur Vinted` : 'Aucune carte publiable'}
-      dismissible={status !== 'preparing'}
-      footer={footer}
+      title="Publier sur Vinted"
+      subtitle={eligible.length ? `${eligible.length} carte${eligible.length > 1 ? 's' : ''} à publier` : 'Aucune carte publiable'}
+      footer={
+        <>
+          <button onClick={onClose} className="ui-btn ui-btn-ghost mr-auto">Fermer</button>
+          {state === 'missing' && <button onClick={retry} className="ui-btn"><RotateCcw size={14} /> Réessayer</button>}
+          {state === 'sent' && (
+            <a href="https://www.vinted.fr/items/new" target="_blank" rel="noreferrer" className="ui-btn ui-btn-primary">
+              Ouvrir Vinted <ExternalLink size={14} />
+            </a>
+          )}
+        </>
+      }
     >
       <div className="space-y-4">
-        {queue.length > 0 && (
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between text-xs">
-              <span className="text-[var(--text-muted)]">Progression</span>
-              <span className="tabular font-medium text-[var(--text-primary)]">{position} / {queue.length}</span>
-            </div>
-            <div className="h-1 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
-              <div className="h-full rounded-full bg-[var(--accent)] transition-[width] duration-200" style={{ width: `${progress}%` }} />
-            </div>
-          </div>
-        )}
-
-        {excludedCount > 0 && (
+        {excluded > 0 && (
           <Notice tone="warning" icon={AlertTriangle}>
-            {excludedCount} exclue{excludedCount > 1 ? 's' : ''} : déjà publiée, sans prix ou sans photo.
+            {excluded} carte{excluded > 1 ? 's' : ''} écartée{excluded > 1 ? 's' : ''} : déjà sur Vinted, vendue ou réservée, sans prix ou sans photo.
           </Notice>
         )}
 
-        {current && status !== 'done' && (
-          <div className="flex flex-col gap-4 sm:flex-row">
-            {current.image_front_url && (
-              <div className="mx-auto aspect-[3/4] w-44 shrink-0 overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--bg-elevated)] sm:mx-0 sm:w-40">
-                <img src={current.image_front_url} alt="" className="h-full w-full object-contain" />
-              </div>
-            )}
-            <div className="min-w-0 flex-1 space-y-1">
-              <p className="text-sm font-semibold text-[var(--text-primary)]">{current.player || 'Carte sans joueur'}</p>
-              <p className="text-[13px] text-[var(--text-secondary)]">{[current.year, current.brand, current.set_name, current.parallel_name].filter(Boolean).join(' · ')}</p>
-              {price != null && <p className="tabular pt-2 text-2xl font-semibold text-[var(--price)]">{price.toFixed(2)} €</p>}
-            </div>
-          </div>
+        {state === 'sending' && (
+          <Notice tone="info"><span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Envoi au panneau CardVaults…</span></Notice>
         )}
 
-        {status === 'idle' && current && <Notice tone="info" icon={Info}>Prêt à ouvrir Vinted dans un onglet dédié.</Notice>}
-        {status === 'preparing' && <Notice tone="info"><span className="flex items-center gap-2"><Loader2 size={16} className="animate-spin" /> Préparation du brouillon…</span></Notice>}
-        {status === 'waiting' && <Notice tone="info" icon={Clock}>Brouillon prêt. Vérifie l’annonce puis clique sur « Publier » dans Vinted.</Notice>}
-        {status === 'done' && <Notice tone="success" icon={CheckCircle2}>File terminée, URLs enregistrées.</Notice>}
-        {status === 'error' && <Notice tone="warning" icon={AlertCircle}>{error}</Notice>}
+        {state === 'sent' && (
+          <>
+            <Notice tone="success" icon={CheckCircle2}>
+              {sentCount} carte{sentCount > 1 ? 's' : ''} envoyée{sentCount > 1 ? 's' : ''} au panneau de l’extension.
+            </Notice>
+            <ol className="space-y-2.5 text-[13px] text-[var(--text-secondary)]">
+              <li className="flex gap-3"><Step n={1} />Ouvre Vinted dans Chrome.</li>
+              <li className="flex gap-3"><Step n={2} /><span>Clique sur l’icône CardVaults <PanelRight size={13} className="inline align-[-2px]" aria-hidden /> puis sur l’onglet <b className="font-medium text-[var(--text-primary)]">Publier sur Vinted</b>.</span></li>
+              <li className="flex gap-3"><Step n={3} /><span><b className="font-medium text-[var(--text-primary)]">Remplir l’annonce</b>, vérifie-la, clique sur « Ajouter » sur Vinted : l’annonce est associée à la carte toute seule, puis on passe à la suivante.</span></li>
+            </ol>
+          </>
+        )}
+
+        {state === 'missing' && (
+          <Notice tone="warning" icon={AlertTriangle}>
+            Extension CardVaults Scout introuvable sur cette page. Installe-la ou recharge-la (version {REQUIRED_VERSION} ou plus), recharge CardVaults, puis réessaie.
+          </Notice>
+        )}
+
+        {state === 'empty' && (
+          <p className="text-[13px] text-[var(--text-muted)]">Aucune carte de la sélection n’est publiable : il faut une photo, un prix, et ne pas être déjà en ligne sur Vinted.</p>
+        )}
       </div>
     </Modal>
+  );
+}
+
+function Step({ n }: { n: number }) {
+  return (
+    <span className="tabular flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[var(--bg-elevated)] text-[11px] font-semibold text-[var(--text-primary)]">{n}</span>
   );
 }

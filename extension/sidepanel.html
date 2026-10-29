@@ -1,5 +1,7 @@
 <!doctype html><html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>CardVaults Scout</title><link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link href="https://fonts.googleapis.com/css2?family=Geist:wght@400..700&display=swap" rel="stylesheet"><link rel="stylesheet" href="sidepanel.css"></head>
-<body><header><div><span class="brand-mark" aria-hidden="true">C</span><strong>Scout</strong></div><button id="logout" class="icon hidden" title="Déconnecter">↪</button></header><main>
+<body><header><div><span class="brand-mark" aria-hidden="true">C</span><strong>Scout</strong></div><button id="logout" class="icon hidden" title="Déconnecter">↪</button></header>
+<nav id="tabs" class="tabs hidden" role="tablist" aria-label="Mode du panneau"><button role="tab" id="tab-scout" data-tab="scout" aria-selected="true">Analyser</button><button role="tab" id="tab-vinted" data-tab="vinted" aria-selected="false">Publier sur Vinted</button></nav>
+<main>
 <section id="pairing" class="panel hidden"><div class="eyebrow">CardVaults</div><h1>Connecter Scout</h1><p>Associe cette extension à ton compte. Aucun mot de passe n’est stocké.</p><button id="pair">Générer un code</button><div id="pair-code" class="pair-code hidden"></div><a id="approve" class="button secondary hidden" target="_blank">Ouvrir CardVaults</a><button id="exchange" class="secondary hidden">J’ai validé le code</button></section>
 <section id="scout" class="hidden"><div id="empty" class="empty"><div class="radar">⌁</div><h1>Ouvre une annonce</h1><p>Scout détecte automatiquement les cartes sur Vinted et eBay.</p></div><div id="workspace" class="hidden">
 <div id="listing" class="listing-card"></div>
@@ -9,4 +11,18 @@
 <details id="search-tools" class="hidden"><summary>Modifier la recherche</summary><div id="searches" class="searches"></div><label>Recherche eBay<input id="query" type="text"></label><button id="analyze" class="secondary">Relancer l’analyse</button></details>
 <details id="prefill" class="prefill hidden"></details>
 <div class="actions"><button id="add" class="hidden">Ajouter à ma Collection</button><button id="reset" class="secondary hidden">Nouvelle analyse</button></div></div></section>
-</main><script src="sidepanel.js"></script></body></html>
+<section id="vinted" class="hidden" aria-labelledby="tab-vinted">
+<div id="v-selection" class="v-selection hidden"></div>
+<div id="v-current"></div>
+<div id="v-status" class="status" role="status" aria-live="polite"></div>
+<div id="v-undo" class="v-undo hidden" role="status"></div>
+<div id="v-list-head" class="v-list-head"><span id="v-count" class="section-label"></span><input id="v-search" type="search" placeholder="Rechercher une carte" aria-label="Rechercher une carte à publier"></div>
+<ul id="v-list" class="v-list"></ul>
+<details id="v-manual" class="v-manual"><summary>Associer une annonce à la main</summary>
+<p>Si l’annonce publiée n’a pas été détectée : ouvre-la sur Vinted puis associe-la à la carte en cours.</p>
+<button id="v-attach-tab" class="secondary">Associer l’annonce ouverte</button>
+<label>Ou colle son adresse<input id="v-url" type="url" inputmode="url" placeholder="https://www.vinted.fr/items/…"></label>
+<button id="v-attach-url" class="secondary">Associer cette adresse</button>
+</details>
+</section>
+</main><script src="vinted-logic.js"></script><script src="sidepanel.js"></script><script src="sidepanel-vinted.js"></script></body></html>
