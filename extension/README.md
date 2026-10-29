@@ -72,8 +72,11 @@ l'annonce.
 
 L'onglet **Publier sur Vinted** du panneau publie les cartes une par une :
 
-1. La file affiche les cartes « à vendre » sans annonce Vinted (avec photo et
-   prix). Depuis la Collection, `Vendre → Vinted` y envoie à la place la
+1. La file affiche les cartes « à vendre » sans annonce Vinted (avec photo),
+   y compris celles sans prix : le prix se saisit dans le panneau (enregistré
+   dans CardVaults via `PATCH /api/extension/cards/{id}/price`) et `Remplir`
+   reste désactivé tant qu'il manque. Filtre `Sans prix`. Chaque carte a un
+   lien `Ventes eBay` (ventes terminées, même recherche que la fiche carte). Depuis la Collection, `Vendre → Vinted` y envoie à la place la
    sélection en cours (bandeau « Sélection envoyée depuis CardVaults »).
 2. `Remplir l'annonce sur Vinted` ouvre une page de création vierge dans
    l'onglet Vinted actif (ou un nouvel onglet) et la remplit : titre,
@@ -89,6 +92,12 @@ L'onglet **Publier sur Vinted** du panneau publie les cartes une par une :
    consultée entre-temps n'est jamais associée par erreur.
 4. Secours : `Associer une annonce à la main` associe l'annonce ouverte dans
    l'onglet actif, ou une adresse collée.
+5. Organisation : la file se groupe par équipe (par défaut), joueur, set ou
+   année, et se trie (ajout récent, prix, joueur). `Publier ce groupe` limite
+   la file à une équipe, l'ordre affiché étant l'ordre de publication.
+   `Remplir la suivante automatiquement` ouvre le formulaire de la carte
+   suivante 1,5 s après chaque association (`Annuler` stoppe l'enchaînement).
+   Ces réglages sont gardés (`chrome.storage.local`, clé `vinted_panel_prefs`).
 
 Tests : `node extension/test-vinted-logic.mjs` (règles d'association, file,
 URL) et `backend/tests/test_vinted_draft.py` (texte d'annonce, routes).

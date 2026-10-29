@@ -98,3 +98,16 @@ def build_draft(card: dict) -> dict:
         player=card.get("player"), team=card.get("team"), series=set_name or brand,
     )
     return {"title": title, "description": description, "price": listing_price(card) or 0, "brand": brand or ""}
+
+
+def ebay_sold_query(card: dict) -> str:
+    """Recherche eBay des ventes, comme le bouton « eBay Sold » de la fiche carte
+    (frontend CardDetail.buildPriceSearchText)."""
+    number = (card.get("card_number") or "").strip()
+    if number and not number.startswith("#"):
+        number = f"#{number}"
+    parts = (
+        card.get("player"), card.get("year"), card.get("set_name") or card.get("brand"), number or None,
+        card.get("insert_name"), card.get("parallel_name"), card.get("numbered"),
+    )
+    return " ".join(" ".join(str(p) for p in parts if p).split())
