@@ -15,7 +15,7 @@ from .auth import current_user
 from .cards import supabase_headers
 from .upload import _get_s3, R2_BUCKET_NAME, R2_PUBLIC_URL
 from services.card_taxonomy import apply_refine, card_fields, classify, refine_keywords, strip_grading
-from services.vinted_draft import build_draft, listing_price
+from services.vinted_draft import build_draft, ebay_sold_query, listing_price
 from services.ebay_service import search_ebay_listings, search_ebay_sold
 from services.extension_helpers import (
     allowed_image_url, allowed_source_url, annotate_comparables, build_browse_queries,
@@ -355,9 +355,10 @@ VINTED_QUEUE_FIELDS = (
 
 @router.get("/vinted-queue")
 async def vinted_queue(user: dict = Depends(current_extension_user)):
-    """Cartes publiables sur Vinted (pas encore en ligne, avec photo et prix),
-    avec le texte d'annonce prêt à coller. Le panneau de l'extension filtre
-    ensuite (à vendre par défaut, ou la sélection envoyée depuis l'app)."""
+    """Cartes à publier sur Vinted (pas encore en ligne, avec photo), avec le
+    texte d'annonce prêt à coller et la recherche eBay des ventes. Les cartes
+    sans prix sont incluses : le panneau demande le prix avant de remplir.
+    Le panneau filtre ensuite (à vendre par défaut, ou la sélection de l'app)."""
     rows = await _rest("GET", "cards", params={
         "user_id": f"eq.{user['sub']}",
         "status": "in.(collection,a_vendre)",
@@ -370,8 +371,6 @@ async def vinted_queue(user: dict = Depends(current_extension_user)):
     out = []
     for card in rows:
         price = listing_price(card)
-        if not price or price <= 0:
-            continue
         out.append({
             "id": card["id"],
             "status": card["status"],
@@ -383,10 +382,31 @@ async def vinted_queue(user: dict = Depends(current_extension_user)):
             "numbered": card.get("numbered"),
             "image_front_url": card.get("image_front_url"),
             "image_back_url": card.get("image_back_url"),
-            "price": price,
+            "price": price if price and price > 0 else None,
             "draft": build_draft(card),
+            "ebay_query": ebay_sold_query(card),
         })
     return out
+
+
+class PriceUpdate(BaseModel):
+    price: float = Field(gt=0, le=100000)
+
+
+@router.patch("/cards/{card_id}/price")
+async def set_price(card_id: str, body: PriceUpdate, user: dict = Depends(current_extension_user)):
+    """Prix de vente fixé depuis le panneau Vinted. Même règle que l'app :
+    `price` et `vinted_price` portent la même valeur."""
+    price = round(body.price, 2)
+    updated = await _rest(
+        "PATCH", "cards",
+        params={"id": f"eq.{card_id}", "user_id": f"eq.{user['sub']}"},
+        json={"price": price, "vinted_price": price},
+        prefer="return=representation",
+    )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Carte introuvable")
+    return {"card_id": card_id, "price": price}
 
 
 @router.post("/cards", status_code=201)

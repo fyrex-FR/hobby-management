@@ -1134,3 +1134,108 @@ button.link:hover:not(:disabled) {
 .v-group-head button.link {
   font-size: 12px;
 }
+
+/* Prix modifiable et ventes eBay */
+.v-price {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.v-price-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+}
+.v-price-field input {
+  width: 96px;
+  height: 32px;
+  margin: 0;
+  padding: 0 10px;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.v-price-field span {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.v-ebay-link {
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  text-decoration: none;
+}
+.v-ebay-link:hover {
+  text-decoration: underline;
+}
+.v-hint {
+  margin: 8px 2px 0;
+  color: var(--orange);
+}
+.v-filter {
+  display: flex;
+  gap: 2px;
+  margin: 0 0 10px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--bg-secondary);
+}
+.v-filter button {
+  flex: 1;
+  width: auto;
+  min-height: 30px;
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.v-filter button:hover:not(:disabled) {
+  background: transparent;
+  color: var(--text-primary);
+}
+.v-filter button[aria-pressed="true"] {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.v-filter .count {
+  color: var(--orange);
+  font-variant-numeric: tabular-nums;
+}
+.v-row {
+  display: flex;
+  align-items: stretch;
+}
+.v-row .v-item {
+  flex: 1;
+  min-width: 0;
+}
+.v-row.active {
+  background: var(--accent-dim);
+}
+.v-row.active .v-item {
+  background: transparent;
+}
+.v-ebay {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  border-left: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.v-ebay:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+.v-item-price.missing {
+  color: var(--orange);
+  font-size: 12px;
+  font-weight: 500;
+}

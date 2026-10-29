@@ -72,8 +72,11 @@ l'annonce.
 
 L'onglet **Publier sur Vinted** du panneau publie les cartes une par une :
 
-1. La file affiche les cartes « à vendre » sans annonce Vinted (avec photo et
-   prix). Depuis la Collection, `Vendre → Vinted` y envoie à la place la
+1. La file affiche les cartes « à vendre » sans annonce Vinted (avec photo),
+   y compris celles sans prix : le prix se saisit dans le panneau (enregistré
+   dans CardVaults via `PATCH /api/extension/cards/{id}/price`) et `Remplir`
+   reste désactivé tant qu'il manque. Filtre `Sans prix`. Chaque carte a un
+   lien `Ventes eBay` (ventes terminées, même recherche que la fiche carte). Depuis la Collection, `Vendre → Vinted` y envoie à la place la
    sélection en cours (bandeau « Sélection envoyée depuis CardVaults »).
 2. `Remplir l'annonce sur Vinted` ouvre une page de création vierge dans
    l'onglet Vinted actif (ou un nouvel onglet) et la remplit : titre,

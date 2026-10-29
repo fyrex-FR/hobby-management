@@ -67,4 +67,20 @@ assert.deepEqual(plain(V.sortCards(teamCards, "price_desc").map((c) => c.id)), [
 assert.deepEqual(plain(V.sortCards(teamCards, "player").map((c) => c.id)), ["4", "2", "1", "3"]);
 assert.deepEqual(plain(V.sortCards(teamCards, "recent").map((c) => c.id)), ["1", "2", "3", "4"]);
 
+// Cartes sans prix, lien eBay, prix saisi
+const priced = [
+  { id: "p1", status: "a_vendre", player: "A", price: 5 },
+  { id: "p2", status: "a_vendre", player: "B", price: null },
+];
+assert.deepEqual(plain(V.filterQueue(priced).map((c) => c.id)), ["p1", "p2"]);
+assert.deepEqual(plain(V.filterQueue(priced, { missingPrice: true }).map((c) => c.id)), ["p2"]);
+assert.equal(V.ebaySoldUrl("Victor Wembanyama 2023-24 Prizm #136"), "https://www.ebay.com/sch/i.html?_nkw=Victor+Wembanyama+2023-24+Prizm+%23136&LH_Sold=1&LH_Complete=1");
+assert.equal(V.ebaySoldUrl(""), null);
+assert.equal(V.parsePrice("12,50"), 12.5);
+assert.equal(V.parsePrice(" 12 € "), 12);
+assert.equal(V.parsePrice("1 200"), 1200);
+assert.equal(V.parsePrice("0"), null);
+assert.equal(V.parsePrice("abc"), null);
+assert.equal(V.parsePrice("12,555"), null);
+
 console.log("vinted-logic : tous les tests passent");

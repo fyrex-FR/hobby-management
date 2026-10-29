@@ -6,7 +6,7 @@ import { Modal, Notice } from '../ui';
 
 type SendState = 'sending' | 'sent' | 'missing' | 'empty';
 
-const REQUIRED_VERSION = '2.9.0';
+const REQUIRED_VERSION = '2.11.0';
 
 /**
  * Publication Vinted en chaîne : la sélection part dans le panneau de
@@ -17,10 +17,11 @@ export function VintedPublishFlow({ cards, onClose }: { cards: Card[]; onClose: 
   const eligible = useMemo(() => cards.filter((card) =>
     !card.vinted_url
     && Boolean(card.image_front_url)
-    && (card.vinted_price ?? card.price ?? 0) > 0
     && card.status !== 'vendu' && card.status !== 'reserve' && card.status !== 'draft',
   ), [cards]);
   const excluded = cards.length - eligible.length;
+  // Le panneau demande le prix de ces cartes avant de remplir l'annonce.
+  const unpriced = eligible.filter((card) => !((card.vinted_price ?? card.price ?? 0) > 0)).length;
   const [state, setState] = useState<SendState>(eligible.length ? 'sending' : 'empty');
   const [sentCount, setSentCount] = useState(0);
   const timer = useRef<number | null>(null);
@@ -79,7 +80,7 @@ export function VintedPublishFlow({ cards, onClose }: { cards: Card[]; onClose: 
       <div className="space-y-4">
         {excluded > 0 && (
           <Notice tone="warning" icon={AlertTriangle}>
-            {excluded} carte{excluded > 1 ? 's' : ''} écartée{excluded > 1 ? 's' : ''} : déjà sur Vinted, vendue ou réservée, sans prix ou sans photo.
+            {excluded} carte{excluded > 1 ? 's' : ''} écartée{excluded > 1 ? 's' : ''} : déjà sur Vinted, vendue ou réservée, ou sans photo.
           </Notice>
         )}
 
@@ -91,6 +92,7 @@ export function VintedPublishFlow({ cards, onClose }: { cards: Card[]; onClose: 
           <>
             <Notice tone="success" icon={CheckCircle2}>
               {sentCount} carte{sentCount > 1 ? 's' : ''} envoyée{sentCount > 1 ? 's' : ''} au panneau de l’extension.
+              {unpriced > 0 && ` Dont ${unpriced} sans prix : tu le fixeras dans le panneau.`}
             </Notice>
             <ol className="space-y-2.5 text-[13px] text-[var(--text-secondary)]">
               <li className="flex gap-3"><Step n={1} />Ouvre Vinted dans Chrome.</li>
@@ -107,7 +109,7 @@ export function VintedPublishFlow({ cards, onClose }: { cards: Card[]; onClose: 
         )}
 
         {state === 'empty' && (
-          <p className="text-[13px] text-[var(--text-muted)]">Aucune carte de la sélection n’est publiable : il faut une photo, un prix, et ne pas être déjà en ligne sur Vinted.</p>
+          <p className="text-[13px] text-[var(--text-muted)]">Aucune carte de la sélection n’est publiable : il faut une photo, et ne pas être déjà en ligne sur Vinted ni vendue.</p>
         )}
       </div>
     </Modal>

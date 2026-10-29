@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from routers import extension
-from services.vinted_draft import add_hashtags, build_draft, build_hashtags, normalize_hashtag
+from services.vinted_draft import add_hashtags, build_draft, build_hashtags, ebay_sold_query, normalize_hashtag
 
 
 class VintedDraftTest(unittest.TestCase):
@@ -43,6 +43,14 @@ class VintedDraftTest(unittest.TestCase):
         self.assertIn("#fyrex_spurs", draft["description"])
         self.assertEqual(build_draft({"player": "X", "parallel_name": "Base", "vinted_price": 3})["title"], "X")
 
+    def test_ebay_sold_query(self):
+        self.assertEqual(
+            ebay_sold_query({"player": "Victor Wembanyama", "year": "2023-24", "brand": "Panini", "set_name": "Prizm",
+                             "card_number": "136", "parallel_name": "Silver", "numbered": "/99"}),
+            "Victor Wembanyama 2023-24 Prizm #136 Silver /99",
+        )
+        self.assertEqual(ebay_sold_query({"player": "A", "brand": "Topps", "card_number": "#5"}), "A Topps #5")
+
 
 USER = "user-1"
 
@@ -76,13 +84,20 @@ class VintedRoutesTest(unittest.TestCase):
     def tearDown(self):
         extension._rest = self._saved
 
-    def test_queue_skips_cards_without_price_and_brings_draft(self):
+    def test_queue_includes_cards_without_price(self):
         queue = self.client.get("/api/extension/vinted-queue").json()
-        self.assertEqual([c["id"] for c in queue], ["c1", "c2"])
-        self.assertEqual(queue[1]["price"], 8)
+        self.assertEqual([c["id"] for c in queue], ["c1", "c2", "c3"])
+        self.assertEqual([c["price"] for c in queue], [5, 8, None])
         self.assertEqual(queue[0]["draft"]["title"], "A")
+        self.assertEqual(queue[2]["ebay_query"], "C")
         params = self.calls[0][1]
         self.assertEqual((params["vinted_url"], params["status"]), ("is.null", "in.(collection,a_vendre)"))
+
+    def test_set_price_mirrors_vinted_price(self):
+        r = self.client.patch("/api/extension/cards/c3/price", json={"price": 12.345})
+        self.assertEqual(r.json(), {"card_id": "c3", "price": 12.35})
+        self.assertEqual((self.cards[2]["price"], self.cards[2]["vinted_price"]), (12.35, 12.35))
+        self.assertEqual(self.client.patch("/api/extension/cards/c3/price", json={"price": 0}).status_code, 422)
 
     def test_attach_then_undo_restores_status(self):
         url = "https://www.vinted.fr/items/123456789-carte-b?referrer=catalog"

@@ -23,13 +23,16 @@
     // « Publier ce groupe » : la file se limite à une équipe (ou un joueur, un set…).
     scope: null,
     published: 0, chainTimer: null,
+    // Filtre « Sans prix » et prix en cours de saisie (gardés entre deux rendus).
+    missingPrice: false, priceInput: {},
   };
 
   /** Cartes de la file, filtrées puis triées, avant découpage en groupes. */
   const visible = () => CVVinted.sortCards(
-    CVVinted.inGroup(CVVinted.filterQueue(v.cards, { selection: v.selection, search: v.search }), v.scope),
+    CVVinted.inGroup(CVVinted.filterQueue(v.cards, { selection: v.selection, search: v.search, missingPrice: v.missingPrice }), v.scope),
     v.sort,
   );
+  const priceText = (value) => (value > 0 ? String(value).replace(".", ",") : "");
   const groups = () => CVVinted.groupCards(visible(), v.scope ? "none" : v.groupBy);
   /** Ordre d'affichage (groupes à la suite) : c'est aussi l'ordre de publication. */
   const ordered = () => groups().flatMap((g) => g.cards);
@@ -109,6 +112,9 @@
     }
     const busy = v.phase === "preparing" || v.phase === "filling";
     const awaiting = v.phase === "awaiting" && v.currentId === card.id;
+    const typed = v.priceInput[card.id] ?? priceText(card.price);
+    const price = CVVinted.parsePrice(typed);
+    const ebay = CVVinted.ebaySoldUrl(card.ebay_query);
     const img = card.image_front_url ? `<img src="${escapeAttr(CVVinted.cdnUrl(card.image_front_url))}" alt="">` : "";
     box.innerHTML = `
       <div class="v-card">
@@ -116,23 +122,38 @@
         <div class="v-card-body">
           <strong>${escapeHtml(card.player || "Carte")}</strong>
           <span class="muted">${escapeHtml(metaOf(card))}</span>
-          <span class="price">${currency(card.price)}</span>
+          <label class="v-price">Prix Vinted
+            <span class="v-price-field"><input id="v-price" inputmode="decimal" autocomplete="off" value="${escapeAttr(typed)}" placeholder="À fixer" aria-describedby="v-price-hint"><span>€</span></span>
+          </label>
+          ${ebay ? `<a class="v-ebay-link" href="${escapeAttr(ebay)}" target="_blank" rel="noopener">Ventes eBay ↗</a>` : ""}
         </div>
       </div>
-      <button id="v-fill" ${busy ? "disabled" : ""}>${busy ? "Ouverture de Vinted…" : awaiting ? "Remplir à nouveau" : "Remplir l’annonce sur Vinted"}</button>
+      <p id="v-price-hint" class="v-hint${price ? " hidden" : ""}">${typed && !price ? "Prix invalide : saisis un montant, par exemple 12,50." : "Fixe un prix pour publier cette carte : il sera enregistré dans CardVaults."}</p>
+      <button id="v-fill" ${busy || !price ? "disabled" : ""}>${busy ? "Ouverture de Vinted…" : awaiting ? "Remplir à nouveau" : "Remplir l’annonce sur Vinted"}</button>
       <button id="v-skip" class="secondary" ${busy ? "disabled" : ""}>Passer à la suivante</button>`;
     if (awaiting) $("v-fill").classList.add("secondary");
+    const input = $("v-price");
+    input.addEventListener("input", () => {
+      v.priceInput[card.id] = input.value;
+      const ok = CVVinted.parsePrice(input.value);
+      $("v-fill").disabled = busy || !ok;
+      $("v-price-hint").classList.toggle("hidden", Boolean(ok));
+      $("v-price-hint").textContent = input.value.trim() && !ok ? "Prix invalide : saisis un montant, par exemple 12,50." : "Fixe un prix pour publier cette carte : il sera enregistré dans CardVaults.";
+    });
+    input.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); savePrice(card, input.value); } });
+    input.addEventListener("change", () => savePrice(card, input.value));
     $("v-fill").addEventListener("click", () => fill(card));
     $("v-skip").addEventListener("click", () => skip(card));
   }
 
   function itemHtml(c, card) {
     const active = card && c.id === card.id;
-    return `<li><button class="v-item${active ? " active" : ""}" data-id="${escapeAttr(c.id)}" aria-current="${Boolean(active)}">
+    const ebay = CVVinted.ebaySoldUrl(c.ebay_query);
+    return `<li class="v-row${active ? " active" : ""}"><button class="v-item" data-id="${escapeAttr(c.id)}" aria-current="${Boolean(active)}">
         ${c.image_front_url ? `<img src="${escapeAttr(CVVinted.cdnUrl(c.image_front_url))}" alt="" loading="lazy">` : "<span class=\"v-thumb\"></span>"}
         <span class="v-item-text"><b>${escapeHtml(c.player || "Carte")}</b><span>${escapeHtml(metaOf(c))}</span></span>
-        <span class="v-item-price">${currency(c.price)}</span>
-      </button></li>`;
+        <span class="v-item-price${c.price > 0 ? "" : " missing"}">${c.price > 0 ? currency(c.price) : "Sans prix"}</span>
+      </button>${ebay ? `<a class="v-ebay" href="${escapeAttr(ebay)}" target="_blank" rel="noopener" title="Ventes eBay de ${escapeAttr(c.player || "cette carte")}" aria-label="Ventes eBay de ${escapeAttr(c.player || "cette carte")}">eBay</a>` : ""}</li>`;
   }
 
   function renderList() {
@@ -140,6 +161,9 @@
     const total = list.reduce((n, g) => n + g.cards.length, 0);
     const card = current();
     $("v-count").textContent = `${total} à publier${v.published ? ` · ${v.published} publiée${v.published > 1 ? "s" : ""}` : ""}`;
+    const missing = CVVinted.filterQueue(v.cards, { selection: v.selection, missingPrice: true }).length;
+    $("v-missing-count").textContent = missing ? String(missing) : "";
+    $("v-filter").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String((b.dataset.filter === "missing") === v.missingPrice)));
     $("v-list").innerHTML = list.map((g) => [
       g.label !== null
         ? `<li class="v-group-head"><b>${escapeHtml(g.label)}</b><span class="count">${g.cards.length}</span><button class="link" data-group="${escapeAttr(g.key ?? "")}" data-null="${g.key === null}" data-label="${escapeAttr(g.label)}">Publier ce groupe</button></li>`
@@ -211,7 +235,28 @@
 
   /* ---------- Actions ---------- */
 
+  /** Enregistre le prix dans CardVaults (price et vinted_price) s'il a changé. */
+  async function savePrice(card, raw) {
+    const price = CVVinted.parsePrice(raw);
+    if (!price || price === card.price) return price;
+    try {
+      await api(`/cards/${encodeURIComponent(card.id)}/price`, { method: "PATCH", body: JSON.stringify({ price }) });
+      card.price = price;
+      card.draft = { ...card.draft, price };
+      delete v.priceInput[card.id];
+      setStatus(`Prix enregistré : ${currency(price)}`);
+      renderList();
+      return price;
+    } catch (error) {
+      setStatus(`Prix non enregistré : ${error.message}`, "error");
+      throw error;
+    }
+  }
+
   async function fill(card) {
+    const price = CVVinted.parsePrice(v.priceInput[card.id] ?? priceText(card.price));
+    if (!price) { setStatus("Fixe un prix avant de remplir l’annonce.", "error"); return; }
+    try { await savePrice(card, String(price)); } catch { return; }
     v.currentId = card.id; v.phase = "preparing"; render();
     setStatus("Préparation des photos…");
     try {
@@ -222,7 +267,7 @@
       setStatus("Ouverture de la page de création Vinted…");
       const result = await chrome.runtime.sendMessage({
         type: "VINTED_FILL", cardId: card.id, player: card.player, prevStatus: card.status,
-        draft: { ...card.draft, photos },
+        draft: { ...card.draft, price, photos },
       });
       if (result?.error) throw new Error(result.error);
     } catch (error) {
@@ -294,13 +339,13 @@
     advanceAfter(detail.cardId);
     v.published += 1;
     const next = current();
-    if (v.chain && next) {
+    if (v.chain && next && next.price > 0) {
       setStatus("Annonce associée. Ouverture de la suivante…");
       clearTimeout(v.chainTimer);
       // Laisse le temps de voir la confirmation (et d'annuler) avant d'enchaîner.
       v.chainTimer = setTimeout(() => fill(next), CHAIN_DELAY_MS);
     } else {
-      setStatus(next ? "Annonce associée. Carte suivante prête." : "Annonce associée.");
+      setStatus(next ? (next.price > 0 ? "Annonce associée. Carte suivante prête." : "Annonce associée. La suivante n’a pas de prix : fixe-le pour continuer.") : "Annonce associée.");
     }
     render();
   }
@@ -331,6 +376,9 @@
   $("v-group").addEventListener("change", (event) => { v.groupBy = event.target.value; v.scope = null; savePrefs(); render(); });
   $("v-sort").addEventListener("change", (event) => { v.sort = event.target.value; savePrefs(); render(); });
   $("v-chain").addEventListener("change", (event) => { v.chain = event.target.checked; savePrefs(); });
+  $("v-filter").querySelectorAll("button").forEach((button) => button.addEventListener("click", () => {
+    v.missingPrice = button.dataset.filter === "missing"; v.currentId = null; render();
+  }));
   $("v-attach-tab").addEventListener("click", async () => {
     const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
     attach(tab?.url);

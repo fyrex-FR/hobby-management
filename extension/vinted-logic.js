@@ -55,7 +55,7 @@
    * Cartes affichées dans le panneau : la sélection envoyée depuis l'app (dans
    * son ordre) si elle existe, sinon les cartes « à vendre ». Puis la recherche.
    */
-  function filterQueue(cards, { selection = null, search = "" } = {}) {
+  function filterQueue(cards, { selection = null, search = "", missingPrice = false } = {}) {
     let list;
     if (selection && selection.length) {
       const byId = new Map(cards.map((c) => [c.id, c]));
@@ -63,12 +63,28 @@
     } else {
       list = cards.filter((c) => c.status === "a_vendre");
     }
+    if (missingPrice) list = list.filter((c) => !(c.price > 0));
     const tokens = fold(search).split(/\s+/).filter(Boolean);
     if (!tokens.length) return list;
     return list.filter((c) => {
       const hay = fold([c.player, c.team, c.year, c.set_name, c.variant, c.numbered].filter(Boolean).join(" "));
       return tokens.every((t) => hay.includes(t));
     });
+  }
+
+  /** Ventes eBay terminées pour la carte (même lien que « eBay Sold » de la fiche). */
+  function ebaySoldUrl(query) {
+    const text = String(query || "").trim();
+    if (!text) return null;
+    return `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(text).replace(/%20/g, "+")}&LH_Sold=1&LH_Complete=1`;
+  }
+
+  /** Prix saisi (« 12,50 », « 12 € », « 1 200 ») → nombre > 0, ou null. */
+  function parsePrice(raw) {
+    const text = String(raw ?? "").replace(/[€\s\u00a0\u202f]/g, "").replace(",", ".");
+    if (!/^\d+(\.\d{1,2})?$/.test(text)) return null;
+    const value = Number(text);
+    return value > 0 ? Math.round(value * 100) / 100 : null;
   }
 
   /* ---------- Groupes et tri (publier équipe par équipe, etc.) ---------- */
@@ -122,7 +138,7 @@
   }
 
   root.CVVinted = {
-    listingUrl, isNewItemUrl, shouldAutoLink, cdnUrl, numberedBadge, filterQueue,
+    listingUrl, isNewItemUrl, shouldAutoLink, cdnUrl, numberedBadge, filterQueue, ebaySoldUrl, parsePrice,
     GROUPS, groupKey, groupCards, inGroup, sortCards,
     SUBMIT_WINDOW_MS, FILL_WINDOW_MS,
   };
