@@ -22,6 +22,7 @@ import {
   FolderCog,
   SearchX,
 } from 'lucide-react';
+import type { ReactNode } from 'react';
 import {
   createColumnHelper,
   flexRender,
@@ -53,6 +54,7 @@ import { RookieBadge } from '../shared/RookieBadge';
 import { normalizeParallelName } from '../../lib/cardQuality';
 import { playerLastName, playerInitial } from '../../lib/playerName';
 import {
+  CARD_TYPE_LABELS,
   GROUP_BY_LABELS,
   SORT_LABELS,
   buildFilterContext,
@@ -72,15 +74,7 @@ function formatEuro(v: number): string {
   return euro.format(v);
 }
 
-const CARD_TYPE_OPTIONS: { value: CardType; label: string }[] = [
-  { value: 'base', label: 'Base' },
-  { value: 'insert', label: 'Insert' },
-  { value: 'parallel', label: 'Parallel' },
-  { value: 'numbered', label: 'Numbered' },
-  { value: 'auto', label: 'Auto' },
-  { value: 'patch', label: 'Patch' },
-  { value: 'auto_patch', label: 'Auto/Patch' },
-];
+const CARD_TYPE_OPTIONS = (Object.keys(CARD_TYPE_LABELS) as CardType[]).map((value) => ({ value, label: CARD_TYPE_LABELS[value] }));
 
 const STATUS_OPTIONS: { value: CardStatus; label: string }[] = [
   { value: 'collection', label: 'Collection' },
@@ -90,6 +84,8 @@ const STATUS_OPTIONS: { value: CardStatus; label: string }[] = [
 ];
 
 declare module '@tanstack/react-table' {
+  // Les noms des génériques doivent reprendre ceux de la déclaration d'origine.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   interface ColumnMeta<TData, TValue> {
     mobileHide?: boolean;
   }
@@ -98,11 +94,12 @@ declare module '@tanstack/react-table' {
 function TableActions({ card, onEdit }: { card: Card; onEdit: () => void }) {
   const deleteWithUndo = useDeleteCardsWithUndo();
   return (
-    <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+    <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
       <button
         onClick={(e) => { e.stopPropagation(); onEdit(); }}
         className="ui-btn ui-btn-sm ui-btn-icon"
         title="Modifier"
+        aria-label={`Modifier ${card.player ?? 'la carte'}`}
       >
         <Pencil size={14} />
       </button>
@@ -113,6 +110,7 @@ function TableActions({ card, onEdit }: { card: Card; onEdit: () => void }) {
         }}
         className="ui-btn ui-btn-sm ui-btn-icon ui-btn-danger"
         title="Supprimer"
+        aria-label={`Supprimer ${card.player ?? 'la carte'}`}
       >
         <Trash2 size={14} />
       </button>
@@ -120,15 +118,43 @@ function TableActions({ card, onEdit }: { card: Card; onEdit: () => void }) {
   );
 }
 
-function QuickRookieToggle({ card }: { card: Card }) {
+/**
+ * Modification rapide depuis le tableau : enregistrée aussitôt, confirmée
+ * par un toast avec « Annuler » qui remet les valeurs précédentes.
+ */
+function useQuickEdit() {
   const updateCard = useUpdateCard();
-  const saving = updateCard.isPending;
+  return {
+    pending: updateCard.isPending,
+    edit(card: Card, patch: Partial<Card>, label: string) {
+      const previous = Object.fromEntries(
+        Object.keys(patch).map((k) => [k, card[k as keyof Card] ?? null]),
+      ) as Partial<Card>;
+      updateCard.mutate({ id: card.id, ...patch }, {
+        onSuccess: () => toast.success(label, {
+          description: card.player ?? undefined,
+          action: {
+            label: 'Annuler',
+            onClick: () => updateCard.mutate({ id: card.id, ...previous }, {
+              onError: (e) => toast.error('Annulation impossible', { description: errorMessage(e) }),
+            }),
+          },
+        }),
+        onError: (e) => toast.error('Modification non enregistrée', { description: errorMessage(e) }),
+      });
+    },
+  };
+}
+
+function QuickRookieToggle({ card }: { card: Card }) {
+  const quick = useQuickEdit();
+  const saving = quick.pending;
 
   return (
     <button
       onClick={(e) => {
         e.stopPropagation();
-        updateCard.mutate({ id: card.id, is_rookie: !card.is_rookie });
+        quick.edit(card, { is_rookie: !card.is_rookie }, card.is_rookie ? 'RC retiré' : 'Marquée RC');
       }}
       disabled={saving}
       className="transition-all"
@@ -138,7 +164,7 @@ function QuickRookieToggle({ card }: { card: Card }) {
       {card.is_rookie ? (
         <RookieBadge compact />
       ) : (
-        <span className="inline-flex h-5 items-center rounded-md border border-dashed border-[var(--border-strong)] px-1.5 text-[10px] font-semibold text-[var(--text-muted)]">
+        <span className="inline-flex h-5 items-center rounded-md border border-dashed border-[var(--border-strong)] px-1.5 text-[11px] font-semibold text-[var(--text-muted)]">
           RC
         </span>
       )}
@@ -147,13 +173,18 @@ function QuickRookieToggle({ card }: { card: Card }) {
 }
 
 function QuickTypeSelect({ card }: { card: Card }) {
-  const updateCard = useUpdateCard();
+  const quick = useQuickEdit();
 
   return (
     <select
       value={card.card_type ?? ''}
+      aria-label={`Type de ${card.player ?? 'la carte'}`}
       onClick={(e) => e.stopPropagation()}
-      onChange={(e) => updateCard.mutate({ id: card.id, card_type: (e.target.value || null) as CardType | null })}
+      onKeyDown={(e) => e.stopPropagation()}
+      onChange={(e) => {
+        const next = (e.target.value || null) as CardType | null;
+        quick.edit(card, { card_type: next }, `Type : ${next ? CARD_TYPE_LABELS[next] : 'aucun'}`);
+      }}
       className="ui-select h-8 min-w-[112px] text-xs"
     >
       <option value="">—</option>
@@ -165,13 +196,18 @@ function QuickTypeSelect({ card }: { card: Card }) {
 }
 
 function QuickStatusSelect({ card }: { card: Card }) {
-  const updateCard = useUpdateCard();
+  const quick = useQuickEdit();
 
   return (
     <select
       value={card.status}
+      aria-label={`Statut de ${card.player ?? 'la carte'}`}
       onClick={(e) => e.stopPropagation()}
-      onChange={(e) => updateCard.mutate({ id: card.id, status: e.target.value as CardStatus })}
+      onKeyDown={(e) => e.stopPropagation()}
+      onChange={(e) => {
+        const next = e.target.value as CardStatus;
+        quick.edit(card, { status: next }, `Statut : ${STATUS_OPTIONS.find((o) => o.value === next)?.label ?? next}`);
+      }}
       className="ui-select h-8 min-w-[120px] text-xs"
     >
       {STATUS_OPTIONS.map((option) => (
@@ -181,36 +217,88 @@ function QuickStatusSelect({ card }: { card: Card }) {
   );
 }
 
-function QuickParallelInput({ card }: { card: Card }) {
-  const updateCard = useUpdateCard();
-  const [value, setValue] = useState(card.parallel_name && card.parallel_name !== 'Base' ? card.parallel_name : '');
-
-  useEffect(() => {
-    setValue(card.parallel_name && card.parallel_name !== 'Base' ? card.parallel_name : '');
-  }, [card.parallel_name]);
-
-  async function save() {
-    const normalized = value.trim();
-    const current = card.parallel_name && card.parallel_name !== 'Base' ? card.parallel_name : '';
-    if (normalized === current) return;
-    await updateCard.mutateAsync({ id: card.id, parallel_name: normalized || null });
-  }
-
+/**
+ * Champ texte d'édition rapide : Entrée enregistre, Échap annule, quitter le
+ * champ sans rien changer ne déclenche rien. Remonté à chaque nouvelle valeur
+ * serveur (clé), donc pas d'état à resynchroniser.
+ */
+function QuickTextInput({
+  initial,
+  placeholder,
+  label,
+  inputMode,
+  className = '',
+  onCommit,
+}: {
+  initial: string;
+  placeholder: string;
+  label: string;
+  inputMode?: 'decimal';
+  className?: string;
+  onCommit: (value: string) => void;
+}) {
+  const [value, setValue] = useState(initial);
+  const cancelled = useRef(false);
   return (
     <input
       value={value}
-      placeholder="Parallel"
+      placeholder={placeholder}
+      aria-label={label}
+      inputMode={inputMode}
       onClick={(e) => e.stopPropagation()}
       onChange={(e) => setValue(e.target.value)}
-      onBlur={() => { void save(); }}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          (e.currentTarget as HTMLInputElement).blur();
-        }
+      onBlur={() => {
+        if (cancelled.current) { cancelled.current = false; setValue(initial); return; }
+        if (value.trim() !== initial.trim()) onCommit(value.trim());
       }}
-      className="ui-input h-7 px-2 text-xs"
-      style={{ color: 'var(--accent)' }}
+      onKeyDown={(e) => {
+        e.stopPropagation();
+        if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
+        if (e.key === 'Escape') { cancelled.current = true; e.currentTarget.blur(); }
+      }}
+      className={`ui-input h-8 px-2 text-xs ${className}`}
+    />
+  );
+}
+
+function QuickParallelInput({ card }: { card: Card }) {
+  const quick = useQuickEdit();
+  const initial = card.parallel_name && card.parallel_name !== 'Base' ? card.parallel_name : '';
+  return (
+    <QuickTextInput
+      key={initial}
+      initial={initial}
+      placeholder="Parallèle"
+      label={`Parallèle de ${card.player ?? 'la carte'}`}
+      onCommit={(v) => quick.edit(card, { parallel_name: v || null }, v ? `Parallèle : ${v}` : 'Parallèle retiré')}
+    />
+  );
+}
+
+function QuickPriceInput({ card }: { card: Card }) {
+  const quick = useQuickEdit();
+  const current = displayPrice(card);
+  const initial = current != null ? String(current).replace('.', ',') : '';
+  return (
+    <QuickTextInput
+      key={initial}
+      initial={initial}
+      placeholder="Prix"
+      label={`Prix de ${card.player ?? 'la carte'}`}
+      inputMode="decimal"
+      className="tabular w-20 text-right"
+      onCommit={(v) => {
+        if (v === '') {
+          quick.edit(card, { price: null, vinted_price: null }, 'Prix retiré');
+          return;
+        }
+        const n = parseFloat(v.replace(/[€\s]/g, '').replace(',', '.'));
+        if (!Number.isFinite(n) || n < 0) {
+          toast.error('Prix invalide', { description: 'Saisis un montant, par exemple 12,50.' });
+          return;
+        }
+        quick.edit(card, { price: n, vinted_price: n }, `Prix : ${formatEuro(n)}`);
+      }}
     />
   );
 }
@@ -219,6 +307,7 @@ const columnHelper = createColumnHelper<Card>();
 
 function buildColumns(
   onEdit: (card: Card) => void,
+  quickEdit: boolean,
   selectMode: boolean,
   selectedIds: Set<string>,
   onToggleSelect: (id: string) => void,
@@ -263,8 +352,8 @@ function buildColumns(
               : <div className="w-10 h-14 rounded-md shrink-0 flex items-center justify-center text-sm" style={{ background: 'var(--bg-elevated)' }}>🃏</div>
             }
             <div className="min-w-0">
-              <div className="font-medium text-sm truncate">{info.getValue() ?? '—'}</div>
-              <div className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{card.team ?? ''}</div>
+              <div className="truncate text-sm font-medium">{info.getValue() ?? '—'}</div>
+              <div className="truncate text-xs text-[var(--text-muted)]">{card.team ?? ''}</div>
             </div>
           </div>
         );
@@ -279,42 +368,34 @@ function buildColumns(
         const isPatch = card.card_type === 'patch' || card.card_type === 'auto_patch';
         return (
           <div className="flex items-center gap-1.5">
-            <QuickRookieToggle card={card} />
+            {quickEdit ? <QuickRookieToggle card={card} /> : card.is_rookie && <RookieBadge compact />}
             {card.grading_company && (
               <GradingBadge card={card} compact />
             )}
             {isAuto && (
-              <Badge tone="green" className="text-[10px] font-semibold"><span title="Autographe">AUTO</span></Badge>
+              <Badge tone="green" className="text-[11px] font-semibold"><span title="Autographe">AUTO</span></Badge>
             )}
             {isPatch && (
-              <Badge tone="red" className="text-[10px] font-semibold"><span title="Patch">PATCH</span></Badge>
+              <Badge tone="red" className="text-[11px] font-semibold"><span title="Patch">PATCH</span></Badge>
             )}
             {card.numbered && (
-              <Badge tone="accent" className="tabular text-[10px] font-semibold">{card.numbered}</Badge>
+              <Badge className="tabular text-[11px] font-semibold"><span className="text-[var(--violet)]">{card.numbered}</span></Badge>
             )}
             {(card.quantity ?? 1) > 1 && (
-              <Badge tone="blue" className="tabular text-[10px] font-semibold"><span title={`${card.quantity} exemplaires`}>×{card.quantity}</span></Badge>
+              <Badge tone="blue" className="tabular text-[11px] font-semibold"><span title={`${card.quantity} exemplaires`}>×{card.quantity}</span></Badge>
             )}
-            {card.vinted_url && (
-              <MarketDot kind="vinted" />
-            )}
-            {card.ebay_url && (
-              <MarketDot kind="ebay" />
-            )}
+            {card.vinted_url && <MarketDot kind="vinted" stale={card.status === 'vendu'} />}
+            {card.ebay_url && <MarketDot kind="ebay" stale={card.status === 'vendu'} />}
             {(card.folder_ids ?? []).map((fid) => {
               const f = folderById.get(fid);
               if (!f) return null;
               return (
-                <span key={fid} className="h-5 max-w-[90px] shrink-0 truncate whitespace-nowrap rounded-md bg-[var(--bg-elevated)] px-1.5 text-[10px] font-medium leading-5 text-[var(--text-secondary)]" title={`${f.emoji ?? ''} ${f.name}`.trim()}>
+                <span key={fid} className="h-5 max-w-[90px] shrink-0 truncate whitespace-nowrap rounded-md bg-[var(--bg-elevated)] px-1.5 text-[11px] font-medium leading-5 text-[var(--text-secondary)]" title={`${f.emoji ?? ''} ${f.name}`.trim()}>
                   {f.emoji || f.name}
                 </span>
               );
             })}
-            {folders.length > 0 && (
-              <span onClick={(e) => e.stopPropagation()}>
-                <FolderQuickAssign card={card} folders={folders} variant="icon" />
-              </span>
-            )}
+            {quickEdit && folders.length > 0 && <FolderQuickAssign card={card} folders={folders} variant="icon" />}
           </div>
         );
       },
@@ -330,8 +411,14 @@ function buildColumns(
         const card = info.row.original;
         return (
           <div className="min-w-0 w-[210px]">
-            <div className="text-xs whitespace-nowrap mb-1">{info.getValue() ?? <span style={{ color: 'var(--text-muted)' }}>—</span>}</div>
-            <QuickParallelInput card={card} />
+            <div className="truncate text-xs">{info.getValue() ?? <span className="text-[var(--text-muted)]">—</span>}</div>
+            {quickEdit ? (
+              <div className="mt-1"><QuickParallelInput card={card} /></div>
+            ) : (
+              card.parallel_name && card.parallel_name !== 'Base' && (
+                <div className="truncate text-xs text-[var(--text-secondary)]">{normalizeParallelName(card.parallel_name)}</div>
+              )
+            )}
           </div>
         );
       },
@@ -339,12 +426,14 @@ function buildColumns(
     }),
     columnHelper.accessor('card_type', {
       header: 'Type',
-      cell: (info) => <QuickTypeSelect card={info.row.original} />,
+      cell: (info) => (quickEdit
+        ? <QuickTypeSelect card={info.row.original} />
+        : <span className="whitespace-nowrap text-xs text-[var(--text-secondary)]">{info.getValue() ? CARD_TYPE_LABELS[info.getValue() as CardType] : '—'}</span>),
       meta: { mobileHide: true },
     }),
     columnHelper.accessor('status', {
       header: 'Statut',
-      cell: (info) => <QuickStatusSelect card={info.row.original} />,
+      cell: (info) => (quickEdit ? <QuickStatusSelect card={info.row.original} /> : <StatusBadge status={info.row.original.status} />),
     }),
     columnHelper.accessor('purchase_price', {
       header: 'Achat',
@@ -354,7 +443,9 @@ function buildColumns(
     columnHelper.accessor((c) => displayPrice(c), {
       id: 'price',
       header: 'Prix',
-      cell: (info) => <span className="tabular text-sm font-medium whitespace-nowrap text-[var(--price)]">{info.getValue() != null ? formatEuro(info.getValue() as number) : <span style={{ color: 'var(--text-muted)' }}>—</span>}</span>,
+      cell: (info) => (quickEdit
+        ? <QuickPriceInput card={info.row.original} />
+        : <span className="tabular whitespace-nowrap text-sm font-medium text-[var(--price)]">{info.getValue() != null ? formatEuro(info.getValue() as number) : <span className="text-[var(--text-muted)]">—</span>}</span>),
     }),
     columnHelper.display({
       id: 'actions',
@@ -371,7 +462,7 @@ function PhotoTag({ children, tone, title }: { children: React.ReactNode; tone: 
   return (
     <span
       title={title}
-      className="tabular inline-flex h-5 items-center rounded-md dark-scope bg-black/70 px-1.5 text-[10px] font-semibold ring-1 ring-white/10 backdrop-blur-sm"
+      className="tabular inline-flex h-5 items-center rounded-md dark-scope bg-black/75 px-1.5 text-[11px] font-semibold ring-1 ring-white/10"
       style={{ color }}
     >
       {children}
@@ -379,12 +470,16 @@ function PhotoTag({ children, tone, title }: { children: React.ReactNode; tone: 
   );
 }
 
-function MarketDot({ kind }: { kind: 'vinted' | 'ebay' }) {
+function MarketDot({ kind, stale = false }: { kind: 'vinted' | 'ebay'; stale?: boolean }) {
+  const market = kind === 'vinted' ? 'Vinted' : 'eBay';
+  const label = stale ? `Vendue mais encore en ligne sur ${market} : annonce à retirer` : `En ligne sur ${market}`;
   return (
     <span
-      className="inline-flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-[10px] font-bold text-white ring-1 ring-white/10"
+      className={`inline-flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-[11px] font-semibold text-white ${stale ? 'ring-2 ring-[var(--orange)]' : 'ring-1 ring-white/10'}`}
       style={{ background: kind === 'vinted' ? '#007782' : '#E53238' }}
-      title={kind === 'vinted' ? 'En ligne sur Vinted' : 'En ligne sur eBay'}
+      title={label}
+      aria-label={label}
+      role="img"
     >
       {kind === 'vinted' ? 'V' : 'e'}
     </span>
@@ -412,13 +507,24 @@ function GridCard({
 }) {
   const price = displayPrice(card);
   const variant = card.insert_name || (card.parallel_name && card.parallel_name !== 'Base' ? normalizeParallelName(card.parallel_name) : null);
+  const meta = [card.year, card.brand, card.set_name].filter(Boolean).join(' · ');
   const activate = () => (selectMode ? onToggleSelect?.(card.id) : onClick());
+  const accessibleName = [
+    card.player ?? 'Carte',
+    meta,
+    variant,
+    card.numbered,
+    card.status !== 'collection' ? STATUS_OPTIONS.find((o) => o.value === card.status)?.label : null,
+    price != null ? formatEuro(price) : null,
+  ].filter(Boolean).join(', ');
 
   return (
     <HoloCard rarity={holoRarity(card)} maxTilt={7} disabled={selectMode} className="h-full">
     <div
       role="button"
       tabIndex={0}
+      aria-label={accessibleName}
+      aria-pressed={selectMode ? selected : undefined}
       data-jump={anchorLetter}
       onClick={activate}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); } }}
@@ -454,7 +560,7 @@ function GridCard({
               ? <CheckCircle2 size={24} className="text-[var(--accent)] drop-shadow" fill="currentColor" stroke="var(--on-accent)" />
               : <Circle size={24} className="text-white/80 drop-shadow" />
           ) : folders.length > 0 ? (
-            <div className="opacity-0 transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100">
+            <div className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
               <FolderQuickAssign card={card} folders={folders} variant="overlay" />
             </div>
           ) : null}
@@ -464,8 +570,8 @@ function GridCard({
           <div className="absolute inset-x-2 bottom-2 z-10 flex items-end justify-between gap-1">
             <span>{card.status !== 'collection' && <StatusBadge status={card.status} solid />}</span>
             <span className="flex gap-1">
-              {card.vinted_url && <MarketDot kind="vinted" />}
-              {card.ebay_url && <MarketDot kind="ebay" />}
+              {card.vinted_url && <MarketDot kind="vinted" stale={card.status === 'vendu'} />}
+              {card.ebay_url && <MarketDot kind="ebay" stale={card.status === 'vendu'} />}
             </span>
           </div>
         )}
@@ -476,9 +582,7 @@ function GridCard({
           <p className="truncate text-[13px] font-semibold text-[var(--text-primary)]">{card.player ?? '—'}</p>
           {price != null && <span className="tabular shrink-0 text-[13px] font-semibold text-[var(--price)]">{formatEuro(price)}</span>}
         </div>
-        <p className="truncate text-xs text-[var(--text-muted)]">
-          {[card.year, card.brand, card.set_name].filter(Boolean).join(' · ') || '—'}
-        </p>
+        <p className="truncate text-xs text-[var(--text-muted)]">{meta || '—'}</p>
         {variant && <p className="truncate text-xs text-[var(--text-secondary)]">{variant}</p>}
         {folderChips.length > 0 && (
           <p className="mt-1 truncate text-[11px] text-[var(--text-muted)]" title={folderChips.join(', ')}>{folderChips.join(' · ')}</p>
@@ -534,11 +638,17 @@ function TableView({
           const card = row.original;
           const isSelected = selectMode && selectedIds.has(card.id);
           const price = displayPrice(card);
+          const variant = card.insert_name || (card.parallel_name && card.parallel_name !== 'Base' ? normalizeParallelName(card.parallel_name) : null);
+          const activate = () => (selectMode ? onToggleSelect(card.id) : onRowClick(card));
           return (
             <div
               key={row.id}
+              role="button"
+              tabIndex={0}
+              aria-pressed={selectMode ? isSelected : undefined}
               data-jump={rowAnchor.get(row.id)}
-              onClick={() => (selectMode ? onToggleSelect(card.id) : onRowClick(card))}
+              onClick={activate}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); } }}
               className={`flex items-center gap-3 p-2.5 transition-colors active:bg-[var(--bg-hover)] ${isSelected ? 'bg-[var(--accent-dim)]' : ''}`}
             >
               {selectMode && (
@@ -554,11 +664,16 @@ function TableView({
                 <div className="truncate text-xs text-[var(--text-muted)]">
                   {[card.year, card.set_name].filter(Boolean).join(' · ') || '—'}
                 </div>
-                <div className="mt-1 flex flex-wrap items-center gap-1">
-                  {card.is_rookie && <RookieBadge compact />}
-                  {card.grading_company && <GradingBadge card={card} compact />}
-                  {card.numbered && <span className="tabular text-[11px] font-semibold text-[var(--accent)]">{card.numbered}</span>}
-                </div>
+                {variant && <div className="truncate text-xs text-[var(--text-secondary)]">{variant}</div>}
+                {(card.is_rookie || card.grading_company || card.numbered || isAuto(card) || isPatch(card)) && (
+                  <div className="mt-1 flex flex-wrap items-center gap-1">
+                    {card.is_rookie && <RookieBadge compact />}
+                    {card.grading_company && <GradingBadge card={card} compact />}
+                    {isAuto(card) && <Badge tone="green" className="text-[11px] font-semibold">AUTO</Badge>}
+                    {isPatch(card) && <Badge tone="red" className="text-[11px] font-semibold">PATCH</Badge>}
+                    {card.numbered && <span className="tabular text-[11px] font-semibold text-[var(--violet)]">{card.numbered}</span>}
+                  </div>
+                )}
               </div>
               <div className="flex shrink-0 flex-col items-end gap-1.5">
                 <span className={`tabular text-sm font-semibold ${price != null ? 'text-[var(--price)]' : 'text-[var(--text-muted)]'}`}>
@@ -582,14 +697,23 @@ function TableView({
               {hg.headers.map((header) => {
                 const sortPair = TABLE_SORT[header.column.id];
                 const dir = sortPair ? (sortBy === sortPair[0] ? (sortPair[0] === sortPair[1] ? '↑' : '↓') : sortBy === sortPair[1] ? '↑' : '') : '';
+                const ariaSort = dir === '↑' ? 'ascending' : dir === '↓' ? 'descending' : sortPair ? 'none' : undefined;
                 return (
                   <th
                     key={header.id}
-                    onClick={sortPair ? () => onSort(sortBy === sortPair[0] ? sortPair[1] : sortPair[0]) : undefined}
-                    className={`whitespace-nowrap px-3 py-2.5 text-left text-xs font-medium text-[var(--text-muted)] ${sortPair ? 'cursor-pointer select-none hover:text-[var(--text-primary)]' : ''}`}
+                    aria-sort={ariaSort}
+                    className="whitespace-nowrap px-3 py-2.5 text-left text-xs font-medium text-[var(--text-muted)]"
                   >
-                    {flexRender(header.column.columnDef.header, header.getContext())}
-                    {dir && <span className="ml-1 text-[var(--accent)]">{dir}</span>}
+                    {sortPair ? (
+                      <button
+                        type="button"
+                        onClick={() => onSort(sortBy === sortPair[0] ? sortPair[1] : sortPair[0])}
+                        className="-mx-1 inline-flex items-center gap-1 rounded px-1 hover:text-[var(--text-primary)]"
+                      >
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                        {dir && <span className="text-[var(--accent)]" aria-hidden>{dir}</span>}
+                      </button>
+                    ) : flexRender(header.column.columnDef.header, header.getContext())}
                   </th>
                 );
               })}
@@ -603,7 +727,15 @@ function TableView({
               <tr
                 key={row.id}
                 data-jump={rowAnchor.get(row.id)}
+                tabIndex={0}
+                aria-selected={selectMode ? isSelected : undefined}
                 onClick={() => (selectMode ? onToggleSelect(row.original.id) : onRowClick(row.original))}
+                onKeyDown={(e) => {
+                  if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
+                  e.preventDefault();
+                  if (selectMode) onToggleSelect(row.original.id);
+                  else onRowClick(row.original);
+                }}
                 className={`group cursor-pointer border-b border-[var(--border)] transition-colors last:border-b-0 hover:bg-[var(--bg-elevated)] ${isSelected ? 'bg-[var(--accent-dim)]' : ''}`}
               >
                 {row.getVisibleCells().map((cell) => (
@@ -616,6 +748,19 @@ function TableView({
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+/** Bloc qui se replie en hauteur (rangées de filtres quand on défile sur mobile). */
+function Collapsible({ collapsed, children }: { collapsed: boolean; children: ReactNode }) {
+  return (
+    <div
+      className={`grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none ${collapsed ? 'grid-rows-[0fr] opacity-0' : 'grid-rows-[1fr] opacity-100'}`}
+      aria-hidden={collapsed || undefined}
+      inert={collapsed || undefined}
+    >
+      <div className="-m-1 min-h-0 overflow-hidden p-1">{children}</div>
     </div>
   );
 }
@@ -636,12 +781,23 @@ function DisplayMenu({ viewMode }: { viewMode: 'grid' | 'table' }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLButtonElement>(null);
   const { sortBy, groupBy, setSortBy, setGroupBy } = useCollectionFilters();
+  const grouped = viewMode === 'grid' && groupBy !== 'none';
 
   return (
     <>
-      <button ref={anchor} className="ui-btn" onClick={() => setOpen((v) => !v)} aria-expanded={open} title="Trier et grouper">
+      <button
+        ref={anchor}
+        className="ui-btn"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-label={`Trier et grouper : ${SORT_LABELS[sortBy]}${grouped ? `, groupé par ${GROUP_BY_LABELS[groupBy].toLowerCase()}` : ''}`}
+        title="Trier et grouper"
+      >
         <ArrowUpDown size={15} />
-        <span className="hidden md:inline">{SORT_LABELS[sortBy]}</span>
+        <span className="hidden md:inline">
+          {SORT_LABELS[sortBy]}
+          {grouped && <span className="text-[var(--text-muted)]"> · par {GROUP_BY_LABELS[groupBy].toLowerCase()}</span>}
+        </span>
         <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       <Popover anchorRef={anchor} open={open} onClose={() => setOpen(false)} width={240} align="end">
@@ -795,6 +951,13 @@ export function CollectionView() {
   const [ebayUpdateOpen, setEbayUpdateOpen] = useState(false);
   const [vintedPublishOpen, setVintedPublishOpen] = useState(false);
   const [pricingOpen, setPricingOpen] = useState(false);
+  // Le tableau est en lecture seule ; ce mode transforme ses cellules en champs.
+  const [quickEdit, setQuickEdit] = useState(false);
+  const isPhone = useIsMobile();
+  // Sur petit écran, les rangées d'onglets et de filtres se replient quand on
+  // descend dans la grille et reviennent dès qu'on remonte.
+  const [headerCollapsed, setHeaderCollapsed] = useState(false);
+  const lastScroll = useRef(0);
   const updateCard = useUpdateCard();
   const recalculateEbayPrices = useRecalculateEbayPrices();
   const deleteWithUndo = useDeleteCardsWithUndo();
@@ -824,7 +987,13 @@ export function CollectionView() {
   const sorted = useMemo(() => sortCards(filtered, sortBy), [filtered, sortBy]);
   const pricingCards = useMemo(() => sorted.filter((card) => displayPrice(card) == null), [sorted]);
   const collectionSize = useMemo(() => cards.filter((c) => c.status !== 'draft').length, [cards]);
-  const filteredValue = useMemo(() => filtered.reduce((sum, c) => sum + (displayPrice(c) ?? 0) * (c.quantity ?? 1), 0), [filtered]);
+  const showingSold = filters.status === 'vendu';
+  const filteredValue = useMemo(
+    () => filtered
+      .filter((c) => (showingSold ? c.status === 'vendu' : c.status !== 'vendu'))
+      .reduce((sum, c) => sum + (displayPrice(c) ?? 0) * (c.quantity ?? 1), 0),
+    [filtered, showingSold],
+  );
   const anyFilter = hasAnyFilter(filters);
 
   function toggleSelect(id: string) {
@@ -976,9 +1145,8 @@ export function CollectionView() {
     if (groupBy === 'none' || viewMode !== 'grid') return { '': sorted };
     const groups: Record<string, Card[]> = {};
     sorted.forEach((c) => {
-      const key = groupBy === 'player'
-        ? canonicalPlayer(c, ctx) ?? 'Inconnu'
-        : (c[groupBy] as string | null) ?? 'Inconnu';
+      const raw = groupBy === 'player' ? canonicalPlayer(c, ctx) : (c[groupBy] as string | null);
+      const key = raw?.trim() || 'Non renseigné';
       if (!groups[key]) groups[key] = [];
       groups[key].push(c);
     });
@@ -1056,8 +1224,8 @@ export function CollectionView() {
   }
 
   const columns = useMemo(
-    () => buildColumns(setSelectedCard, selectMode, selectedIds, toggleSelect, folderById, folders),
-    [selectMode, selectedIds, folderById, folders],
+    () => buildColumns(setSelectedCard, quickEdit, selectMode, selectedIds, toggleSelect, folderById, folders),
+    [quickEdit, selectMode, selectedIds, folderById, folders],
   );
 
   const table = useReactTable({
@@ -1074,9 +1242,13 @@ export function CollectionView() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <h1 className="hidden text-xl font-semibold tracking-tight text-[var(--text-primary)] lg:block">Collection</h1>
-            <p className="tabular text-[13px] text-[var(--text-muted)]">
+            <p className="tabular text-[13px] text-[var(--text-muted)]" aria-live="polite">
               {anyFilter ? `${filtered.length} sur ${collectionSize} cartes` : `${collectionSize} cartes`}
-              {filteredValue > 0 && <> · {formatEuro(Math.round(filteredValue))} estimés</>}
+              {filteredValue > 0 && (
+                <span title={showingSold ? 'Somme des prix des cartes vendues' : 'Somme des prix renseignés, cartes vendues exclues'}>
+                  {' · '}{formatEuro(Math.round(filteredValue))} {showingSold ? 'de ventes' : 'estimés'}
+                </span>
+              )}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -1084,28 +1256,42 @@ export function CollectionView() {
               onClick={() => setPricingOpen(true)}
               disabled={pricingCards.length === 0}
               className="ui-btn"
-              data-active={pricingCards.length > 0}
+              aria-label={`Pricer les ${pricingCards.length} cartes sans prix`}
               title="Pricer une à une les cartes sans prix (dans les filtres actuels)"
             >
               <BadgeEuro size={15} />
               <span className="hidden sm:inline">À pricer</span>
-              <span className="tabular text-xs opacity-80">{pricingCards.length}</span>
+              <span className="tabular text-xs text-[var(--text-muted)]">{pricingCards.length}</span>
             </button>
             <button
               onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
               className="ui-btn"
               data-active={selectMode}
+              aria-pressed={selectMode}
+              aria-label="Sélection multiple"
               title="Sélection multiple"
             >
               <ListChecks size={15} />
               <span className="hidden sm:inline">Sélectionner</span>
             </button>
+            {viewMode === 'table' && !isPhone && (
+              <button
+                onClick={() => setQuickEdit((v) => !v)}
+                className="ui-btn"
+                data-active={quickEdit}
+                aria-pressed={quickEdit}
+                title="Modifier statut, type, parallèle et prix directement dans le tableau"
+              >
+                <Pencil size={15} />
+                <span className="hidden md:inline">Édition rapide</span>
+              </button>
+            )}
             <DisplayMenu viewMode={viewMode} />
             <div className="ui-segmented">
-              <button data-active={viewMode === 'grid'} onClick={() => setViewMode('grid')} aria-label="Vue grille" title="Grille">
+              <button data-active={viewMode === 'grid'} aria-pressed={viewMode === 'grid'} onClick={() => setViewMode('grid')} aria-label="Vue grille" title="Grille">
                 <LayoutGrid size={15} />
               </button>
-              <button data-active={viewMode === 'table'} onClick={() => setViewMode('table')} aria-label="Vue liste" title="Liste">
+              <button data-active={viewMode === 'table'} aria-pressed={viewMode === 'table'} onClick={() => setViewMode('table')} aria-label="Vue liste" title="Liste">
                 <List size={15} />
               </button>
             </div>
@@ -1114,35 +1300,50 @@ export function CollectionView() {
         </div>
 
         <div className="flex flex-col gap-2 lg:flex-row lg:items-center">
-          <StatusTabs cards={cards} ctx={ctx} />
+          <Collapsible collapsed={headerCollapsed}>
+            <StatusTabs cards={cards} ctx={ctx} />
+          </Collapsible>
           <SearchField />
         </div>
 
-        <FilterRow cards={cards} ctx={ctx} folders={folders} onManageFolders={() => setManageFolders(true)} />
+        <Collapsible collapsed={headerCollapsed}>
+          <FilterRow cards={cards} ctx={ctx} folders={folders} onManageFolders={() => setManageFolders(true)} />
+        </Collapsible>
         <ActiveFilterChips folders={folders} resultCount={filtered.length} />
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto px-4 pb-28 sm:px-6">
+      <div
+        className="min-h-0 flex-1 overflow-auto px-4 pb-28 sm:px-6"
+        onScroll={(e) => {
+          if (window.innerWidth >= 1024) return;
+          const y = e.currentTarget.scrollTop;
+          const delta = y - lastScroll.current;
+          if (y < 48 || delta < -12) setHeaderCollapsed(false);
+          else if (delta > 12 && y > 160) setHeaderCollapsed(true);
+          if (Math.abs(delta) > 12 || y < 48) lastScroll.current = y;
+        }}
+      >
         {!isLoading && showAlphabet && (
-          <div className="no-scrollbar sticky top-0 z-20 -mx-4 mb-3 flex flex-nowrap items-center gap-0.5 overflow-x-auto border-b border-[var(--border)] bg-[var(--bg-primary)]/90 px-4 py-1.5 backdrop-blur-xl sm:-mx-6 sm:justify-center sm:px-6">
+          <nav aria-label="Aller à la lettre" className="no-scrollbar sticky top-0 z-20 -mx-4 mb-3 flex flex-nowrap items-center gap-0.5 overflow-x-auto border-b border-[var(--border)] bg-[var(--bg-primary)] px-4 py-1.5 sm:-mx-6 sm:justify-center sm:px-6">
             {[...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''), '#'].map((letter) => {
               const has = availableInitials.has(letter);
               return (
                 <button
                   key={letter}
                   disabled={!has}
+                  tabIndex={-1}
                   onClick={() => jumpToLetter(letter)}
-                  className={`h-6 w-6 shrink-0 rounded-md text-[11px] font-semibold transition-colors ${
+                  className={`h-7 w-7 shrink-0 rounded-md text-[12px] font-semibold transition-colors [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-8 ${
                     has
                       ? 'text-[var(--text-secondary)] hover:bg-[var(--accent)] hover:text-[var(--on-accent)]'
-                      : 'cursor-default text-[var(--text-muted)] opacity-40'
+                      : 'cursor-default text-[var(--text-muted)] opacity-50'
                   }`}
                 >
                   {letter}
                 </button>
               );
             })}
-          </div>
+          </nav>
         )}
         {!showAlphabet && <div className="h-4" />}
 
@@ -1182,7 +1383,7 @@ export function CollectionView() {
             {Object.entries(grouped).map(([group, groupCards]) => (
               <section key={group}>
                 {groupBy !== 'none' && (
-                  <div className="sticky top-0 z-10 -mx-1 mb-3 flex items-baseline gap-2 bg-[var(--bg-primary)]/90 px-1 py-2 backdrop-blur">
+                  <div className="sticky top-0 z-10 -mx-1 mb-3 flex items-baseline gap-2 bg-[var(--bg-primary)] px-1 py-2">
                     <h3 className="text-sm font-semibold text-[var(--text-primary)]">{group}</h3>
                     <span className="tabular text-xs text-[var(--text-muted)]">{groupCards.length}</span>
                   </div>
@@ -1209,6 +1410,12 @@ export function CollectionView() {
             ))}
           </div>
         ) : (
+          <>
+          {quickEdit && !isPhone && (
+            <p className="mb-3 text-[13px] text-[var(--text-secondary)]">
+              Édition rapide : chaque changement est enregistré tout de suite, avec « Annuler » dans la notification.
+            </p>
+          )}
           <TableView
             table={table}
             onRowClick={setSelectedCard}
@@ -1218,6 +1425,7 @@ export function CollectionView() {
             sortBy={sortBy}
             onSort={setSortBy}
           />
+          </>
         )}
       </div>
 
@@ -1378,7 +1586,7 @@ function FolderQuickAssign({
   const updateCard = useUpdateCard();
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
-  const triggerRef = useRef<HTMLSpanElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const current = new Set(card.folder_ids ?? []);
 
@@ -1400,7 +1608,7 @@ function FolderQuickAssign({
     };
   }, [open]);
 
-  function openMenu(e: React.MouseEvent) {
+  function openMenu(e: React.MouseEvent<HTMLButtonElement>) {
     e.stopPropagation();
     e.preventDefault();
     const r = triggerRef.current!.getBoundingClientRect();
@@ -1424,18 +1632,21 @@ function FolderQuickAssign({
 
   return (
     <>
-      <span
+      <button
         ref={triggerRef}
-        role="button"
-        tabIndex={0}
+        type="button"
         onClick={openMenu}
+        onKeyDown={(e) => e.stopPropagation()}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label="Ranger dans un dossier"
         className={variant === 'overlay'
-          ? 'inline-flex h-7 w-7 items-center justify-center rounded-lg border border-white/10 dark-scope bg-black/55 text-white shadow-lg backdrop-blur-sm hover:bg-black/75'
-          : 'inline-flex h-6 w-6 items-center justify-center rounded-md text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}
+          ? 'inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 dark-scope bg-black/70 text-white shadow-[var(--shadow-sm)] hover:bg-black/85'
+          : 'inline-flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-muted)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}
         title="Ranger dans un dossier"
       >
         <FolderIcon size={variant === 'overlay' ? 15 : 14} />
-      </span>
+      </button>
       {open && pos && createPortal(
         <div
           ref={popRef}

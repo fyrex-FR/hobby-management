@@ -102,8 +102,8 @@ export const GROUP_BY_LABELS: Record<GroupBy, string> = {
 export const CARD_TYPE_LABELS: Record<CardType, string> = {
   base: 'Base',
   insert: 'Insert',
-  parallel: 'Parallel',
-  numbered: 'Numbered',
+  parallel: 'Parallèle',
+  numbered: 'Numérotée',
   auto: 'Auto',
   patch: 'Patch',
   auto_patch: 'Auto/Patch',

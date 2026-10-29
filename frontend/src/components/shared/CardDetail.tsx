@@ -26,6 +26,7 @@ import {
   ZoomOut,
   ExternalLink,
   Loader2,
+  MoreHorizontal,
 } from 'lucide-react';
 import { SPORTS, type Card, type CardType, type GradingCompany, type GradingStatus, type Sport } from '../../types';
 import { GradingBadge } from './GradingBadge';
@@ -38,7 +39,10 @@ import { EbaySoldItems } from './EbaySoldItems';
 import { EbayPublishModal } from './EbayPublishModal';
 import { EbayLogo, VintedLogo } from './EbayLogo';
 import { supabase } from '../../lib/supabase';
-import { toast } from '../../lib/feedback';
+import { confirmDialog, errorMessage, toast } from '../../lib/feedback';
+import { useDialogFocus } from '../../lib/useDialogFocus';
+import { CARD_TYPE_LABELS } from '../../lib/collectionFilters';
+import { Popover } from './Popover';
 import { compressImage } from '../../lib/storage';
 import { cdnImg } from '../../lib/cdn';
 import { RookieBadge } from './RookieBadge';
@@ -63,15 +67,7 @@ const GRADING_STATUS_LABELS: Record<GradingStatus, string> = {
   returned: 'Retournée',
 };
 
-const CARD_TYPES: { value: CardType; label: string }[] = [
-  { value: 'base', label: 'Base' },
-  { value: 'insert', label: 'Insert' },
-  { value: 'parallel', label: 'Parallel' },
-  { value: 'numbered', label: 'Numbered' },
-  { value: 'auto', label: 'Auto' },
-  { value: 'patch', label: 'Patch' },
-  { value: 'auto_patch', label: 'Auto/Patch' },
-];
+const CARD_TYPES = (Object.keys(CARD_TYPE_LABELS) as CardType[]).map((value) => ({ value, label: CARD_TYPE_LABELS[value] }));
 
 function buildPriceSearchText(card: Card): string {
   return [
@@ -131,7 +127,7 @@ function SectionTitle({ children, action }: { children: ReactNode; action?: Reac
 }
 
 /** Ligne marketplace : logo, prix, état en ligne, actions. */
-function MarketRow({ logo, label, price, live, children }: { logo: ReactNode; label: string; price: number | null; live: boolean; children: ReactNode }) {
+function MarketRow({ logo, label, price, live, stale = false, children }: { logo: ReactNode; label: string; price: number | null; live: boolean; stale?: boolean; children: ReactNode }) {
   return (
     <div className="flex items-center gap-3 px-3 py-2.5">
       <span className="flex w-14 shrink-0 items-center" title={label}>{logo}</span>
@@ -140,9 +136,9 @@ function MarketRow({ logo, label, price, live, children }: { logo: ReactNode; la
           {price != null ? formatEuro(price) : '—'}
         </div>
         {live && (
-          <div className="flex items-center gap-1 text-[11px] text-[var(--green)]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[var(--green)]" />
-            En ligne
+          <div className={`flex items-center gap-1 text-[12px] ${stale ? 'text-[var(--orange)]' : 'text-[var(--green)]'}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${stale ? 'bg-[var(--orange)]' : 'bg-[var(--green)]'}`} />
+            {stale ? 'Encore en ligne, à retirer' : 'En ligne'}
           </div>
         )}
       </div>
@@ -315,13 +311,21 @@ export function CardDetail({ card, onClose }: Props) {
   const [vintedPreview, setVintedPreview] = useState<{ image: string; payload: VintedDraft } | null>(null);
 
   async function withdrawFromEbay() {
+    const ok = await confirmDialog({
+      title: 'Retirer l’annonce eBay ?',
+      description: 'L’annonce est retirée d’eBay tout de suite. Tu pourras la republier depuis cette fiche.',
+      confirmLabel: 'Retirer l’annonce',
+      danger: true,
+    });
+    if (!ok) return;
     setWithdrawingEbay(true);
     setEbayError('');
     try {
       await apiFetch(`/ebay/selling/withdraw/${card.id}`, { method: 'POST' });
       await queryClient.invalidateQueries({ queryKey: ['cards'] });
+      toast.success('Annonce eBay retirée');
     } catch (e) {
-      setEbayError((e as Error).message);
+      setEbayError(`Retrait impossible : ${errorMessage(e)}`);
     } finally {
       setWithdrawingEbay(false);
     }
@@ -479,6 +483,12 @@ export function CardDetail({ card, onClose }: Props) {
   }
 
   async function handleRestoreOriginal(side: 'front' | 'back') {
+    const ok = await confirmDialog({
+      title: 'Revenir à la photo d’origine ?',
+      description: `La photo vitrine du ${side === 'front' ? 'recto' : 'verso'} (fond retravaillé) est remplacée par la photo prise au départ.`,
+      confirmLabel: 'Revenir à l’origine',
+    });
+    if (!ok) return;
     setUploadingImage(side);
     try {
       const { data } = await supabase.auth.getSession();
@@ -521,8 +531,8 @@ export function CardDetail({ card, onClose }: Props) {
       if (card.image_back_url) {
         await downloadImage(card.image_back_url, buildPhotoFilename(card, 'back'));
       }
-    } catch {
-      // échec silencieux : on ne bloque pas l'UI
+    } catch (e) {
+      toast.error('Téléchargement impossible', { description: errorMessage(e) });
     } finally {
       setDownloadingPhotos(false);
     }
@@ -533,6 +543,9 @@ export function CardDetail({ card, onClose }: Props) {
   const [side, setSide] = useState<Side>(card.image_front_url || !card.image_back_url ? 'front' : 'back');
   const panelRef = useRef<HTMLDivElement>(null);
   const overlayOpen = lightboxSide != null || vintedPreview != null || showEbayPublish;
+  const [photoMenuOpen, setPhotoMenuOpen] = useState(false);
+  const photoMenuAnchor = useRef<HTMLButtonElement>(null);
+  useDialogFocus(panelRef, !overlayOpen);
 
   // Verrouille le défilement de la page tant que la fiche est ouverte.
   useEffect(() => {
@@ -565,8 +578,11 @@ export function CardDetail({ card, onClose }: Props) {
   const hasAnyPhoto = !!(card.image_front_url || card.image_back_url);
   const subtitle = [card.team, card.year].filter(Boolean).join(' · ');
   const vintedPrice = card.vinted_price ?? card.price;
+  const isSold = card.status === 'vendu';
+  const canPublish = card.status !== 'vendu' && card.status !== 'reserve';
+  const soldPrice = card.ebay_sold_price ?? card.price;
 
-  const details: { label: string; value: string | null | undefined; num?: boolean }[] = [
+  const details: { label: string; value: string | null | undefined; num?: boolean; muted?: boolean }[] = [
     { label: 'Sport', value: card.sport },
     { label: 'Marque', value: card.brand },
     { label: 'Set', value: card.set_name },
@@ -576,7 +592,7 @@ export function CardDetail({ card, onClose }: Props) {
     { label: 'Tirage', value: card.numbered, num: true },
     { label: 'Rookie', value: card.is_rookie ? 'Oui' : null },
     { label: 'Quantité', value: (card.quantity ?? 1) > 1 ? String(card.quantity) : null, num: true },
-    { label: 'État', value: card.condition_notes || 'Mint / Near Mint' },
+    { label: 'État', value: card.condition_notes || 'Non renseigné', muted: !card.condition_notes },
   ];
 
   const textFields = (keys: [
@@ -602,13 +618,13 @@ export function CardDetail({ card, onClose }: Props) {
         maxTilt={11}
         gyro={gyroOn}
         disabled={editing || !shownUrl}
-        className="w-full max-w-[min(18rem,calc((94dvh_-_18rem)*0.714))] md:max-w-[min(100%,calc((92dvh_-_16rem)*0.714))]"
+        className="w-full max-w-[min(15rem,calc((94dvh_-_20rem)*0.714))] sm:max-w-[min(18rem,calc((94dvh_-_18rem)*0.714))] md:max-w-[min(100%,calc((92dvh_-_16rem)*0.714))]"
       >
       <div
         {...dropProps(side)}
-        role={shownUrl ? 'button' : undefined}
-        tabIndex={shownUrl ? 0 : undefined}
-        aria-label={shownUrl ? (editing ? `Remplacer la photo (${SIDE_LABEL[side].toLowerCase()})` : 'Afficher en plein écran') : undefined}
+        role={shownUrl && editing ? 'button' : undefined}
+        tabIndex={shownUrl && editing ? 0 : undefined}
+        aria-label={shownUrl && editing ? `Remplacer la photo (${SIDE_LABEL[side].toLowerCase()})` : undefined}
         onClick={() => handleImageClick(side)}
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleImageClick(side); } }}
         className={`group relative aspect-[5/7] w-full overflow-hidden rounded-xl border transition-colors focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${
@@ -632,11 +648,6 @@ export function CardDetail({ card, onClose }: Props) {
           </div>
         )}
 
-        {!editing && shownUrl && (
-          <span className="pointer-events-none absolute bottom-2 right-2 inline-flex h-8 w-8 items-center justify-center rounded-lg dark-scope bg-black/70 text-[var(--text-primary)] ring-1 ring-white/10 opacity-0 transition-opacity group-hover:opacity-100 [@media(hover:none)]:opacity-100">
-            <Maximize2 size={14} />
-          </span>
-        )}
         {editing && shownUrl && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-1.5 dark-scope bg-black/55 text-[13px] font-medium text-[var(--text-primary)] opacity-0 transition-opacity group-hover:opacity-100">
             <Camera size={18} />
@@ -651,7 +662,7 @@ export function CardDetail({ card, onClose }: Props) {
       </div>
       </HoloCard>
 
-      <div className="flex w-full max-w-[min(18rem,calc((94dvh_-_18rem)*0.714))] items-center gap-2 md:max-w-none">
+      <div className="flex w-full max-w-[min(15rem,calc((94dvh_-_20rem)*0.714))] items-center gap-2 sm:max-w-[min(18rem,calc((94dvh_-_18rem)*0.714))] md:max-w-none">
         {SIDES.map((s) => {
           const url = urlOf(s);
           const isActive = side === s;
@@ -663,11 +674,12 @@ export function CardDetail({ card, onClose }: Props) {
               onClick={() => setSide(s)}
               disabled={!url && !editing}
               aria-pressed={isActive}
-              className={`flex items-center gap-2 rounded-lg border p-1 pr-2.5 text-[13px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+              aria-label={SIDE_LABEL[s]}
+              className={`flex items-center gap-2 rounded-lg border p-1 text-[13px] font-medium transition-colors sm:pr-2.5 disabled:cursor-not-allowed disabled:opacity-40 ${
                 dragOver === s
                   ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
                   : isActive
-                    ? 'border-[var(--border-accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
+                    ? 'border-[var(--border-accent)] bg-[var(--accent-dim)] text-[var(--text-primary)]'
                     : 'border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
               }`}
             >
@@ -683,7 +695,7 @@ export function CardDetail({ card, onClose }: Props) {
                   </span>
                 )}
               </span>
-              {SIDE_LABEL[s]}
+              <span className="hidden sm:inline">{SIDE_LABEL[s]}</span>
             </button>
           );
         })}
@@ -701,38 +713,6 @@ export function CardDetail({ card, onClose }: Props) {
             </button>
           ) : (
             <>
-              {hasAnyPhoto && (
-                <button
-                  onClick={handleDownloadPhotos}
-                  disabled={downloadingPhotos}
-                  title="Télécharger les photos"
-                  aria-label="Télécharger les photos"
-                  className="ui-btn ui-btn-icon"
-                >
-                  {downloadingPhotos ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
-                </button>
-              )}
-              {shownUrl && (
-                <button
-                  onClick={() => void handleRestoreOriginal(side)}
-                  disabled={uploadingImage != null}
-                  title="Revenir à la photo originale (sans fond)"
-                  aria-label="Revenir à la photo originale"
-                  className="ui-btn ui-btn-icon"
-                >
-                  <Undo2 size={15} />
-                </button>
-              )}
-              {shownUrl && canTilt && !gyroOn && (
-                <button
-                  onClick={async () => setGyroOn(await requestGyroPermission())}
-                  title="Effet 3D : incline ton téléphone"
-                  aria-label="Activer l'effet 3D au gyroscope"
-                  className="ui-btn ui-btn-icon"
-                >
-                  <Rotate3d size={15} />
-                </button>
-              )}
               {shownUrl && (
                 <button
                   onClick={() => setLightboxSide(side)}
@@ -742,6 +722,52 @@ export function CardDetail({ card, onClose }: Props) {
                 >
                   <Maximize2 size={15} />
                 </button>
+              )}
+              {hasAnyPhoto && (
+                <>
+                  <button
+                    ref={photoMenuAnchor}
+                    onClick={() => setPhotoMenuOpen((v) => !v)}
+                    aria-haspopup="menu"
+                    aria-expanded={photoMenuOpen}
+                    aria-label="Autres actions sur les photos"
+                    title="Autres actions"
+                    className="ui-btn ui-btn-icon"
+                  >
+                    {downloadingPhotos || uploadingImage ? <Loader2 size={15} className="animate-spin" /> : <MoreHorizontal size={15} />}
+                  </button>
+                  <Popover anchorRef={photoMenuAnchor} open={photoMenuOpen} onClose={() => setPhotoMenuOpen(false)} width={260} align="end">
+                    <div className="p-1" role="menu">
+                      <button
+                        role="menuitem"
+                        className="ui-menu-item"
+                        disabled={downloadingPhotos}
+                        onClick={() => { setPhotoMenuOpen(false); void handleDownloadPhotos(); }}
+                      >
+                        <Download size={15} className="text-[var(--text-secondary)]" /> Télécharger les photos
+                      </button>
+                      {shownUrl && (
+                        <button
+                          role="menuitem"
+                          className="ui-menu-item"
+                          disabled={uploadingImage != null}
+                          onClick={() => { setPhotoMenuOpen(false); void handleRestoreOriginal(side); }}
+                        >
+                          <Undo2 size={15} className="text-[var(--text-secondary)]" /> Revenir à la photo d’origine
+                        </button>
+                      )}
+                      {shownUrl && canTilt && !gyroOn && (
+                        <button
+                          role="menuitem"
+                          className="ui-menu-item"
+                          onClick={async () => { setPhotoMenuOpen(false); setGyroOn(await requestGyroPermission()); }}
+                        >
+                          <Rotate3d size={15} className="text-[var(--text-secondary)]" /> Effet 3D au gyroscope
+                        </button>
+                      )}
+                    </div>
+                  </Popover>
+                </>
               )}
             </>
           )}
@@ -760,9 +786,9 @@ export function CardDetail({ card, onClose }: Props) {
         {card.is_rookie && <RookieBadge compact />}
         {card.grading_company && <GradingBadge card={card} />}
         {card.numbered && (
-          <Badge tone="accent" className="tabular">
+          <Badge className="tabular">
             <Hash size={11} />
-            {card.numbered}
+            <span className="text-[var(--violet)]">{card.numbered}</span>
           </Badge>
         )}
         {card.card_type && !(card.card_type === 'numbered' && card.numbered) && <CardBadge type={card.card_type} />}
@@ -770,39 +796,50 @@ export function CardDetail({ card, onClose }: Props) {
 
       <section>
         <SectionTitle>Prix & vente</SectionTitle>
+        {isSold && (
+          <div className="mb-2 flex items-baseline justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2.5">
+            <div className="text-[13px] text-[var(--text-secondary)]">
+              Vendue
+              {card.ebay_sold_at && <> sur eBay le {formatDay(card.ebay_sold_at)}</>}
+            </div>
+            <div className="tabular text-sm font-semibold text-[var(--price)]">{soldPrice != null ? formatEuro(soldPrice) : '—'}</div>
+          </div>
+        )}
         {ebayError && (
           <div className="mb-2">
             <Notice tone="error" icon={AlertCircle}>{ebayError}</Notice>
           </div>
         )}
         <div className="divide-y divide-[var(--border)] rounded-xl border border-[var(--border)]">
-          <MarketRow logo={<VintedLogo width={50} height={14} />} label="Vinted" price={vintedPrice} live={!!card.vinted_url}>
+          <MarketRow logo={<VintedLogo width={50} height={14} />} label="Vinted" price={vintedPrice} live={!!card.vinted_url} stale={isSold}>
             {card.vinted_url ? (
-              <a href={card.vinted_url} target="_blank" rel="noopener noreferrer" className="ui-btn">
-                Voir <ExternalLink size={13} />
+              <a href={card.vinted_url} target="_blank" rel="noopener noreferrer" className="ui-btn" aria-label={isSold ? 'Ouvrir l’annonce Vinted pour la retirer' : 'Voir l’annonce Vinted'}>
+                {isSold ? 'Ouvrir' : 'Voir'} <ExternalLink size={13} />
               </a>
-            ) : (
-              <button onClick={publishToVinted} className="ui-btn text-[var(--accent)]">
+            ) : canPublish ? (
+              <button onClick={publishToVinted} className="ui-btn" aria-label="Publier sur Vinted">
                 Publier
               </button>
-            )}
+            ) : null}
           </MarketRow>
-          <MarketRow logo={<EbayLogo width={36} height={14} />} label="eBay" price={card.ebay_price} live={!!card.ebay_offer_id}>
+          <MarketRow logo={<EbayLogo width={36} height={14} />} label="eBay" price={card.ebay_price} live={!!card.ebay_offer_id} stale={isSold}>
             {card.ebay_offer_id ? (
               <>
-                <button onClick={withdrawFromEbay} disabled={withdrawingEbay} className="ui-btn ui-btn-danger">
+                <button onClick={withdrawFromEbay} disabled={withdrawingEbay} className="ui-btn ui-btn-danger" aria-label="Retirer l’annonce eBay">
                   {withdrawingEbay ? <Loader2 size={14} className="animate-spin" /> : null}
                   {withdrawingEbay ? 'Retrait…' : 'Retirer'}
                 </button>
-                <a href={card.ebay_url ?? '#'} target="_blank" rel="noopener noreferrer" className="ui-btn">
-                  Voir <ExternalLink size={13} />
-                </a>
+                {card.ebay_url && (
+                  <a href={card.ebay_url} target="_blank" rel="noopener noreferrer" className="ui-btn" aria-label="Voir l’annonce eBay">
+                    Voir <ExternalLink size={13} />
+                  </a>
+                )}
               </>
-            ) : (
-              <button onClick={() => setShowEbayPublish(true)} className="ui-btn text-[var(--accent)]">
+            ) : canPublish ? (
+              <button onClick={() => setShowEbayPublish(true)} className="ui-btn" aria-label="Publier sur eBay">
                 Publier
               </button>
-            )}
+            ) : null}
           </MarketRow>
           {card.purchase_price != null && (
             <div className="flex items-center justify-between gap-3 px-3 py-2.5 text-[13px]">
@@ -821,7 +858,7 @@ export function CardDetail({ card, onClose }: Props) {
             .map((item) => (
               <div key={item.label} className="grid grid-cols-[6.5rem_minmax(0,1fr)] gap-3 px-3 py-2 text-[13px]">
                 <dt className="text-[var(--text-muted)]">{item.label}</dt>
-                <dd className={`break-words font-medium text-[var(--text-primary)] ${item.num ? 'tabular' : ''}`}>{item.value}</dd>
+                <dd className={`break-words ${item.muted ? 'text-[var(--text-muted)]' : 'font-medium text-[var(--text-primary)]'} ${item.num ? 'tabular' : ''}`}>{item.value}</dd>
               </div>
             ))}
         </dl>
@@ -834,7 +871,7 @@ export function CardDetail({ card, onClose }: Props) {
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <div className="text-xs text-[var(--text-muted)]">Note</div>
-                <div className="tabular text-2xl font-semibold tracking-tight text-[var(--accent)]">{card.grading_grade || 'En attente'}</div>
+                <div className="tabular text-2xl font-semibold tracking-tight text-[var(--text-primary)]">{card.grading_grade || 'En attente'}</div>
               </div>
               <div>
                 <div className="text-xs text-[var(--text-muted)]">Statut</div>
@@ -1102,7 +1139,7 @@ export function CardDetail({ card, onClose }: Props) {
                   {editing ? 'Modification de la carte' : subtitle || '—'}
                 </p>
               </div>
-              <button onClick={onClose} className="ui-btn ui-btn-ghost ui-btn-icon -mr-2 -mt-1 h-8 w-8" aria-label="Fermer">
+              <button onClick={onClose} className="ui-btn ui-btn-ghost ui-btn-icon -mr-2 -mt-1" aria-label="Fermer">
                 <X size={16} />
               </button>
             </header>

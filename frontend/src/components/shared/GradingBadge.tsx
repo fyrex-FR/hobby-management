@@ -75,7 +75,7 @@ export function GradingBadge({
   return (
     <span
       className={`inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md font-semibold ring-1 ring-inset ${
-        compact ? 'h-5 px-1.5 text-[10px]' : 'h-6 px-2 text-[11px]'
+        compact ? 'h-5 px-1.5 text-[11px]' : 'h-6 px-2 text-[11px]'
       }`}
       style={{
         color: 'var(--text-primary)',
