@@ -9,13 +9,15 @@
  */
 (() => {
   const STATE_LABELS = { active: "Active", sold: "Vendue", reserved: "Réservée", hidden: "Masquée", unknown: "Statut inconnu" };
+  const CARD_STATUS = { collection: "En collection", a_vendre: "À vendre", reserve: "Réservée", vendu: "Vendue" };
+  const BROKEN_OPTIONS = [["keep", "Ne rien changer"], ["relist", "Retirer le lien et remettre en vente"], ["unlink", "Retirer le lien seulement"]];
   const s = {
     phase: "intro", // intro | scanning | review | applying | done
     scan: null, cards: [], match: null, error: "",
     decisions: { reserved: "sold_outside", hidden: "sold_outside" },
     unchecked: new Set(), // cartes dont on décoche le changement proposé
     choices: new Map(), // annonce à vérifier → carte choisie
-    unlink: new Set(), // liens introuvables à retirer
+    broken: new Map(), // lien introuvable → keep | unlink | relist
     result: null,
   };
 
@@ -38,7 +40,10 @@
 
   function actions() {
     const list = plans().filter((p) => p.plan.action && !s.unchecked.has(p.card.id)).map((p) => p.plan.action);
-    for (const card of s.match.broken) if (s.unlink.has(card.id)) list.push({ card_id: card.id, clear_url: true });
+    for (const card of s.match.broken) {
+      const { action } = CVVinted.planBroken(card, s.broken.get(card.id));
+      if (action) list.push(action);
+    }
     return list;
   }
 
@@ -52,7 +57,7 @@
       if (!scan || scan.error) throw new Error(scan?.error || "Lecture du profil impossible");
       s.scan = scan; s.cards = cards;
       s.match = CVVinted.matchWardrobe(scan.listings, cards);
-      s.unchecked.clear(); s.choices.clear(); s.unlink.clear();
+      s.unchecked.clear(); s.choices.clear(); s.broken.clear();
       s.phase = "review";
     } catch (error) {
       s.phase = "intro"; s.error = error.message;
@@ -104,7 +109,7 @@
       <select data-decision="${state}">${options.map(([v, t]) => `<option value="${v}"${s.decisions[state] === v ? " selected" : ""}>${t}</option>`).join("")}</select></label>`;
     const blocks = [];
     if (has("reserved")) blocks.push(select("reserved", [["sold_outside", "Vendues hors Vinted"], ["reserve", "Réservées dans CardVaults"], ["keep", "Ne rien changer"]]));
-    if (has("hidden")) blocks.push(select("hidden", [["sold_outside", "Vendues hors Vinted"], ["unlink", "Retirées de Vinted (lien supprimé)"], ["keep", "Ne rien changer"]]));
+    if (has("hidden")) blocks.push(select("hidden", [["sold_outside", "Vendues hors Vinted"], ["relist", "Plus sur Vinted : lien retiré, remises en vente"], ["unlink", "Plus sur Vinted : lien retiré seulement"], ["keep", "Ne rien changer"]]));
     return blocks.length ? `<div class="s-decisions"><div class="section-label">TES CHOIX</div>${blocks.join("")}</div>` : "";
   }
 
@@ -120,6 +125,30 @@
         <span class="s-changes">${escapeHtml(p.plan.changes.join(" · "))}</span>
       </div>
     </li>`;
+  }
+
+  const options = (list, value) => list.map(([v, t]) => `<option value="${v}"${value === v ? " selected" : ""}>${t}</option>`).join("");
+
+  /** Cartes marquées sur Vinted mais dont l'annonce n'existe pas sur le profil (lien bidon, carte mal marquée). */
+  function brokenHtml(broken) {
+    const values = new Set(broken.map((c) => s.broken.get(c.id) || "keep"));
+    const all = values.size === 1 ? [...values][0] : "";
+    return `<h2>Liens introuvables (${broken.length})</h2>
+      <p class="muted">Ces cartes sont marquées sur Vinted, mais leur lien ne correspond à aucune annonce de ton profil (lien bidon, carte mal marquée).</p>
+      <label class="s-bulk">Pour toutes
+        <select data-broken-all aria-label="Choix pour tous les liens introuvables">${all ? "" : `<option value="" selected>Choix différents</option>`}${options(BROKEN_OPTIONS, all)}</select></label>
+      <ul class="s-list">${broken.map((c) => {
+        const plan = CVVinted.planBroken(c, s.broken.get(c.id));
+        return `<li class="s-row">
+          ${thumb(c.image_front_url)}
+          <div class="s-body"><b>${escapeHtml(c.player || "Carte")}</b>
+            <span class="muted">${escapeHtml(meta(c))} · ${escapeHtml(CARD_STATUS[c.status] || c.status || "")}</span>
+            <a class="s-url" href="${escapeAttr(c.vinted_url)}" target="_blank" rel="noopener">${escapeHtml(c.vinted_url)}</a>
+            <select data-broken="${escapeAttr(c.id)}" aria-label="Que faire de ${escapeAttr(c.player || "cette carte")}">${options(BROKEN_OPTIONS, s.broken.get(c.id) || "keep")}</select>
+            ${plan.changes.length ? `<span class="s-changes">${escapeHtml(plan.changes.join(" · "))}</span>` : ""}
+          </div>
+        </li>`;
+      }).join("")}</ul>`;
   }
 
   function review() {
@@ -149,12 +178,7 @@
               ${r.options.map((o) => `<option value="${escapeAttr(o.card.id)}"${s.choices.get(r.listing.url) === o.card.id ? " selected" : ""}>${escapeHtml(`${o.card.player} · ${meta(o.card)} · ${euros(o.card.price)}`)}</option>`).join("")}
             </select>
           </div></li>`).join("")}</ul>` : ""}
-      ${broken.length ? `<h2>Liens introuvables (${broken.length})</h2><p class="muted">Leur lien Vinted ne correspond à aucune annonce de ton profil. Coche pour retirer le lien : la carte revient dans les cartes à publier.</p>
-        <ul class="s-list">${broken.map((c) => `<li class="s-row">
-          <label class="s-check"><input type="checkbox" data-unlink="${escapeAttr(c.id)}"${s.unlink.has(c.id) ? " checked" : ""} aria-label="Retirer le lien de ${escapeAttr(c.player || "cette carte")}"></label>
-          ${thumb(c.image_front_url)}
-          <div class="s-body"><b>${escapeHtml(c.player || "Carte")}</b><span class="muted">${escapeHtml(meta(c))}</span><span class="s-changes muted">${escapeHtml(c.vinted_url)}</span></div>
-        </li>`).join("")}</ul>` : ""}
+      ${broken.length ? brokenHtml(broken) : ""}
       ${warnings.length ? `<h2>À surveiller (${warnings.length})</h2><ul class="s-list">${warnings.map((p) => `<li class="s-row">${thumb(p.card.image_front_url)}<div class="s-body"><b>${escapeHtml(p.card.player || "Carte")}</b><span class="v-hint">${escapeHtml(p.plan.warning)}</span><a href="${escapeAttr(p.listing.url)}" target="_blank" rel="noopener">Ouvrir l’annonce ↗</a></div></li>`).join("")}</ul>` : ""}
       <div class="s-actions">
         <button id="s-apply" ${n ? "" : "disabled"}>Appliquer ${n} changement${n > 1 ? "s" : ""}</button>
@@ -189,10 +213,15 @@
       if (box.checked) s.unchecked.delete(box.dataset.pair); else s.unchecked.add(box.dataset.pair);
       render();
     }));
-    el.querySelectorAll("[data-unlink]").forEach((box) => box.addEventListener("change", () => {
-      if (box.checked) s.unlink.add(box.dataset.unlink); else s.unlink.delete(box.dataset.unlink);
+    el.querySelectorAll("[data-broken]").forEach((select) => select.addEventListener("change", () => {
+      s.broken.set(select.dataset.broken, select.value);
       render();
     }));
+    el.querySelector("[data-broken-all]")?.addEventListener("change", (event) => {
+      if (!event.target.value) return;
+      for (const card of s.match.broken) s.broken.set(card.id, event.target.value);
+      render();
+    });
     el.querySelectorAll("[data-review]").forEach((select) => select.addEventListener("change", () => {
       if (select.value) s.choices.set(select.dataset.review, select.value); else s.choices.delete(select.dataset.review);
       render();

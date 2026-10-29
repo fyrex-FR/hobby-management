@@ -127,8 +127,10 @@ propose de remettre CardVaults d'accord :
 3. Selon l'état de l'annonce : vendue → carte `vendu` au prix Vinted (et
    annonce eBay retirée) ; active → `a_vendre`, lien corrigé ou ajouté ;
    réservée / masquée → au choix (`Vendues hors Vinted`, `Réservées`,
-   `Retirées de Vinted`, `Ne rien changer`). Les liens de cartes qui ne
-   correspondent à aucune annonce sont listés et peuvent être retirés.
+   `Plus sur Vinted : lien retiré, remises en vente`, `Ne rien changer`).
+   Les cartes marquées sur Vinted dont le lien ne correspond à aucune annonce
+   (lien bidon, carte mal marquée) sont listées : pour chacune, ou pour toutes,
+   `Retirer le lien et remettre en vente`, `Retirer le lien seulement` ou rien.
 4. Rien n'est écrit avant `Appliquer` : chaque ligne se décoche, puis
    `POST /api/extension/vinted-sync/apply` met à jour les cartes cochées.
 

@@ -68,7 +68,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     chrome.tabs.query({ active: true, lastFocusedWindow: true })
       .then(([tab]) => {
         if (!tab?.id || !CVVinted.isMemberUrl(tab.url)) throw new Error("Ouvre ton profil Vinted (ta photo → Mon profil) dans l'onglet actif, puis relance.");
-        return chrome.tabs.sendMessage(tab.id, { type: "VINTED_SCAN_WARDROBE" });
+        return scanWardrobe(tab.id);
       })
       .then((result) => sendResponse(result || { error: "Pas de réponse de la page Vinted : recharge-la puis relance." }))
       .catch((error) => sendResponse({ error: error.message }));
@@ -95,6 +95,38 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 const VINTED_NEW_URL = "https://www.vinted.fr/items/new";
+
+/**
+ * Un onglet ouvert avant l'installation ou le rechargement de l'extension n'a
+ * pas le script de page : on recharge l'onglet une fois, puis on relance.
+ */
+async function scanWardrobe(tabId) {
+  try {
+    return await chrome.tabs.sendMessage(tabId, { type: "VINTED_SCAN_WARDROBE" });
+  } catch (error) {
+    if (!/Receiving end does not exist|Could not establish connection/i.test(error?.message || "")) throw error;
+  }
+  await reloadAndWait(tabId);
+  try {
+    return await chrome.tabs.sendMessage(tabId, { type: "VINTED_SCAN_WARDROBE" });
+  } catch {
+    throw new Error("La page Vinted ne répond pas : recharge-la puis relance.");
+  }
+}
+
+function reloadAndWait(tabId, timeout = 20000) {
+  return new Promise((resolve) => {
+    const done = () => {
+      chrome.tabs.onUpdated.removeListener(listener);
+      clearTimeout(timer);
+      setTimeout(resolve, 800); // content.js est injecté à document_idle, juste après « complete »
+    };
+    const listener = (id, info) => { if (id === tabId && info.status === "complete") done(); };
+    const timer = setTimeout(done, timeout);
+    chrome.tabs.onUpdated.addListener(listener);
+    chrome.tabs.reload(tabId).catch(done);
+  });
+}
 
 async function vintedSession() {
   return (await chrome.storage.session.get("vintedSession")).vintedSession || null;

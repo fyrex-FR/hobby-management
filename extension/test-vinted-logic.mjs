@@ -153,6 +153,20 @@ assert.equal(V.planPair(mine[2], wardrobe[2], { reserved: "keep" }).action, null
 assert.deepEqual(plain(V.planPair(mine[2], wardrobe[2], { reserved: "reserve" }).action), { card_id: "lebron", status: "reserve" });
 assert.deepEqual(plain(V.planPair(mine[5], wardrobe[5], decisions).action), { card_id: "trae", clear_url: true }, "masquée : lien retiré");
 assert.deepEqual(plain(V.planPair(mine[5], wardrobe[5], { hidden: "sold_outside" }).action), { card_id: "trae", status: "vendu", vinted_url: "https://www.vinted.fr/items/7006-trae" });
+{
+  const relist = V.planPair(mine[5], wardrobe[5], { hidden: "relist" });
+  assert.deepEqual(plain(relist.action), { card_id: "trae", clear_url: true, status: "a_vendre" }, "masquée : lien retiré et remise en vente");
+  assert.deepEqual(plain(relist.changes), ["Lien Vinted retiré", "Remise en vente"]);
+  assert.deepEqual(plain(V.planPair(mine[5], wardrobe[5], decisions).changes), ["Lien Vinted retiré"]);
+}
+// Lien bidon (carte mal marquée) : rien par défaut, lien retiré, ou retiré + remise en vente.
+{
+  const fake = { id: "fake", status: "collection", vinted_url: "https://www.vinted.fr/items/1-bidon" };
+  assert.equal(V.planBroken(fake).action, null);
+  assert.deepEqual(plain(V.planBroken(fake, "unlink").action), { card_id: "fake", clear_url: true });
+  assert.deepEqual(plain(V.planBroken(fake, "relist").action), { card_id: "fake", clear_url: true, status: "a_vendre" });
+  assert.deepEqual(plain(V.planBroken({ ...fake, status: "a_vendre" }, "relist").action), { card_id: "fake", clear_url: true }, "déjà à vendre : statut inchangé");
+}
 const soldButOnline = V.planPair({ ...mine[2], status: "vendu" }, { ...wardrobe[2], state: "active" }, decisions);
 assert.equal(soldButOnline.action, null);
 assert.ok(soldButOnline.warning);

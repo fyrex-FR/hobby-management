@@ -305,14 +305,14 @@
       const choice = decisions[state] || "keep";
       if (choice === "sold_outside") setStatus("vendu", "Vendue hors Vinted");
       else if (choice === "reserve") setStatus("reserve", "Réservée");
-      else if (choice === "unlink") { unlink = true; changes.push("Lien Vinted retiré"); }
+      else if (choice === "unlink") unlink = true;
+      else if (choice === "relist") { unlink = true; setStatus("a_vendre", "Remise en vente"); }
     } else if (state === "active") {
       if (card.status === "vendu") warning = "Vendue dans CardVaults mais encore en ligne sur Vinted : pense à retirer l'annonce.";
       else setStatus("a_vendre", "À vendre");
     }
     if (unlink) {
-      if (card.vinted_url) action.clear_url = true;
-      else changes.pop();
+      if (card.vinted_url) { action.clear_url = true; changes.unshift("Lien Vinted retiré"); }
     } else if (relink) {
       action.vinted_url = url;
       changes.unshift(card.vinted_url ? "Lien corrigé" : "Lien ajouté");
@@ -321,10 +321,23 @@
     return { action: hasChange ? action : null, changes, warning };
   }
 
+  /**
+   * Carte dont le lien ne correspond à aucune annonce du profil (lien bidon,
+   * carte mal marquée) : `unlink` retire le lien, `relist` le retire et remet
+   * la carte à vendre.
+   */
+  function planBroken(card, choice = "keep") {
+    if (choice !== "unlink" && choice !== "relist") return { action: null, changes: [] };
+    const action = { card_id: card.id, clear_url: true };
+    const changes = ["Lien Vinted retiré"];
+    if (choice === "relist" && card.status !== "a_vendre") { action.status = "a_vendre"; changes.push("Remise en vente"); }
+    return { action, changes };
+  }
+
   root.CVVinted = {
     listingUrl, isNewItemUrl, isMemberUrl, shouldAutoLink, expectsNewListing, pickPublishedListing, cdnUrl, numberedBadge, filterQueue, ebaySoldUrl, ebayQueryOf, parsePrice,
     GROUPS, groupKey, groupCards, inGroup, sortCards,
-    listingId, matchScore, matchWardrobe, planPair,
+    listingId, matchScore, matchWardrobe, planPair, planBroken,
     SUBMIT_WINDOW_MS, FILL_WINDOW_MS,
   };
 })(typeof globalThis !== "undefined" ? globalThis : self);
