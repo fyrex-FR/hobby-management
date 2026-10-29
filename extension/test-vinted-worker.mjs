@@ -7,12 +7,13 @@ import vm from "node:vm";
 
 const read = (name) => readFileSync(new URL(`./${name}`, import.meta.url), "utf8");
 
-function makeWorker() {
+function makeWorker({ tabUrl = "https://www.vinted.fr/catalog", contentScript = true } = {}) {
   const listeners = { message: [], updated: [] };
+  const reloads = [];
   const sessionStore = {};
   const panel = [];
   const patches = [];
-  const tabs = new Map([[5, { id: 5, url: "https://www.vinted.fr/catalog", active: true }]]);
+  const tabs = new Map([[5, { id: 5, url: tabUrl, active: true }]]);
   const chrome = {
     runtime: {
       onInstalled: { addListener() {} },
@@ -25,30 +26,46 @@ function makeWorker() {
       local: { get: async () => ({ scout_token: "tok" }) },
     },
     tabs: {
-      onUpdated: { addListener: (fn) => listeners.updated.push(fn) },
+      onUpdated: {
+        addListener: (fn) => listeners.updated.push(fn),
+        removeListener: (fn) => { listeners.updated = listeners.updated.filter((f) => f !== fn); },
+      },
       onActivated: { addListener() {} },
       query: async () => [tabs.get(5)],
       get: async (id) => tabs.get(id),
       update: async (id, props) => { Object.assign(tabs.get(id), props); return tabs.get(id); },
-      reload: async () => {},
+      reload: async (id) => {
+        reloads.push(id);
+        contentScript = true; // la page rechargée reçoit le script
+        setTimeout(() => { for (const fn of [...listeners.updated]) fn(id, { status: "complete" }, tabs.get(id)); }, 5);
+      },
       create: async () => { throw new Error("pas d'onglet attendu"); },
-      sendMessage: async () => {},
+      sendMessage: async (_id, message) => {
+        if (!contentScript) throw new Error("Could not establish connection. Receiving end does not exist.");
+        return message.type === "VINTED_SCAN_WARDROBE" ? { source: "api", listings: [{ url: "https://www.vinted.fr/items/1" }] } : undefined;
+      },
     },
   };
   const fetch = async (url, options) => {
     patches.push({ url, body: JSON.parse(options.body) });
     return { ok: true, json: async () => ({}) };
   };
-  const context = { chrome, fetch, URL, console, setTimeout, Date };
+  const context = { chrome, fetch, URL, console, setTimeout, clearTimeout, Date };
   context.globalThis = context;
   context.self = context;
   context.importScripts = () => vm.runInContext(read("vinted-logic.js"), context);
   vm.createContext(context);
   vm.runInContext(read("service-worker.js"), context);
 
-  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+  const settle = (ms = 20) => new Promise((resolve) => setTimeout(resolve, ms));
   return {
-    panel, patches, sessionStore,
+    panel, patches, sessionStore, reloads,
+    async ask(message, ms) {
+      return new Promise((resolve) => {
+        for (const fn of listeners.message) fn(message, {}, resolve);
+        setTimeout(() => resolve("timeout"), ms);
+      });
+    },
     async message(message, tabId = null) {
       let response;
       for (const fn of listeners.message) fn(message, { tab: tabId ? { id: tabId } : undefined }, (r) => { response = r; });
@@ -118,6 +135,23 @@ async function fillAndPublish(worker) {
   await worker.navigate("https://www.vinted.fr/member/123456-fyrex");
   await worker.message({ type: "VINTED_PROFILE_LISTINGS", listings: [{ url: "https://www.vinted.fr/items/1-ben-saraf", title: "Ben Saraf" }] }, 5);
   assert.equal(worker.patches.length, 0);
+}
+
+// 5. Synchro : onglet profil ouvert avant l'extension → rechargé une fois, puis lu.
+{
+  const worker = makeWorker({ tabUrl: "https://www.vinted.fr/member/21752622", contentScript: false });
+  const result = await worker.ask({ type: "VINTED_SCAN" }, 3000);
+  assert.deepEqual(worker.reloads, [5]);
+  assert.equal(result.source, "api");
+  assert.equal(result.listings.length, 1);
+}
+
+// 6. Synchro : script présent → pas de rechargement.
+{
+  const worker = makeWorker({ tabUrl: "https://www.vinted.fr/member/21752622" });
+  const result = await worker.ask({ type: "VINTED_SCAN" }, 3000);
+  assert.equal(worker.reloads.length, 0);
+  assert.equal(result.source, "api");
 }
 
 console.log("service worker Vinted : tous les scénarios passent");
