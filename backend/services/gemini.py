@@ -6,12 +6,12 @@ import httpx
 
 from services.prompt import SYSTEM_PROMPT
 
-_GEMINI_MODEL = "gemini-2.5-flash"
+_GEMINI_MODEL = "gemini-3.5-flash-lite"
 _API_BASE = "https://generativelanguage.googleapis.com/v1beta/models"
 
-# Gemini 2.5 Flash pricing (per million tokens)
-_INPUT_COST_PER_M = 0.15
-_OUTPUT_COST_PER_M = 0.60
+# Gemini 3.5 Flash-Lite pricing (per million tokens)
+_INPUT_COST_PER_M = 0.30
+_OUTPUT_COST_PER_M = 2.50
 
 
 def _estimate_cost(input_tokens: int, output_tokens: int) -> float:
@@ -19,7 +19,7 @@ def _estimate_cost(input_tokens: int, output_tokens: int) -> float:
 
 
 async def identify_gemini(front_base64: str, back_base64: str | None = None) -> dict:
-    """Call Gemini 2.0 Flash. Returns dict with keys: result, latency_ms, cost_usd, error."""
+    """Call Gemini (see _GEMINI_MODEL). Returns dict with keys: result, latency_ms, cost_usd, error."""
     api_key = os.environ.get("GOOGLE_API_KEY", "")
     if not api_key:
         return {"result": None, "latency_ms": 0, "cost_usd": 0.0, "error": "GOOGLE_API_KEY not configured"}
