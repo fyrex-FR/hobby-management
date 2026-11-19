@@ -24,13 +24,17 @@ export function ImportReviewView() {
   const [showBulkConfirm, setShowBulkConfirm] = useState(false);
   const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState('');
+  const [filter, setFilter] = useState<'all' | 'shelve' | 'review'>('all');
 
   useEffect(() => {
     if (!batchId) return;
     apiFetch<ImportBatch>(`/imports/${batchId}`).then(setBatch).catch((cause) => setError(cause.message));
   }, [batchId]);
 
-  const items = useMemo(() => batch?.items || [], [batch?.items]);
+  const allItems = useMemo(() => batch?.items || [], [batch?.items]);
+  const items = useMemo(() => filter === 'all' ? allItems : allItems.filter((entry) => entry.action === filter), [allItems, filter]);
+  const shelvedCount = allItems.filter((entry) => entry.action === 'shelve').length;
+  const reviewCount = allItems.filter((entry) => entry.action === 'review').length;
   const item = items[index];
   const cardById = useMemo(() => new Map(cards.map((card) => [card.id, card])), [cards]);
   const candidates = (item?.matches || []).map((match) => ({ match, card: cardById.get(match.card_id) })).filter((entry): entry is { match: ImportItem['matches'][number]; card: Card } => Boolean(entry.card));
@@ -56,6 +60,15 @@ export function ImportReviewView() {
       setBatch((current) => current ? { ...current, items: (current.items || []).map((entry) => entry.id === updated.id ? updated : entry) } : current);
       if (action === 'create' || action === 'increment') await queryClient.invalidateQueries({ queryKey: ['cards'] });
       if (index + 1 < items.length) setIndex(index + 1);
+    } catch (cause) { setError((cause as Error).message); } finally { setBusy(false); }
+  }
+
+  async function reopen() {
+    if (!item || busy) return;
+    setBusy(true); setError('');
+    try {
+      const updated = await apiFetch<ImportItem>(`/imports/items/${item.id}/reopen`, { method: 'POST' });
+      setBatch((current) => current ? { ...current, items: (current.items || []).map((entry) => entry.id === updated.id ? updated : entry) } : current);
     } catch (cause) { setError((cause as Error).message); } finally { setBusy(false); }
   }
 
@@ -132,6 +145,14 @@ export function ImportReviewView() {
   return (
     <Page width="wide">
       <PageHeader title="Revue de l’import" subtitle={batch.name} actions={backButton} />
+
+      {(shelvedCount > 0 || reviewCount > 0) && (
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => { setFilter('all'); setIndex(0); }} className="ui-chip" data-active={filter === 'all'} aria-pressed={filter === 'all'}>Toutes ({allItems.length})</button>
+          {shelvedCount > 0 && <button onClick={() => { setFilter('shelve'); setIndex(0); }} className="ui-chip" data-active={filter === 'shelve'} aria-pressed={filter === 'shelve'}>Mises de côté ({shelvedCount})</button>}
+          {reviewCount > 0 && <button onClick={() => { setFilter('review'); setIndex(0); }} className="ui-chip" data-active={filter === 'review'} aria-pressed={filter === 'review'}>À revoir ({reviewCount})</button>}
+        </div>
+      )}
 
       {recommended.length > 0 && (
         <section className="ui-card flex flex-col justify-between gap-3 border-[var(--border-accent)] p-4 sm:flex-row sm:items-center">
@@ -272,7 +293,12 @@ export function ImportReviewView() {
           </Panel>
 
           {item.action_at ? (
-            <Notice tone="success" icon={Check}>Traité : {item.action ? ACTION_LABEL[item.action] ?? item.action : '—'}</Notice>
+            <div className="space-y-2">
+              <Notice tone="success" icon={Check}>Traité : {item.action ? ACTION_LABEL[item.action] ?? item.action : '—'}</Notice>
+              {(item.action === 'shelve' || item.action === 'ignore' || item.action === 'review') && (
+                <button disabled={busy} onClick={reopen} className="ui-btn">Rouvrir cette carte (annuler la décision)</button>
+              )}
+            </div>
           ) : (
             <Panel title="Décision">
               <div className="grid gap-2 sm:grid-cols-2">

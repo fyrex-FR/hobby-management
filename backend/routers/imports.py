@@ -263,6 +263,26 @@ async def apply_recommended(batch_id: str, body: RecommendedActionsRequest, user
         }
 
 
+@router.post("/imports/items/{item_id}/reopen")
+async def reopen_item(item_id: str, user: dict = Depends(current_user)):
+    """Remet en attente un item mis de côté, ignoré ou à revoir. Les items qui ont créé une carte ou ajouté un
+    exemplaire ne se rouvrent pas (la collection a changé). Ne supprime rien: efface seulement la décision."""
+    user_id = user["sub"]
+    async with httpx.AsyncClient(timeout=30) as client:
+        item = await _one(client, "import_items", {"id": f"eq.{item_id}", "user_id": f"eq.{user_id}"})
+        if not item.get("action_at"):
+            return item
+        if item.get("action") not in ("shelve", "ignore", "review"):
+            raise HTTPException(409, "Cet item a modifié la collection: on ne le rouvre pas ici")
+        updated = await _patch(client, "import_items", {"id": f"eq.{item_id}", "user_id": f"eq.{user_id}"}, {
+            "action": None, "target_card_id": None, "created_card_id": None, "action_at": None, "updated_at": _now(),
+        })
+        await _patch(client, "import_batches", {"id": f"eq.{item['batch_id']}", "user_id": f"eq.{user_id}"}, {
+            "status": "open", "updated_at": _now(),
+        })
+        return updated
+
+
 @router.post("/imports/items/{item_id}/retry")
 async def retry_item(item_id: str, user: dict = Depends(current_user)):
     user_id = user["sub"]
