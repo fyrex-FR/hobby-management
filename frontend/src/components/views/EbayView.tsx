@@ -39,6 +39,7 @@ import {
   useEbayLocationCreate,
   useEbaySellerImage,
   useEbaySellerImageSave,
+  useEbayFeeMarkupSave,
   useEbaySellerSetup,
   useEbayShippingRules,
   useEbayShippingRulesSave,
@@ -106,11 +107,30 @@ function ProgressBar({ done, total }: { done: number; total: number }) {
 const APPLY_IMAGE_BATCH = 20;
 
 function PricingRatesCard() {
+  const { data: settings } = useEbaySellerImage();
+  const save = useEbayFeeMarkupSave();
+  const [error, setError] = useState('');
+  const on = settings?.fee_markup !== false;
   return (
     <Panel title="Calcul du prix eBay" icon={Calculator}>
-      <p className="text-[13px] text-[var(--text-muted)]">
-        Prix Vinted majoré pour couvrir 9 % de frais eBay et 0,35 € de frais fixes, puis arrondi au-dessus.
-      </p>
+      <label className="flex cursor-pointer items-start gap-3">
+        <input
+          type="checkbox"
+          className="mt-1"
+          checked={on}
+          disabled={!settings || save.isPending}
+          onChange={(e) => { setError(''); save.mutate(e.target.checked, { onError: (err) => setError((err as Error).message) }); }}
+        />
+        <span className="text-[13px] text-[var(--text-muted)]">
+          <span className="font-medium text-[var(--text-primary)]">Ajouter un surplus pour les frais eBay</span>
+          <br />
+          {on
+            ? 'Prix Vinted majoré pour couvrir 9 % de frais eBay et 0,35 € de frais fixes, puis arrondi au-dessus.'
+            : 'Pas de surplus (vendeur particulier sans frais) : le prix eBay reprend le prix Vinted, arrondi au-dessus.'}
+        </span>
+      </label>
+      <p className="mt-2 text-[12px] text-[var(--text-muted)]">S’applique aux calculs à venir ; les prix et annonces existants ne changent pas.</p>
+      {error && <p className="mt-2 text-[12px] text-[var(--danger,#d33)]">{error}</p>}
     </Panel>
   );
 }

@@ -1,5 +1,7 @@
 export interface EbayPricingInput {
   vintedPrice: number;
+  /** false = pas de surplus de frais (vendeur particulier eBay) ; défaut true. */
+  feeMarkup?: boolean;
 }
 
 export interface EbayPricingResult {
@@ -13,7 +15,7 @@ export function calculateEbayPrice(input: EbayPricingInput): EbayPricingResult {
     throw new Error('Le prix doit être un nombre positif ou nul.');
   }
 
-  const beforeRounding = (input.vintedPrice + 0.35) / 0.91;
+  const beforeRounding = input.feeMarkup === false ? input.vintedPrice : (input.vintedPrice + 0.35) / 0.91;
   const roundingStep: 0.5 | 1 = beforeRounding < 5 ? 0.5 : 1;
   const ebayPrice = Math.ceil((beforeRounding - Number.EPSILON) / roundingStep) * roundingStep;
 

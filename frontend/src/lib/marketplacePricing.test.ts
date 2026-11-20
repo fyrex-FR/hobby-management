@@ -25,4 +25,9 @@ describe('calculateEbayPrice', () => {
       vintedPrice: -1,
     })).toThrow();
   });
+  it('sans surplus: reprend le prix Vinted, arrondi au-dessus', () => {
+    expect(calculateEbayPrice({ vintedPrice: 10, feeMarkup: false }).ebayPrice).toBe(10);
+    expect(calculateEbayPrice({ vintedPrice: 3.2, feeMarkup: false }).ebayPrice).toBe(3.5);
+    expect(calculateEbayPrice({ vintedPrice: 10 }).ebayPrice).toBe(12);
+  });
 });

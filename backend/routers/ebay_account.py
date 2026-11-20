@@ -34,6 +34,7 @@ class SellerSettingsRequest(BaseModel):
     extra_image_url: Optional[str] = None
     commission_rate: Optional[float] = None
     transaction_rate: Optional[float] = None
+    fee_markup: Optional[bool] = None
 
     @field_validator("commission_rate", "transaction_rate")
     @classmethod
@@ -161,6 +162,7 @@ async def account_settings(user: dict = Depends(current_user)):
         "extra_image_url": (settings or {}).get("extra_image_url"),
         "commission_rate": float((settings or {}).get("commission_rate") or 0),
         "transaction_rate": float((settings or {}).get("transaction_rate") or 0),
+        "fee_markup": (settings or {}).get("fee_markup") is not False,
     }
 
 
@@ -173,6 +175,7 @@ async def account_settings_update(body: SellerSettingsRequest, user: dict = Depe
         "extra_image_url": (settings or {}).get("extra_image_url"),
         "commission_rate": float((settings or {}).get("commission_rate") or 0),
         "transaction_rate": float((settings or {}).get("transaction_rate") or 0),
+        "fee_markup": (settings or {}).get("fee_markup") is not False,
     }
 
 

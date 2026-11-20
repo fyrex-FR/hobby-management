@@ -8,6 +8,7 @@ from typing import Literal, Optional
 import httpx
 
 from .auth import current_user
+from services import ebay_settings_store
 from services.marketplace_pricing import calculate_ebay_price
 from services.gemini import identify_gemini
 
@@ -274,6 +275,8 @@ async def recalculate_ebay_prices(
     x_impersonate: Optional[str] = Header(default=None),
 ):
     user_id = resolve_user_id(user, x_impersonate)
+    seller = await ebay_settings_store.get_settings(user_id)
+    fee_markup = (seller or {}).get("fee_markup") is not False
     selected_ids = set(body.card_ids)
     if not selected_ids:
         return {"updated": 0, "skipped": 0}
@@ -289,7 +292,7 @@ async def recalculate_ebay_prices(
             {
                 "id": row["id"],
                 "user_id": row["user_id"],
-                "ebay_price": calculate_ebay_price(float(row["vinted_price"])),
+                "ebay_price": calculate_ebay_price(float(row["vinted_price"]), fee_markup),
             }
             for row in selected
             if row.get("vinted_price") is not None

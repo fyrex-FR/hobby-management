@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
+import { useEbaySellerImage } from '../../hooks/useEbayAccount';
 import { createPortal } from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
@@ -292,6 +293,7 @@ interface Props {
 export function CardDetail({ card, onClose }: Props) {
   const deleteWithUndo = useDeleteCardsWithUndo();
   const updateCard = useUpdateCard();
+  const { data: sellerSettings } = useEbaySellerImage();
   const identify = useIdentify();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
@@ -373,6 +375,7 @@ export function CardDetail({ card, onClose }: Props) {
     if (!Number.isFinite(vintedPrice)) return;
     const result = calculateEbayPrice({
       vintedPrice,
+      feeMarkup: sellerSettings?.fee_markup,
     });
     set('ebay_price', result.ebayPrice.toString());
   }

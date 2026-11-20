@@ -1,10 +1,11 @@
 import math
 
 
-def calculate_ebay_price(vinted_price: float) -> float:
+def calculate_ebay_price(vinted_price: float, fee_markup: bool = True) -> float:
     if not math.isfinite(vinted_price) or vinted_price < 0:
         raise ValueError("Le prix Vinted doit être positif ou nul.")
-    before_rounding = (vinted_price + 0.35) / 0.91
+    # fee_markup=False (vendeur particulier sans frais): on garde le prix Vinted, seul l'arrondi s'applique.
+    before_rounding = (vinted_price + 0.35) / 0.91 if fee_markup else vinted_price
     step = 0.5 if before_rounding < 5 else 1
     return round(math.ceil((before_rounding - 1e-12) / step) * step, 2)
 

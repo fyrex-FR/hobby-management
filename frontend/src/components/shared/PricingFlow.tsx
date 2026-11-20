@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEbaySellerImage } from '../../hooks/useEbayAccount';
 import { AlertCircle, AlertTriangle, ArrowLeft, ArrowRight, Check, CheckCircle2, ExternalLink, Loader2, SkipForward, X } from 'lucide-react';
 import type { Card } from '../../types';
 import { useUpdateCard } from '../../hooks/useCards';
@@ -33,13 +34,14 @@ export function PricingFlow({ cards, onClose }: Props) {
   const [error, setError] = useState('');
   const priceRef = useRef<HTMLInputElement>(null);
   const updateCard = useUpdateCard();
+  const { data: sellerSettings } = useEbaySellerImage();
   const card = queue[index] ?? null;
   const vintedPrice = card
     ? draftPrices[card.id] ?? card.vinted_price?.toString() ?? card.price?.toString() ?? ''
     : '';
   const parsedPrice = Number(vintedPrice.replace(',', '.'));
   const validPrice = Number.isFinite(parsedPrice) && parsedPrice > 0;
-  const ebayPrice = validPrice ? calculateEbayPrice({ vintedPrice: parsedPrice }).ebayPrice : null;
+  const ebayPrice = validPrice ? calculateEbayPrice({ vintedPrice: parsedPrice, feeMarkup: sellerSettings?.fee_markup }).ebayPrice : null;
 
   const setVintedPrice = useCallback((value: string) => {
     if (!card) return;

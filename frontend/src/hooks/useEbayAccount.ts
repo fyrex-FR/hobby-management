@@ -96,6 +96,7 @@ export interface EbaySellerImageSettings {
   extra_image_url: string | null;
   commission_rate: number;
   transaction_rate: number;
+  fee_markup: boolean;
 }
 
 export function useEbaySellerImage() {
@@ -112,6 +113,19 @@ export function useEbaySellerImageSave() {
       apiFetch<EbaySellerImageSettings>('/ebay/account/settings', {
         method: 'PUT',
         body: JSON.stringify({ extra_image_url }),
+      })
+    ),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['ebay-seller-image'] }),
+  });
+}
+
+export function useEbayFeeMarkupSave() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (fee_markup: boolean) => (
+      apiFetch<EbaySellerImageSettings>('/ebay/account/settings', {
+        method: 'PUT',
+        body: JSON.stringify({ fee_markup }),
       })
     ),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['ebay-seller-image'] }),
