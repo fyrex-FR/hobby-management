@@ -22,6 +22,7 @@ import { useCollectionFilters } from '../../stores/collectionFilterStore';
 import { Popover } from './Popover';
 
 const FACETS_SHOWN: FacetKey[] = ['sport', 'player', 'team', 'set_name', 'brand', 'year', 'card_type', 'folder'];
+const OPTIONAL_FACETS = ['sport', 'brand', 'card_type', 'folder'] as const;
 const FLAGS_SHOWN: FlagKey[] = ['rookie', 'numbered', 'auto', 'patch', 'graded', 'no_price'];
 const STATUSES: StatusFilter[] = ['all', 'collection', 'a_vendre', 'reserve', 'vendu'];
 
@@ -258,10 +259,20 @@ export function FilterRow({
   const folderById = useMemo(() => new Map(folders.map((f) => [f.id, f])), [folders]);
   const label = useFacetLabel(folderById);
   const flagN = useMemo(() => flagCounts(cards, filters, ctx), [cards, filters, ctx]);
+  // Un filtre qui n'a qu'une valeur possible (tout en Basket, une seule marque…)
+  // ne sert à rien : il est masqué tant qu'il n'est pas actif.
+  const useless = useMemo(() => {
+    const out = new Set<FacetKey>();
+    for (const f of OPTIONAL_FACETS) {
+      const values = f === 'folder' ? new Set(folders.map((x) => x.id)) : new Set(cards.map((c) => c[f] ?? ''));
+      if (values.size < (f === 'folder' ? 1 : 2)) out.add(f);
+    }
+    return out;
+  }, [cards, folders]);
 
   return (
     <div className="scroll-fade-x -mx-4 flex items-center gap-2 overflow-x-auto px-4 pb-0.5 no-scrollbar sm:-mx-6 sm:px-6">
-      {FACETS_SHOWN.map((f) => (
+      {FACETS_SHOWN.filter((f) => !useless.has(f) || filters.facets[f].length > 0).map((f) => (
         <FacetMenu
           key={f}
           facet={f}

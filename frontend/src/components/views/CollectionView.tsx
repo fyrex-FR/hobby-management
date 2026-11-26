@@ -561,7 +561,7 @@ function GridCard({
               ? <CheckCircle2 size={24} className="text-[var(--accent)] drop-shadow" fill="currentColor" stroke="var(--on-accent)" />
               : <Circle size={24} className="text-white/80 drop-shadow" />
           ) : folders.length > 0 ? (
-            <div className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+            <div className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:hidden">
               <FolderQuickAssign card={card} folders={folders} variant="overlay" />
             </div>
           ) : null}
