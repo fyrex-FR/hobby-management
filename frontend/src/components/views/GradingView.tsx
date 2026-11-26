@@ -170,7 +170,7 @@ function GradingModal({
       title="Détails du grading"
       subtitle={[card.player, card.year].filter(Boolean).join(' · ') || undefined}
       icon={
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--accent-dim)] text-[var(--accent)]">
+        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--accent-dim)] text-[var(--accent-text)]">
           <Award size={18} />
         </div>
       }

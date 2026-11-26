@@ -29,9 +29,12 @@ import {
   Loader2,
   MoreHorizontal,
 } from 'lucide-react';
-import { SPORTS, type Card, type CardType, type GradingCompany, type GradingStatus, type Sport } from '../../types';
+import { SPORTS, type Card, type CardStatus, type CardType, type GradingCompany, type GradingStatus, type Sport } from '../../types';
 import { GradingBadge } from './GradingBadge';
-import { StatusBadge } from './StatusBadge';
+import { StatusMenu } from './StatusMenu';
+import { SoldDialog } from './SoldDialog';
+import { SALE_CHANNEL_LABEL, soldAt as saleDate, soldPrice as salePrice } from '../../lib/sales';
+import { STATUS_CONFIG } from '../../lib/cardStatus';
 import { CardBadge } from './CardBadge';
 import { useDeleteCardsWithUndo, useUpdateCard } from '../../hooks/useCards';
 import { useFolders } from '../../hooks/useFolders';
@@ -311,6 +314,29 @@ export function CardDetail({ card, onClose }: Props) {
   const [withdrawingEbay, setWithdrawingEbay] = useState(false);
   const [ebayError, setEbayError] = useState('');
   const [vintedPreview, setVintedPreview] = useState<{ image: string; payload: VintedDraft } | null>(null);
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [selling, setSelling] = useState(false);
+  const moreAnchor = useRef<HTMLButtonElement>(null);
+
+  // Statut changé depuis l'en-tête : enregistré tout de suite, « Annuler » remet l'ancien.
+  function changeStatus(status: Exclude<CardStatus, 'draft'>) {
+    // Une vente demande son prix, son canal et sa date.
+    if (status === 'vendu') { setSelling(true); return; }
+    const previous = card.status;
+    updateCard.mutate({ id: card.id, status }, {
+      onSuccess: () => toast.success(`Statut : ${STATUS_CONFIG[status].label}`, {
+        description: card.player ?? undefined,
+        action: {
+          label: 'Annuler',
+          onClick: () => updateCard.mutate({ id: card.id, status: previous }, {
+            onError: (e) => toast.error('Annulation impossible', { description: errorMessage(e) }),
+          }),
+        },
+      }),
+      onError: (e) => toast.error('Statut non enregistré', { description: errorMessage(e) }),
+    });
+  }
 
   async function withdrawFromEbay() {
     const ok = await confirmDialog({
@@ -545,7 +571,7 @@ export function CardDetail({ card, onClose }: Props) {
 
   const [side, setSide] = useState<Side>(card.image_front_url || !card.image_back_url ? 'front' : 'back');
   const panelRef = useRef<HTMLDivElement>(null);
-  const overlayOpen = lightboxSide != null || vintedPreview != null || showEbayPublish;
+  const overlayOpen = lightboxSide != null || vintedPreview != null || showEbayPublish || selling;
   const [photoMenuOpen, setPhotoMenuOpen] = useState(false);
   const photoMenuAnchor = useRef<HTMLButtonElement>(null);
   useDialogFocus(panelRef, !overlayOpen);
@@ -560,15 +586,17 @@ export function CardDetail({ card, onClose }: Props) {
     };
   }, []);
 
-  // Échap ferme la fiche, sauf si une surcouche (plein écran, aperçu, eBay) est ouverte.
+  // Échap ferme la fiche, sauf si une surcouche (plein écran, aperçu, eBay) ou
+  // un menu est ouvert : chaque Échap ne referme qu'une chose à la fois.
+  const menuOpen = photoMenuOpen || statusMenuOpen || moreMenuOpen;
   useEffect(() => {
-    if (overlayOpen || saving) return;
+    if (overlayOpen || saving || menuOpen) return;
     function onKey(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
     }
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [overlayOpen, saving, onClose]);
+  }, [overlayOpen, saving, menuOpen, onClose]);
 
   const urlOf = (s: Side) => (s === 'front' ? card.image_front_url : card.image_back_url);
   const inputRefOf = (s: Side) => (s === 'front' ? frontInputRef : backInputRef);
@@ -579,11 +607,14 @@ export function CardDetail({ card, onClose }: Props) {
   });
   const shownUrl = urlOf(side);
   const hasAnyPhoto = !!(card.image_front_url || card.image_back_url);
-  const subtitle = [card.team, card.year].filter(Boolean).join(' · ');
+  // Ce qui identifie la carte : millésime, set, insert, parallèle, tirage.
+  const parallel = card.parallel_name && card.parallel_name !== 'Base' ? normalizeParallelName(card.parallel_name) : null;
+  const subtitle = [card.year, card.set_name || card.brand, card.insert_name, parallel, card.numbered].filter(Boolean).join(' · ');
   const vintedPrice = card.vinted_price ?? card.price;
   const isSold = card.status === 'vendu';
   const canPublish = card.status !== 'vendu' && card.status !== 'reserve';
-  const soldPrice = card.ebay_sold_price ?? card.price;
+  const soldPrice = salePrice(card);
+  const soldDate = saleDate(card);
 
   const details: { label: string; value: string | null | undefined; num?: boolean; muted?: boolean }[] = [
     { label: 'Sport', value: card.sport },
@@ -680,7 +711,7 @@ export function CardDetail({ card, onClose }: Props) {
               aria-label={SIDE_LABEL[s]}
               className={`flex items-center gap-2 rounded-lg border p-1 text-[13px] font-medium transition-colors sm:pr-2.5 disabled:cursor-not-allowed disabled:opacity-40 ${
                 dragOver === s
-                  ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
+                  ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent-text)]'
                   : isActive
                     ? 'border-[var(--border-accent)] bg-[var(--accent-dim)] text-[var(--text-primary)]'
                     : 'border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
@@ -784,8 +815,7 @@ export function CardDetail({ card, onClose }: Props) {
 
   const viewContent = (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <StatusBadge status={card.status} />
+      <div className="flex flex-wrap items-center gap-1.5 empty:hidden">
         {card.is_rookie && <RookieBadge compact />}
         {card.grading_company && <GradingBadge card={card} />}
         {card.numbered && (
@@ -803,9 +833,12 @@ export function CardDetail({ card, onClose }: Props) {
           <div className="mb-2 flex items-baseline justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2.5">
             <div className="text-[13px] text-[var(--text-secondary)]">
               Vendue
-              {card.ebay_sold_at && <> sur eBay le {formatDay(card.ebay_sold_at)}</>}
+              {card.sold_channel && <> · {SALE_CHANNEL_LABEL[card.sold_channel]}</>}
+              {soldDate && <> le {formatDay(soldDate)}</>}
             </div>
-            <div className="tabular text-sm font-semibold text-[var(--price)]">{soldPrice != null ? formatEuro(soldPrice) : '—'}</div>
+            <div className="tabular text-sm font-semibold text-[var(--price)]">
+              {soldPrice != null ? formatEuro(soldPrice) : <span className="font-normal text-[var(--text-muted)]">prix non renseigné</span>}
+            </div>
           </div>
         )}
         {ebayError && (
@@ -1138,13 +1171,35 @@ export function CardDetail({ card, onClose }: Props) {
                 <h2 id="card-detail-title" className="truncate text-[15px] font-semibold text-[var(--text-primary)]">
                   {card.player ?? 'Carte inconnue'}
                 </h2>
-                <p className="mt-0.5 truncate text-[13px] text-[var(--text-muted)]">
+                <p className="mt-0.5 line-clamp-2 text-[13px] text-[var(--text-muted)] sm:line-clamp-1">
                   {editing ? 'Modification de la carte' : subtitle || '—'}
                 </p>
               </div>
-              <button onClick={onClose} className="ui-btn ui-btn-ghost ui-btn-icon -mr-2 -mt-1" aria-label="Fermer">
-                <X size={16} />
-              </button>
+              <div className="-mr-2 -mt-1 flex shrink-0 items-center gap-1">
+                <StatusMenu status={card.status} disabled={editing || saving} onChange={changeStatus} onOpenChange={setStatusMenuOpen} />
+                <button
+                  ref={moreAnchor}
+                  onClick={() => setMoreMenuOpen((v) => !v)}
+                  disabled={editing}
+                  aria-haspopup="menu"
+                  aria-expanded={moreMenuOpen}
+                  aria-label="Autres actions sur la carte"
+                  title="Autres actions"
+                  className="ui-btn ui-btn-ghost ui-btn-icon"
+                >
+                  <MoreHorizontal size={16} />
+                </button>
+                <Popover anchorRef={moreAnchor} open={moreMenuOpen} onClose={() => setMoreMenuOpen(false)} width={220} align="end">
+                  <div className="p-1" role="menu">
+                    <button role="menuitem" className="ui-menu-item !text-[var(--red)]" onClick={() => { setMoreMenuOpen(false); handleDelete(); }}>
+                      <Trash2 size={15} /> Supprimer la carte
+                    </button>
+                  </div>
+                </Popover>
+                <button onClick={onClose} className="ui-btn ui-btn-ghost ui-btn-icon" aria-label="Fermer">
+                  <X size={16} />
+                </button>
+              </div>
             </header>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
@@ -1179,10 +1234,6 @@ export function CardDetail({ card, onClose }: Props) {
                 </>
               ) : (
                 <>
-                  <button onClick={handleDelete} disabled={false} className="ui-btn ui-btn-danger mr-auto">
-                    <Trash2 size={15} />
-                    Supprimer
-                  </button>
                   <button onClick={() => setEditing((v) => !v)} className="ui-btn ui-btn-primary">
                     <Pencil size={15} />
                     Modifier
@@ -1194,6 +1245,8 @@ export function CardDetail({ card, onClose }: Props) {
         </motion.div>,
         document.body,
       )}
+
+      {selling && <SoldDialog cards={[card]} onClose={() => setSelling(false)} />}
 
       {lightboxSide && (
         <Lightbox

@@ -53,7 +53,13 @@ export interface Card {
   ebay_sold_at: string | null;
   quantity: number | null;
   folder_ids: string[] | null;
+  /** Vente réelle (tous canaux) : prix encaissé, date, canal. Vides tant que la carte n'est pas vendue. */
+  sold_price?: number | null;
+  sold_at?: string | null;
+  sold_channel?: SaleChannel | null;
 }
+
+export type SaleChannel = 'vinted' | 'ebay' | 'salon' | 'direct' | 'autre';
 
 export interface Folder {
   id: string;

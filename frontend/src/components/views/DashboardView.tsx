@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Trophy,
   Tag,
@@ -12,14 +12,23 @@ import {
   Shield,
   Layers,
   CalendarDays,
-  PieChart,
   Library,
+  Inbox,
+  BadgeEuro,
+  Send,
+  FileClock,
+  CheckCircle2,
   type LucideIcon,
 } from 'lucide-react';
 import { useCards } from '../../hooks/useCards';
+import { useRequests } from '../../hooks/useRequests';
+import { CardDetail } from '../shared/CardDetail';
+import { displayPrice } from '../../lib/collectionFilters';
+import { isOnline } from '../../lib/sales';
 import { useAppStore } from '../../stores/appStore';
 import type { Card } from '../../types';
 import { cdnImg } from '../../lib/cdn';
+import { estimatedValue } from '../../lib/collectionFilters';
 import { GradingBadge } from '../shared/GradingBadge';
 import { RookieBadge } from '../shared/RookieBadge';
 import { Badge, EmptyState, Page, PageHeader, Panel, Spinner, StatTile } from '../ui';
@@ -36,7 +45,7 @@ function KpiStrip({ stats, onOpenCollection, onOpenSales }: { stats: ReturnType<
         <StatTile
           label="Valeur estimée"
           value={stats.totalValue > 0 ? euro.format(stats.totalValue) : '—'}
-          hint={stats.totalValue > 0 ? 'Somme des prix renseignés' : 'Aucun prix renseigné'}
+          hint={stats.totalValue > 0 ? 'Vendues exclues' : 'Aucun prix renseigné'}
           icon={Euro}
           accent={stats.totalValue > 0}
         />
@@ -57,46 +66,36 @@ function KpiStrip({ stats, onOpenCollection, onOpenSales }: { stats: ReturnType<
   );
 }
 
-/* ── Status bar ───────────────────────────────────────────── */
+/* ── À faire ──────────────────────────────────────────────── */
 
-function StatusBar({ cards }: { cards: Card[] }) {
-  const total = cards.length;
-  if (total === 0) return null;
+type Todo = { key: string; count: number; label: string; hint: string; icon: LucideIcon; go: () => void };
 
-  const segments = [
-    { key: 'collection', color: 'var(--text-muted)', label: 'Collection', count: cards.filter((c) => c.status === 'collection').length },
-    { key: 'a_vendre', color: 'var(--accent)', label: 'À vendre', count: cards.filter((c) => c.status === 'a_vendre').length },
-    { key: 'reserve', color: 'var(--blue)', label: 'Réservé', count: cards.filter((c) => c.status === 'reserve').length },
-    { key: 'vendu', color: 'var(--green)', label: 'Vendu', count: cards.filter((c) => c.status === 'vendu').length },
-  ].filter((s) => s.count > 0);
-
+/** Ce qui attend une action, en premier sur l'accueil ; chaque ligne mène à la bonne liste. */
+function TodoStrip({ todos }: { todos: Todo[] }) {
+  const pending = todos.filter((t) => t.count > 0);
   return (
-    <Panel
-      title="Répartition par statut"
-      icon={PieChart}
-      action={<span className="tabular text-xs text-[var(--text-muted)]">{int.format(total)} cartes</span>}
-    >
-      <div className="flex h-2 gap-0.5 overflow-hidden rounded-full bg-[var(--bg-elevated)]">
-        {segments.map((s) => (
-          <div
-            key={s.key}
-            className="h-full first:rounded-l-full last:rounded-r-full"
-            style={{ width: `${(s.count / total) * 100}%`, background: s.color }}
-            title={`${s.label} : ${s.count}`}
-          />
-        ))}
-      </div>
-      <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
-        {segments.map((s) => (
-          <div key={s.key} className="flex items-center gap-2 text-[13px]">
-            <span className="h-2 w-2 shrink-0 rounded-full" style={{ background: s.color }} />
-            <span className="text-[var(--text-secondary)]">{s.label}</span>
-            <span className="tabular font-medium text-[var(--text-primary)]">{int.format(s.count)}</span>
-            <span className="tabular text-xs text-[var(--text-muted)]">{Math.round((s.count / total) * 100)} %</span>
-          </div>
-        ))}
-      </div>
-    </Panel>
+    <section aria-labelledby="todo-title" className="space-y-2">
+      <h2 id="todo-title" className="text-sm font-semibold text-[var(--text-primary)]">À faire</h2>
+      {pending.length === 0 ? (
+        <p className="ui-card flex items-center gap-2 px-4 py-3 text-[13px] text-[var(--text-secondary)]">
+          <CheckCircle2 size={16} className="text-[var(--green)]" /> Rien en attente : demandes, prix et annonces sont à jour.
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {pending.map((t) => (
+            <button key={t.key} onClick={t.go} className="ui-card group flex items-center gap-3 px-3.5 py-3 text-left transition-colors hover:border-[var(--border-strong)] hover:bg-[var(--bg-elevated)]">
+              <t.icon size={18} className="shrink-0 text-[var(--text-muted)] group-hover:text-[var(--accent)]" />
+              <span className="tabular w-8 shrink-0 text-xl font-semibold tracking-tight text-[var(--text-primary)]">{t.count}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-medium text-[var(--text-primary)]">{t.label}</span>
+                <span className="block truncate text-xs text-[var(--text-muted)]">{t.hint}</span>
+              </span>
+              <ChevronRight size={16} className="shrink-0 text-[var(--text-muted)] group-hover:text-[var(--text-primary)]" />
+            </button>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -179,7 +178,7 @@ function CardRow({ card, onClick }: { card: Card; onClick: () => void }) {
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5">
-        <span className="hidden items-center gap-1.5 sm:flex">
+        <span className="hidden items-center gap-1.5 sm:flex lg:hidden xl:flex">
           {card.is_rookie && <RookieBadge compact />}
           {card.grading_company && <GradingBadge card={card} compact />}
           {isAuto && <Badge tone="green">Auto</Badge>}
@@ -224,7 +223,7 @@ function buildStats(cards: Card[]) {
       .map(([label, { count, img }]) => ({ label, count, img }));
   }
 
-  const totalValue = active.reduce((sum, c) => sum + (c.price ?? 0), 0);
+  const totalValue = estimatedValue(cards);
 
   return {
     total: active.length,
@@ -245,9 +244,22 @@ function buildStats(cards: Card[]) {
 
 export function DashboardView() {
   const { data: cards = [], isLoading } = useCards();
-  const { setActiveView, setDrillFilter } = useAppStore();
+  const { data: requests = [] } = useRequests();
+  const { setActiveView, setDrillFilter, openSales } = useAppStore();
+  const [openCard, setOpenCard] = useState<Card | null>(null);
 
   const stats = useMemo(() => buildStats(cards), [cards]);
+  const todos = useMemo<Todo[]>(() => {
+    const forSale = cards.filter((c) => c.status === 'a_vendre');
+    return [
+      { key: 'requests', count: requests.filter((r) => r.status === 'new').length, label: 'Demandes à traiter', hint: 'Des visiteurs attendent une réponse', icon: Inbox, go: () => setActiveView('requests') },
+      { key: 'reserve', count: cards.filter((c) => c.status === 'reserve').length, label: 'Réservées à conclure', hint: 'Encaisser ou remettre en vente', icon: Clock, go: () => openSales('reserve') },
+      { key: 'pricer', count: forSale.filter((c) => displayPrice(c) == null).length, label: 'À pricer', hint: 'À vendre, mais sans prix', icon: BadgeEuro, go: () => openSales('pricer') },
+      { key: 'publier', count: forSale.filter((c) => displayPrice(c) != null && !isOnline(c)).length, label: 'À publier', hint: 'Prix fixé, aucune annonce en ligne', icon: Send, go: () => openSales('publier') },
+      { key: 'drafts', count: cards.filter((c) => c.status === 'draft').length, label: 'Brouillons à vérifier', hint: 'Cartes lues par l’IA, à valider', icon: FileClock, go: () => setActiveView('review') },
+    ];
+  }, [cards, requests, setActiveView, openSales]);
+  const shownCard = openCard ? cards.find((c) => c.id === openCard.id) ?? openCard : null;
 
   function drillPlayer(player: string) { setDrillFilter({ player }); setActiveView('collection'); }
   function drillTeam(team: string) { setDrillFilter({ team }); setActiveView('collection'); }
@@ -304,23 +316,15 @@ export function DashboardView() {
         }
       />
 
+      <TodoStrip todos={todos} />
+
       <KpiStrip stats={stats} onOpenCollection={() => setActiveView('collection')} onOpenSales={() => setActiveView('sales')} />
-
-      <StatusBar cards={cards.filter((c) => c.status !== 'draft')} />
-
-      {/* Top lists : un clic ouvre la collection filtrée */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
-        <TopList title="Joueurs" icon={Users} items={stats.topPlayers} onSelect={drillPlayer} />
-        <TopList title="Équipes" icon={Shield} items={stats.topTeams} onSelect={drillTeam} />
-        <TopList title="Sets" icon={Layers} items={stats.topSets} onSelect={drillSet} />
-        <TopList title="Années" icon={CalendarDays} items={stats.topYears} onSelect={(y) => { setDrillFilter({ year: y }); setActiveView('collection'); }} />
-      </div>
 
       <div className="grid grid-cols-1 gap-3 sm:gap-4 lg:grid-cols-2">
         <Panel title="Dernières acquisitions" icon={Clock} padded={false}>
           <div className="p-1.5">
             {stats.recent.map((card) => (
-              <CardRow key={card.id} card={card} onClick={() => setActiveView('collection')} />
+              <CardRow key={card.id} card={card} onClick={() => setOpenCard(card)} />
             ))}
           </div>
         </Panel>
@@ -334,7 +338,7 @@ export function DashboardView() {
           {stats.rare.length > 0 ? (
             <div className="p-1.5">
               {stats.rare.map((card) => (
-                <CardRow key={card.id} card={card} onClick={() => setActiveView('collection')} />
+                <CardRow key={card.id} card={card} onClick={() => setOpenCard(card)} />
               ))}
             </div>
           ) : (
@@ -344,6 +348,15 @@ export function DashboardView() {
           )}
         </Panel>
       </div>
+      {/* Top lists : un clic ouvre la collection filtrée */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-4">
+        <TopList title="Joueurs" icon={Users} items={stats.topPlayers} onSelect={drillPlayer} />
+        <TopList title="Équipes" icon={Shield} items={stats.topTeams} onSelect={drillTeam} />
+        <TopList title="Sets" icon={Layers} items={stats.topSets} onSelect={drillSet} />
+        <TopList title="Années" icon={CalendarDays} items={stats.topYears} onSelect={(y) => { setDrillFilter({ year: y }); setActiveView('collection'); }} />
+      </div>
+
+      {shownCard && <CardDetail card={shownCard} onClose={() => setOpenCard(null)} />}
     </Page>
   );
 }

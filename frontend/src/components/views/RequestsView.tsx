@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { Inbox, Check, Archive, Trash2, MessageSquare, Clock, Download, ShoppingBag, ImageOff } from 'lucide-react';
+import { Inbox, Check, Archive, Trash2, MessageSquare, Clock, Download, ShoppingBag, ImageOff, Copy, ExternalLink } from 'lucide-react';
 import { confirmDialog, errorMessage, toast } from '../../lib/feedback';
 import { useRequests, useUpdateRequest, useDeleteRequest } from '../../hooks/useRequests';
-import { useCards, useUpdateCard } from '../../hooks/useCards';
+import { useCards } from '../../hooks/useCards';
 import { CardDetail } from '../shared/CardDetail';
+import { SoldDialog } from '../shared/SoldDialog';
 import { cdnImg } from '../../lib/cdn';
 import type { Card, ShareRequest, ShareRequestStatus } from '../../types';
 import { Badge, EmptyState, Page, PageHeader, Spinner } from '../ui';
@@ -44,9 +45,9 @@ export function RequestsView() {
   const { data: cards = [] } = useCards();
   const updateRequest = useUpdateRequest();
   const deleteRequest = useDeleteRequest();
-  const updateCard = useUpdateCard();
   const [tab, setTab] = useState<ShareRequestStatus | 'all'>('new');
   const [openCard, setOpenCard] = useState<Card | null>(null);
+  const [selling, setSelling] = useState<{ req: ShareRequest; cards: Card[] } | null>(null);
 
   const cardById = useMemo(() => new Map(cards.map((c) => [c.id, c])), [cards]);
 
@@ -88,18 +89,7 @@ export function RequestsView() {
               cardById={cardById}
               onOpenCard={setOpenCard}
               onStatus={(status) => updateRequest.mutate({ id: req.id, status })}
-              onMarkSold={async (soldIds) => {
-                await Promise.all(soldIds.map((id) => {
-                  const c = cardById.get(id);
-                  if (!c) return Promise.resolve();
-                  // Quantité > 1 : on retire un exemplaire. Sinon : vendu.
-                  if ((c.quantity ?? 1) > 1) {
-                    return updateCard.mutateAsync({ id, quantity: (c.quantity ?? 1) - 1 });
-                  }
-                  return updateCard.mutateAsync({ id, status: 'vendu' });
-                }));
-                if (req.status === 'new') updateRequest.mutate({ id: req.id, status: 'contacted' });
-              }}
+              onSell={(soldIds) => setSelling({ req, cards: soldIds.map((id) => cardById.get(id)).filter((c): c is Card => !!c) })}
               onDelete={async () => {
                 const ok = await confirmDialog({ title: 'Supprimer cette demande ?', description: `De ${req.viewer_handle ?? 'ce visiteur'}. Cette action est définitive.`, danger: true });
                 if (!ok) return;
@@ -113,7 +103,44 @@ export function RequestsView() {
         </div>
       )}
       {openCard && <CardDetail card={openCard} onClose={() => setOpenCard(null)} />}
+      {selling && (
+        <SoldDialog
+          cards={selling.cards}
+          title={`Vendre à ${selling.req.viewer_handle}`}
+          onClose={() => setSelling(null)}
+          onDone={() => { if (selling.req.status === 'new') updateRequest.mutate({ id: selling.req.id, status: 'contacted' }); }}
+        />
+      )}
     </Page>
+  );
+}
+
+/** Le pseudo laissé par le visiteur (Instagram ou Discord) : copie, et lien Instagram s'il commence par @. */
+function HandleActions({ handle }: { handle: string }) {
+  const insta = /^@[A-Za-z0-9._]{1,30}$/.test(handle.trim());
+  return (
+    <span className="flex items-center gap-0.5">
+      <button
+        onClick={() => navigator.clipboard.writeText(handle.trim().replace(/^@/, '')).then(() => toast.success('Pseudo copié'), () => {})}
+        className="ui-btn ui-btn-ghost ui-btn-sm ui-btn-icon"
+        title="Copier le pseudo"
+        aria-label={`Copier le pseudo ${handle}`}
+      >
+        <Copy size={13} />
+      </button>
+      {insta && (
+        <a
+          href={`https://www.instagram.com/${handle.trim().slice(1)}/`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="ui-btn ui-btn-ghost ui-btn-sm ui-btn-icon"
+          title="Ouvrir sur Instagram"
+          aria-label={`Ouvrir ${handle} sur Instagram`}
+        >
+          <ExternalLink size={13} />
+        </a>
+      )}
+    </span>
   );
 }
 
@@ -122,19 +149,18 @@ function RequestCard({
   cardById,
   onOpenCard,
   onStatus,
-  onMarkSold,
+  onSell,
   onDelete,
 }: {
   req: ShareRequest;
   cardById: Map<string, Card>;
   onOpenCard: (c: Card) => void;
   onStatus: (s: ShareRequestStatus) => void;
-  onMarkSold: (ids: string[]) => Promise<void> | void;
+  onSell: (ids: string[]) => void;
   onDelete: () => void;
 }) {
   const ids = req.card_ids ?? [];
   const date = new Date(req.created_at).toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-  const [markingSold, setMarkingSold] = useState(false);
   // Cartes encore présentes et pas déjà vendues.
   const sellableIds = ids.filter((id) => { const c = cardById.get(id); return c && c.status !== 'vendu'; });
   const total = ids.reduce((sum, id) => sum + (cardById.get(id)?.price ?? 0), 0);
@@ -182,7 +208,7 @@ function RequestCard({
         <div className="flex min-w-0 items-start gap-3">
           <div
             className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
-              isNew ? 'bg-[var(--accent-dim)] text-[var(--accent)]' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
+              isNew ? 'bg-[var(--accent-dim)] text-[var(--accent-text)]' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
             }`}
             aria-hidden="true"
           >
@@ -193,6 +219,7 @@ function RequestCard({
               <span className={`truncate text-sm ${isNew ? 'font-semibold text-[var(--text-primary)]' : 'font-medium text-[var(--text-secondary)]'}`}>
                 {req.viewer_handle}
               </span>
+              <HandleActions handle={req.viewer_handle} />
               <Badge tone={STATUS_TONE[req.status]}>{STATUS_LABEL[req.status]}</Badge>
               {total > 0 && (
                 <Badge tone="accent"><span className="tabular">Total {formatEuro(total)}</span></Badge>
@@ -212,27 +239,11 @@ function RequestCard({
           )}
           {sellableIds.length > 0 && (
             <button
-              onClick={async () => {
-                const n = sellableIds.length;
-                const ok = await confirmDialog({
-                  title: `Passer ${n} carte${n > 1 ? 's' : ''} en vendu ?`,
-                  description: 'Les cartes en plusieurs exemplaires sont décrémentées de 1.',
-                  confirmLabel: 'Marquer vendu',
-                });
-                if (!ok) return;
-                setMarkingSold(true);
-                try {
-                  await onMarkSold(sellableIds);
-                  toast.success(`${n} carte${n > 1 ? 's' : ''} marquée${n > 1 ? 's' : ''} vendue${n > 1 ? 's' : ''}`);
-                } catch (e) {
-                  toast.error('Impossible de marquer les cartes vendues', { description: errorMessage(e) });
-                } finally { setMarkingSold(false); }
-              }}
-              disabled={markingSold}
-              title="Marquer ces cartes comme vendues (décrémente les multi-exemplaires)"
-              className="ui-btn ui-btn-sm"
+              onClick={() => onSell(sellableIds)}
+              title="Enregistrer la vente au prix convenu"
+              className="ui-btn ui-btn-sm ui-btn-primary"
             >
-              <ShoppingBag size={14} className="text-[var(--green)]" /> {markingSold ? '…' : 'Tout vendu'}
+              <ShoppingBag size={14} /> Vendre{sellableIds.length > 1 ? ` les ${sellableIds.length}` : ''}…
             </button>
           )}
           <button onClick={exportCsv} title="Exporter la liste (CSV)" aria-label="Exporter la liste (CSV)" className="ui-btn ui-btn-sm ui-btn-icon">

@@ -29,6 +29,8 @@
   /* Fond des boutons principaux : un cran plus sombre que l'accent pour que
      le texte blanc passe 4,5:1 (l'accent seul plafonne à 4,2:1). */
   --accent-strong: #6557EE;
+  /* Texte d'accent posé sur un fond teinté d'accent (badges, onglets actifs) : 4,5:1 minimum. */
+  --accent-text: #A59BFF;
   --accent-strong-hover: #6E61F2;
 
   --text-primary: #EDEDEF;
@@ -74,6 +76,7 @@
   --accent-glow: rgb(91 77 232 / 0.14);
   --on-accent: #FFFFFF;
   --accent-strong: #5B4DE8;
+  --accent-text: #4A3DD6;
   --accent-strong-hover: #5244DD;
 
   --text-primary: #09090B;
@@ -232,7 +235,7 @@ body {
   .ui-btn:disabled { opacity: 0.4; cursor: not-allowed; }
   .ui-btn:focus-visible, .ui-chip:focus-visible, .ui-input:focus-visible, .ui-select:focus-visible,
   .ui-segmented > button:focus-visible, .ui-menu-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-  .ui-btn[data-active='true'] { color: var(--accent); background: var(--accent-dim); border-color: var(--border-accent); }
+  .ui-btn[data-active='true'] { color: var(--accent-text); background: var(--accent-dim); border-color: var(--border-accent); }
   .ui-btn-primary { color: var(--on-accent); background: var(--accent-strong); border-color: transparent; font-weight: 600; }
   .ui-btn-primary:hover:not(:disabled) { color: var(--on-accent); background: var(--accent-strong-hover); }
   .ui-btn-icon { width: 2.25rem; padding: 0; }
@@ -262,7 +265,7 @@ body {
   }
   .ui-chip:hover:not(:disabled) { color: var(--text-primary); background: var(--bg-elevated); }
   .ui-chip:disabled { opacity: 0.45; cursor: default; }
-  .ui-chip[data-active='true'] { color: var(--accent); background: var(--accent-dim); border-color: var(--border-accent); }
+  .ui-chip[data-active='true'] { color: var(--accent-text); background: var(--accent-dim); border-color: var(--border-accent); }
   .ui-chip .count { font-size: 11px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
   .ui-chip[data-active='true'] .count { color: inherit; opacity: 0.75; }
 
@@ -324,7 +327,7 @@ body {
     border: 1px solid transparent; transition: background-color 120ms, color 120ms, border-color 120ms;
   }
   .bulk-chip:hover { color: var(--text-primary); border-color: var(--border-strong); }
-  .bulk-chip[data-active] { color: var(--accent); background: var(--accent-dim); border-color: var(--border-accent); }
+  .bulk-chip[data-active] { color: var(--accent-text); background: var(--accent-dim); border-color: var(--border-accent); }
   .bulk-chip-clear { color: var(--text-muted); background: transparent; border-color: var(--border); border-style: dashed; }
   @media (pointer: coarse) {
     .ui-chip, .ui-btn-sm { height: 2.25rem; }

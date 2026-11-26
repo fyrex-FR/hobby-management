@@ -561,7 +561,7 @@ function GridCard({
               ? <CheckCircle2 size={24} className="text-[var(--accent)] drop-shadow" fill="currentColor" stroke="var(--on-accent)" />
               : <Circle size={24} className="text-white/80 drop-shadow" />
           ) : folders.length > 0 ? (
-            <div className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100">
+            <div className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:hidden">
               <FolderQuickAssign card={card} folders={folders} variant="overlay" />
             </div>
           ) : null}
@@ -1307,7 +1307,7 @@ export function CollectionView() {
                   onClick={() => jumpToLetter(letter)}
                   className={`h-7 w-7 shrink-0 rounded-md text-[12px] font-semibold transition-colors [@media(pointer:coarse)]:h-9 [@media(pointer:coarse)]:w-8 ${
                     has
-                      ? 'text-[var(--text-secondary)] hover:bg-[var(--accent)] hover:text-[var(--on-accent)]'
+                      ? 'text-[var(--text-secondary)] hover:bg-[var(--accent-strong)] hover:text-[var(--on-accent)]'
                       : 'cursor-default text-[var(--text-muted)] opacity-50'
                   }`}
                 >
@@ -1639,7 +1639,7 @@ function FolderQuickAssign({
                 onClick={(e) => toggle(e, f.id)}
                 className="ui-menu-item"
               >
-                <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${active ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--on-accent)]' : 'border-[var(--border-strong)] text-transparent'}`}>
+                <span className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${active ? 'border-[var(--accent)] bg-[var(--accent-strong)] text-[var(--on-accent)]' : 'border-[var(--border-strong)] text-transparent'}`}>
                   <Check size={11} />
                 </span>
                 {f.emoji && <span>{f.emoji}</span>}

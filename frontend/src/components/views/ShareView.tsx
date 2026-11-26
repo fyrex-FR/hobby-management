@@ -142,7 +142,7 @@ function sharePrice(card: Card): number | null {
 function LogoMark({ size = 'sm' }: { size?: 'sm' | 'md' }) {
   return (
     <span
-      className={`inline-flex shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] font-extrabold text-[var(--on-accent)] ${
+      className={`inline-flex shrink-0 items-center justify-center rounded-lg bg-[var(--accent-strong)] font-extrabold text-[var(--on-accent)] ${
         size === 'md' ? 'h-10 w-10 text-lg' : 'h-7 w-7 text-sm'
       }`}
       aria-hidden="true"
@@ -440,7 +440,7 @@ function SharedCard({ card, showPrice, onClick, interested, onToggleInterest }: 
             onClick={(e) => { e.stopPropagation(); onToggleInterest(); }}
             className={`absolute right-2 top-2 z-20 flex h-8 w-8 items-center justify-center rounded-full ring-1 transition-[opacity,background-color] ${
               interested
-                ? 'bg-[var(--accent)] text-[var(--on-accent)] ring-transparent'
+                ? 'bg-[var(--accent-strong)] text-[var(--on-accent)] ring-transparent'
                 : 'dark-scope bg-black/60 text-white ring-white/15 opacity-0 hover:bg-black/80 focus-visible:opacity-100 group-hover:opacity-100 [@media(hover:none)]:opacity-100'
             }`}
             title={interested ? 'Retirer de ma sélection' : 'Ça m’intéresse'}
@@ -936,7 +936,7 @@ export function ShareView({ token }: { token: string }) {
       {selectionCount > 0 && !submitOpen && (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--border-strong)] bg-[var(--bg-card)] px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 shadow-[var(--shadow-lg)] sm:inset-x-auto sm:bottom-4 sm:left-1/2 sm:w-[460px] sm:-translate-x-1/2 sm:rounded-xl sm:border sm:pb-3">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--accent-dim)] text-[var(--accent)]">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--accent-dim)] text-[var(--accent-text)]">
               <Heart size={16} fill="currentColor" />
             </div>
             <div className="min-w-0 flex-1">

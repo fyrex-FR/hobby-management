@@ -9,7 +9,7 @@ function AuthShell({ children }: { children: ReactNode }) {
     <div className="flex min-h-[100dvh] items-center justify-center bg-[var(--bg-primary)] px-4 py-10">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">
-          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--accent)] text-lg font-extrabold text-[var(--on-accent)]">
+          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--accent-strong)] text-lg font-extrabold text-[var(--on-accent)]">
             C
           </div>
           <p className="text-xl font-bold tracking-tight text-[var(--text-primary)]">CardVaults</p>

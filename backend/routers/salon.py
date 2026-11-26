@@ -611,8 +611,10 @@ async def _sell_cards(client: httpx.AsyncClient, user_id: str, ids: list[str], f
     gone = [i for i in ids if i not in {c["id"] for c in rows}]
     if gone:
         raise HTTPException(status_code=409, detail={"unavailable": gone})
+    asked = {c["id"]: c.get("price") for c in rows}
+    sold_at = _iso(_now())
     for cid in ids:
-        payload = {"status": "vendu", "is_listed": False}
+        payload = {"status": "vendu", "is_listed": False, "sold_at": sold_at, "sold_channel": "salon", "sold_price": finals.get(cid, asked.get(cid))}
         if cid in finals:
             payload["price"] = finals[cid]
         _check(await client.patch(f"{SUPABASE_URL}/rest/v1/cards", headers=_headers(), params={"user_id": f"eq.{user_id}", "id": f"eq.{cid}"}, json=payload))

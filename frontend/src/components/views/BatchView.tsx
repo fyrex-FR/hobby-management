@@ -223,7 +223,7 @@ export function BatchView() {
               dragging ? 'border-[var(--accent)] bg-[var(--accent-dim)]' : 'border-[var(--border-strong)] bg-[var(--bg-secondary)]'
             }`}
           >
-            <span className={`flex h-12 w-12 items-center justify-center rounded-full ${items.length ? 'bg-[var(--accent-dim)] text-[var(--accent)]' : 'bg-[var(--bg-elevated)] text-[var(--text-muted)] group-hover:text-[var(--accent)]'}`}>
+            <span className={`flex h-12 w-12 items-center justify-center rounded-full ${items.length ? 'bg-[var(--accent-dim)] text-[var(--accent-text)]' : 'bg-[var(--bg-elevated)] text-[var(--text-muted)] group-hover:text-[var(--accent-text)]'}`}>
               {items.length ? <CheckCircle2 size={22} /> : <Upload size={22} />}
             </span>
             <span className="text-sm font-medium text-[var(--text-primary)]">

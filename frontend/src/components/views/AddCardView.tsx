@@ -98,7 +98,7 @@ function StepIndicator({ current }: { current: number }) {
             {i > 0 && <span className="h-px w-4 bg-[var(--border-strong)]" />}
             <span
               className={`tabular flex h-5 w-5 items-center justify-center rounded-full text-[11px] font-semibold ${
-                done ? 'bg-[var(--green)] text-[#06120d]' : active ? 'bg-[var(--accent)] text-[var(--on-accent)]' : 'bg-[var(--bg-elevated)] text-[var(--text-muted)]'
+                done ? 'bg-[var(--green)] text-[#06120d]' : active ? 'bg-[var(--accent-strong)] text-[var(--on-accent)]' : 'bg-[var(--bg-elevated)] text-[var(--text-muted)]'
               }`}
             >
               {done ? <CheckCircle2 size={12} /> : i + 1}
@@ -190,7 +190,7 @@ export function AddCardView() {
         ...fields,
         card_type: (fields.card_type || null) as CardType | null,
         parallel_confidence: fields.parallel_confidence ? parseInt(fields.parallel_confidence) : null,
-        price: fields.price ? parseFloat(fields.price) : null,
+        price: fields.price ? parseFloat(fields.price.replace(',', '.')) || null : null,
         is_rookie: fields.is_rookie,
       });
       createdCardId = newCard.id;
@@ -252,6 +252,7 @@ export function AddCardView() {
   }
 
   const canIdentify = !!frontFile && !!backFile;
+  const canSave = !!frontFile || fields.player.trim() !== '';
   const identified = identify.isSuccess;
   const step = saving ? 3 : identified ? 2 : identify.isPending ? 1 : canIdentify ? 1 : 0;
 
@@ -332,44 +333,44 @@ export function AddCardView() {
                   </select>
                 </Field>
                 <Field label="Joueur">
-                  <input className="ui-input" value={fields.player} onChange={(e) => set('player', e.target.value)} placeholder="ex: LeBron James" />
+                  <input className="ui-input" value={fields.player} onChange={(e) => set('player', e.target.value)} placeholder="ex. LeBron James" />
                 </Field>
                 <Field label="Équipe">
-                  <input className="ui-input" value={fields.team} onChange={(e) => set('team', e.target.value)} placeholder="ex: Lakers" />
+                  <input className="ui-input" value={fields.team} onChange={(e) => set('team', e.target.value)} placeholder="ex. Lakers" />
                 </Field>
               </div>
 
               <div className="grid grid-cols-3 gap-3">
                 <Field label="Année">
-                  <input className="ui-input" value={fields.year} onChange={(e) => set('year', e.target.value)} placeholder="2024-25" />
+                  <input className="ui-input" value={fields.year} onChange={(e) => set('year', e.target.value)} placeholder="ex. 2024-25" />
                 </Field>
                 <Field label="Marque">
-                  <input className="ui-input" value={fields.brand} onChange={(e) => set('brand', e.target.value)} placeholder="Panini" />
+                  <input className="ui-input" value={fields.brand} onChange={(e) => set('brand', e.target.value)} placeholder="ex. Panini" />
                 </Field>
                 <Field label="Set">
-                  <input className="ui-input" value={fields.set_name} onChange={(e) => set('set_name', e.target.value)} placeholder="Prizm" />
+                  <input className="ui-input" value={fields.set_name} onChange={(e) => set('set_name', e.target.value)} placeholder="ex. Prizm" />
                 </Field>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <Field label="Insert">
-                  <input className="ui-input" value={fields.insert_name} onChange={(e) => set('insert_name', e.target.value)} placeholder="Downtown" />
+                  <input className="ui-input" value={fields.insert_name} onChange={(e) => set('insert_name', e.target.value)} placeholder="ex. Downtown" />
                 </Field>
-                <Field label="Parallel">
-                  <input className="ui-input" value={fields.parallel_name} onChange={(e) => set('parallel_name', e.target.value)} placeholder="Silver" />
+                <Field label="Parallèle">
+                  <input className="ui-input" value={fields.parallel_name} onChange={(e) => set('parallel_name', e.target.value)} placeholder="ex. Silver" />
                 </Field>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <Field label="N° carte">
-                  <input className="ui-input" value={fields.card_number} onChange={(e) => set('card_number', e.target.value)} placeholder="#23" />
+                  <input className="ui-input" value={fields.card_number} onChange={(e) => set('card_number', e.target.value)} placeholder="ex. 23" />
                 </Field>
                 <Field label="Tirage">
-                  <input className="ui-input" value={fields.numbered} onChange={(e) => set('numbered', e.target.value)} placeholder="/99" />
+                  <input className="ui-input" value={fields.numbered} onChange={(e) => set('numbered', e.target.value)} placeholder="ex. /99" />
                 </Field>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 <Field label="Type">
                   <select className="ui-select" value={fields.card_type} onChange={(e) => set('card_type', e.target.value)}>
                     <option value="">—</option>
@@ -381,6 +382,18 @@ export function AddCardView() {
                     <option value="collection">Collection</option>
                     <option value="a_vendre">À vendre</option>
                   </select>
+                </Field>
+                <Field label="Prix de vente">
+                  <div className="relative">
+                    <input
+                      className="ui-input tabular pr-7"
+                      inputMode="decimal"
+                      value={fields.price}
+                      onChange={(e) => set('price', e.target.value)}
+                      placeholder="0,00"
+                    />
+                    <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[13px] text-[var(--text-muted)]">€</span>
+                  </div>
                 </Field>
               </div>
 
@@ -402,11 +415,14 @@ export function AddCardView() {
             </div>
           </Panel>
 
+          {!canSave && !saving && (
+            <p className="text-right text-xs text-[var(--text-muted)]">Ajoute une photo ou le nom du joueur pour enregistrer.</p>
+          )}
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
             <button onClick={() => setActiveView('collection')} className="ui-btn ui-btn-lg">
               Annuler
             </button>
-            <button onClick={handleSave} disabled={saving} className="ui-btn ui-btn-primary ui-btn-lg sm:min-w-56">
+            <button onClick={handleSave} disabled={saving || !canSave} className="ui-btn ui-btn-primary ui-btn-lg sm:min-w-56">
               {saving ? <RefreshCw size={16} className="animate-spin" /> : <Upload size={16} />}
               {saving ? saveStep || 'Enregistrement…' : 'Enregistrer la carte'}
             </button>

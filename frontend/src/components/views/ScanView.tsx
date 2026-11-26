@@ -1037,7 +1037,7 @@ function CompsPanel({
                       aria-label={on ? 'Écarter de l’estimation' : 'Retenir dans l’estimation'}
                       title={on ? 'Écarter de l’estimation' : 'Retenir dans l’estimation'}
                       className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors ${
-                        on ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--on-accent)]' : 'border-[var(--border-strong)] hover:border-[var(--text-muted)]'
+                        on ? 'border-[var(--accent)] bg-[var(--accent-strong)] text-[var(--on-accent)]' : 'border-[var(--border-strong)] hover:border-[var(--text-muted)]'
                       }`}
                     >
                       {on && <Check size={13} strokeWidth={3} />}

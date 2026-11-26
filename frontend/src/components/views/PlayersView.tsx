@@ -162,7 +162,7 @@ function PlayerModal({ stats, onClose }: { stats: PlayerStats; onClose: () => vo
         title={stats.player}
         subtitle={<span className="tabular">{stats.total} carte{stats.total > 1 ? 's' : ''} dans la collection</span>}
         icon={
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--accent-dim)] text-[var(--accent)]">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--accent-dim)] text-[var(--accent-text)]">
             <UserIcon size={18} />
           </div>
         }

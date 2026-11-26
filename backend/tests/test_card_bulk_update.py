@@ -85,5 +85,27 @@ class BulkUpdateTests(unittest.TestCase):
         self.assertEqual(len(FakeClient.calls), 3)
 
 
+@patch.object(cards.httpx, "AsyncClient", FakeClient)
+class SaleFieldsTests(unittest.TestCase):
+    def setUp(self):
+        FakeClient.calls = []
+        self.client = make_client()
+
+    def test_marking_sold_stamps_a_sale_date_only_where_missing(self):
+        self.client.post("/cards/bulk-update", json={"card_ids": [A, B], "changes": {"status": "vendu"}})
+        self.assertEqual(len(FakeClient.calls), 2)
+        stamp = FakeClient.calls[1]
+        self.assertEqual(stamp["params"]["sold_at"], "is.null")
+        self.assertIn("sold_at", stamp["json"])
+
+    def test_back_on_sale_clears_the_sale(self):
+        self.client.post("/cards/bulk-update", json={"card_ids": [A], "changes": {"status": "a_vendre"}})
+        self.assertEqual(FakeClient.calls[0]["json"], {"sold_price": None, "sold_at": None, "sold_channel": None, "status": "a_vendre"})
+
+    def test_explicit_sale_fields_win(self):
+        out = cards.with_sale_fields({"status": "vendu", "sold_price": 7.0})
+        self.assertEqual(out, {"status": "vendu", "sold_price": 7.0})
+
+
 if __name__ == "__main__":
     unittest.main()

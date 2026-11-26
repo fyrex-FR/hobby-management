@@ -511,8 +511,8 @@ export function ReviewView() {
   return (
     <Page width="wide">
       <PageHeader
-        title={<span className="flex items-center gap-2">Vérification studio <Badge tone="accent" className="tabular">{drafts.length}</Badge></span>}
-        subtitle={reviewSession ? `${reviewSession.tag} · lot studio récent` : 'Validez ou corrigez les données extraites par l\'IA'}
+        title={<span className="flex items-center gap-2">Brouillons <Badge tone="accent" className="tabular">{drafts.length}</Badge></span>}
+        subtitle={reviewSession ? `${reviewSession.tag} · lot studio récent` : 'Valide ou corrige ce que l\'IA a lu sur chaque carte'}
         actions={
           <>
             <button
@@ -524,7 +524,7 @@ export function ReviewView() {
             <button
               onClick={handleValidateAll}
               disabled={validatingAll}
-              className="ui-btn ui-btn-success"
+              className="ui-btn ui-btn-primary"
             >
               {validatingAll ? <RefreshCw size={15} className="animate-spin" /> : <CheckCircle2 size={15} />}
               {validatingAll ? 'Traitement en cours…' : `Tout valider (${drafts.length})`}
