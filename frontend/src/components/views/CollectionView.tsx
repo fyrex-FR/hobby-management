@@ -30,7 +30,7 @@ import {
   useReactTable,
 } from '@tanstack/react-table';
 import { useCards, useDeleteCardsWithUndo, useRecalculateEbayPrices, useUpdateCard } from '../../hooks/useCards';
-import { confirmDialog, errorMessage, promptDialog, toast } from '../../lib/feedback';
+import { confirmDialog, errorMessage, toast } from '../../lib/feedback';
 import { useFolders, useCreateFolder, useUpdateFolder, useDeleteFolder } from '../../hooks/useFolders';
 import { useAppStore } from '../../stores/appStore';
 import { useCollectionFilters } from '../../stores/collectionFilterStore';
@@ -44,6 +44,7 @@ import { EbayStockSyncModal } from '../shared/EbayStockSyncModal';
 import { EbayLogo, VintedLogo } from '../shared/EbayLogo';
 import { PricingFlow } from '../shared/PricingFlow';
 import { VintedPublishFlow } from '../shared/VintedPublishFlow';
+import { BulkEditModal } from '../shared/BulkEditModal';
 import { Popover } from '../shared/Popover';
 import { Badge, HoloCard, Modal } from '../ui';
 import { holoRarity } from '../../lib/holo';
@@ -310,7 +311,7 @@ function buildColumns(
   quickEdit: boolean,
   selectMode: boolean,
   selectedIds: Set<string>,
-  onToggleSelect: (id: string) => void,
+  onToggleSelect: (id: string, range?: boolean) => void,
   folderById: Map<string, Folder>,
   folders: Folder[],
 ) {
@@ -322,7 +323,7 @@ function buildColumns(
       const checked = selectedIds.has(id);
       return (
         <button
-          onClick={(e) => { e.stopPropagation(); onToggleSelect(id); }}
+          onClick={(e) => { e.stopPropagation(); onToggleSelect(id, e.shiftKey); }}
           className="flex items-center justify-center"
         >
           {checked ? (
@@ -500,7 +501,7 @@ function GridCard({
   onClick: () => void;
   selectMode?: boolean;
   selected?: boolean;
-  onToggleSelect?: (id: string) => void;
+  onToggleSelect?: (id: string, range?: boolean) => void;
   anchorLetter?: string;
   folderChips?: string[];
   folders?: Folder[];
@@ -508,7 +509,7 @@ function GridCard({
   const price = displayPrice(card);
   const variant = card.insert_name || (card.parallel_name && card.parallel_name !== 'Base' ? normalizeParallelName(card.parallel_name) : null);
   const meta = [card.year, card.brand, card.set_name].filter(Boolean).join(' · ');
-  const activate = () => (selectMode ? onToggleSelect?.(card.id) : onClick());
+  const activate = (range = false) => (selectMode ? onToggleSelect?.(card.id, range) : onClick());
   const accessibleName = [
     card.player ?? 'Carte',
     meta,
@@ -526,7 +527,7 @@ function GridCard({
       aria-label={accessibleName}
       aria-pressed={selectMode ? selected : undefined}
       data-jump={anchorLetter}
-      onClick={activate}
+      onClick={(e) => activate(e.shiftKey)}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); } }}
       className={`group relative flex h-full cursor-pointer flex-col overflow-hidden rounded-xl border bg-[var(--bg-card)] text-left transition-[border-color,box-shadow] duration-200 hover:shadow-[var(--shadow-md)] focus-visible:outline-2 focus-visible:outline-[var(--accent)] ${
         selected ? 'border-[var(--accent)] ring-1 ring-[var(--accent)]' : 'border-[var(--border)] hover:border-[var(--border-strong)]'
@@ -613,7 +614,7 @@ function TableView({
   onRowClick: (card: Card) => void;
   selectMode: boolean;
   selectedIds: Set<string>;
-  onToggleSelect: (id: string) => void;
+  onToggleSelect: (id: string, range?: boolean) => void;
   sortBy: SortBy;
   onSort: (s: SortBy) => void;
 }) {
@@ -639,7 +640,7 @@ function TableView({
           const isSelected = selectMode && selectedIds.has(card.id);
           const price = displayPrice(card);
           const variant = card.insert_name || (card.parallel_name && card.parallel_name !== 'Base' ? normalizeParallelName(card.parallel_name) : null);
-          const activate = () => (selectMode ? onToggleSelect(card.id) : onRowClick(card));
+          const activate = (range = false) => (selectMode ? onToggleSelect(card.id, range) : onRowClick(card));
           return (
             <div
               key={row.id}
@@ -647,7 +648,7 @@ function TableView({
               tabIndex={0}
               aria-pressed={selectMode ? isSelected : undefined}
               data-jump={rowAnchor.get(row.id)}
-              onClick={activate}
+              onClick={(e) => activate(e.shiftKey)}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); activate(); } }}
               className={`flex items-center gap-3 p-2.5 transition-colors active:bg-[var(--bg-hover)] ${isSelected ? 'bg-[var(--accent-dim)]' : ''}`}
             >
@@ -729,7 +730,7 @@ function TableView({
                 data-jump={rowAnchor.get(row.id)}
                 tabIndex={0}
                 aria-selected={selectMode ? isSelected : undefined}
-                onClick={() => (selectMode ? onToggleSelect(row.original.id) : onRowClick(row.original))}
+                onClick={(e) => (selectMode ? onToggleSelect(row.original.id, e.shiftKey) : onRowClick(row.original))}
                 onKeyDown={(e) => {
                   if (e.target !== e.currentTarget || (e.key !== 'Enter' && e.key !== ' ')) return;
                   e.preventDefault();
@@ -951,6 +952,7 @@ export function CollectionView() {
   const [ebayUpdateOpen, setEbayUpdateOpen] = useState(false);
   const [vintedPublishOpen, setVintedPublishOpen] = useState(false);
   const [pricingOpen, setPricingOpen] = useState(false);
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
   // Le tableau est en lecture seule ; ce mode transforme ses cellules en champs.
   const [quickEdit, setQuickEdit] = useState(false);
   const isPhone = useIsMobile();
@@ -996,45 +998,26 @@ export function CollectionView() {
   );
   const anyFilter = hasAnyFilter(filters);
 
-  function toggleSelect(id: string) {
+  // Maj+clic sélectionne toute la plage depuis la dernière carte cochée, dans l'ordre affiché.
+  const lastToggled = useRef<string | null>(null);
+  const displayOrder = useRef<string[]>([]);
+  function toggleSelect(id: string, range = false) {
+    const anchor = lastToggled.current;
+    lastToggled.current = id;
     setSelectedIds((prev) => {
       const next = new Set(prev);
+      const order = displayOrder.current;
+      const from = anchor ? order.indexOf(anchor) : -1;
+      const to = order.indexOf(id);
+      if (range && from >= 0 && to >= 0 && from !== to) {
+        const [lo, hi] = from < to ? [from, to] : [to, from];
+        for (let i = lo; i <= hi; i++) next.add(order[i]);
+        return next;
+      }
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
-  }
-
-  async function applyBulkPrice() {
-    const raw = await promptDialog({
-      title: 'Prix de vente',
-      description: `Appliqué aux ${selectedIds.size} carte${selectedIds.size > 1 ? 's' : ''} sélectionnée${selectedIds.size > 1 ? 's' : ''}. Laisse vide pour retirer le prix.`,
-      placeholder: '0,00',
-      inputMode: 'decimal',
-      suffix: '€',
-      confirmLabel: 'Appliquer',
-      validate: (v) => {
-        const t = v.trim();
-        if (t === '') return null;
-        const n = parseFloat(t.replace(',', '.'));
-        return Number.isNaN(n) || n < 0 ? 'Saisis un prix valide, par exemple 12,50.' : null;
-      },
-    });
-    if (raw === null) return;
-    const trimmed = raw.trim();
-    const price = trimmed === '' ? null : parseFloat(trimmed.replace(',', '.'));
-    setBulkBusy(true);
-    try {
-      await Promise.all(
-        [...selectedIds].map((id) => updateCard.mutateAsync({ id, price })),
-      );
-      toast.success(price === null ? 'Prix retirés' : `Prix appliqué à ${selectedIds.size} carte${selectedIds.size > 1 ? 's' : ''}`);
-      exitSelectMode();
-    } catch (e) {
-      toast.error('Impossible de mettre à jour les prix', { description: errorMessage(e) });
-    } finally {
-      setBulkBusy(false);
-    }
   }
 
   async function applyEbayPriceCalculation(onlyMissing: boolean) {
@@ -1064,22 +1047,7 @@ export function CollectionView() {
   function exitSelectMode() {
     setSelectMode(false);
     setSelectedIds(new Set());
-  }
-
-  async function applyBulkStatus(status: CardStatus) {
-    if (selectedIds.size === 0) return;
-    setBulkBusy(true);
-    try {
-      await Promise.all(
-        [...selectedIds].map((id) => updateCard.mutateAsync({ id, status })),
-      );
-      toast.success(`Statut mis à jour pour ${selectedIds.size} carte${selectedIds.size > 1 ? 's' : ''}`);
-      exitSelectMode();
-    } catch (e) {
-      toast.error('Impossible de changer le statut', { description: errorMessage(e) });
-    } finally {
-      setBulkBusy(false);
-    }
+    lastToggled.current = null;
   }
 
   async function bulkDelete() {
@@ -1159,6 +1127,10 @@ export function CollectionView() {
           : ([a]: [string, Card[]], [b]: [string, Card[]]) => a.localeCompare(b);
     return Object.fromEntries(Object.entries(groups).sort(compare));
   }, [sorted, groupBy, viewMode, ctx]);
+
+  useEffect(() => {
+    displayOrder.current = viewMode === 'grid' ? Object.values(grouped).flat().map((c) => c.id) : sorted.map((c) => c.id);
+  }, [grouped, sorted, viewMode]);
 
   // Le répertoire A-Z n'a de sens que si l'affichage suit l'ordre alphabétique des joueurs.
   const availableInitials = useMemo(
@@ -1269,7 +1241,7 @@ export function CollectionView() {
               data-active={selectMode}
               aria-pressed={selectMode}
               aria-label="Sélection multiple"
-              title="Sélection multiple"
+              title="Choisir plusieurs cartes pour les modifier, les ranger ou les vendre"
             >
               <ListChecks size={15} />
               <span className="hidden sm:inline">Sélectionner</span>
@@ -1443,84 +1415,79 @@ export function CollectionView() {
               {selectedIds.size === filtered.length ? 'Tout désélectionner' : `Tout (${filtered.length})`}
             </button>
 
-            <div className="h-6 w-px bg-[var(--border-strong)]" />
+            {selectedIds.size === 0 ? (
+              <p className="px-1 text-[13px] text-[var(--text-muted)]">
+                Touche des cartes pour les choisir<span className="hidden lg:inline"> · Maj+clic pour toute une plage</span>
+              </p>
+            ) : (
+              <>
+                <div className="h-6 w-px bg-[var(--border-strong)]" />
 
-            <BulkMenu label="Statut" disabled={bulkBusy || selectedIds.size === 0}>
-              {(close) => STATUS_OPTIONS.map((opt) => (
-                <BulkMenuItem key={opt.value} onClick={() => { close(); applyBulkStatus(opt.value); }}>
-                  {opt.label}
-                </BulkMenuItem>
-              ))}
-            </BulkMenu>
+                <button onClick={() => setBulkEditOpen(true)} disabled={bulkBusy} className="ui-btn ui-btn-primary h-8">
+                  <Pencil size={14} /> Modifier…
+                </button>
 
-            <BulkMenu label="Modifier" disabled={bulkBusy || selectedIds.size === 0}>
-              {(close) => (
-                <>
-                  <BulkMenuItem onClick={() => { close(); applyBulkPrice(); }}>
-                    Prix de vente…
-                  </BulkMenuItem>
-                  <BulkMenuItem onClick={() => { close(); applyEbayPriceCalculation(true); }}>
-                    Calculer les prix eBay manquants
-                  </BulkMenuItem>
-                  <BulkMenuItem onClick={() => { close(); applyEbayPriceCalculation(false); }}>
-                    Recalculer tous les prix eBay…
-                  </BulkMenuItem>
-                  {folders.length > 0 && (
+                {folders.length > 0 && (
+                  <BulkMenu label="Ranger" icon={<FolderIcon size={14} />} disabled={bulkBusy}>
+                    {(close) => (
+                      <>
+                        <BulkMenuLabel>Ajouter au dossier</BulkMenuLabel>
+                        {folders.map((f) => (
+                          <BulkMenuItem key={`add-${f.id}`} onClick={() => { close(); applyBulkFolder(f.id, true); }}>
+                            {f.emoji ? `${f.emoji} ` : ''}{f.name}
+                          </BulkMenuItem>
+                        ))}
+                        <BulkMenuLabel>Retirer du dossier</BulkMenuLabel>
+                        {folders.map((f) => (
+                          <BulkMenuItem key={`rm-${f.id}`} onClick={() => { close(); applyBulkFolder(f.id, false); }}>
+                            {f.emoji ? `${f.emoji} ` : ''}{f.name}
+                          </BulkMenuItem>
+                        ))}
+                      </>
+                    )}
+                  </BulkMenu>
+                )}
+
+                <BulkMenu label="Vendre" icon={<ShoppingBag size={14} />} disabled={bulkBusy}>
+                  {(close) => (
                     <>
-                      <BulkMenuLabel>Ajouter au dossier</BulkMenuLabel>
-                      {folders.map((f) => (
-                        <BulkMenuItem key={`add-${f.id}`} onClick={() => { close(); applyBulkFolder(f.id, true); }}>
-                          {f.emoji ? `${f.emoji} ` : ''}{f.name}
-                        </BulkMenuItem>
-                      ))}
-                      <BulkMenuLabel>Retirer du dossier</BulkMenuLabel>
-                      {folders.map((f) => (
-                        <BulkMenuItem key={`rm-${f.id}`} onClick={() => { close(); applyBulkFolder(f.id, false); }}>
-                          {f.emoji ? `${f.emoji} ` : ''}{f.name}
-                        </BulkMenuItem>
-                      ))}
+                      <BulkMenuLabel><EbayLogo width={30} height={12} /></BulkMenuLabel>
+                      <BulkMenuItem onClick={() => { close(); setEbayBulkOpen(true); }}>
+                        Publier les non listées
+                      </BulkMenuItem>
+                      <BulkMenuItem onClick={() => { close(); setEbayUpdateOpen(true); }}>
+                        Mettre à jour les annonces (prix + stock)
+                      </BulkMenuItem>
+                      <BulkMenuItem onClick={() => { close(); applyEbayPriceCalculation(true); }}>
+                        Calculer les prix eBay manquants
+                      </BulkMenuItem>
+                      <BulkMenuItem onClick={() => { close(); applyEbayPriceCalculation(false); }}>
+                        Recalculer tous les prix eBay…
+                      </BulkMenuItem>
+                      <BulkMenuLabel><VintedLogo width={38} height={12} /></BulkMenuLabel>
+                      <BulkMenuItem onClick={() => { close(); setVintedPublishOpen(true); }}>
+                        Publier les non listées en chaîne
+                      </BulkMenuItem>
+                      <BulkMenuLabel>Whatnot</BulkMenuLabel>
+                      <BulkMenuItem onClick={() => { close(); setWhatnotOpen(true); }}>
+                        <Download size={13} /> Exporter en CSV
+                      </BulkMenuItem>
                     </>
                   )}
-                </>
-              )}
-            </BulkMenu>
+                </BulkMenu>
 
-            <BulkMenu
-              label="Vendre"
-              accent
-              icon={<ShoppingBag size={14} />}
-              disabled={bulkBusy || selectedIds.size === 0}
-            >
-              {(close) => (
-                <>
-                  <BulkMenuLabel><EbayLogo width={30} height={12} /></BulkMenuLabel>
-                  <BulkMenuItem onClick={() => { close(); setEbayBulkOpen(true); }}>
-                    Publier les non listées
-                  </BulkMenuItem>
-                  <BulkMenuItem onClick={() => { close(); setEbayUpdateOpen(true); }}>
-                    Mettre à jour les annonces (prix + stock)
-                  </BulkMenuItem>
-                  <BulkMenuLabel><VintedLogo width={38} height={12} /></BulkMenuLabel>
-                  <BulkMenuItem onClick={() => { close(); setVintedPublishOpen(true); }}>
-                    Publier les non listées en chaîne
-                  </BulkMenuItem>
-                  <BulkMenuLabel>Whatnot</BulkMenuLabel>
-                  <BulkMenuItem onClick={() => { close(); setWhatnotOpen(true); }}>
-                    <Download size={13} /> Exporter en CSV
-                  </BulkMenuItem>
-                </>
-              )}
-            </BulkMenu>
-
-            <button
-              onClick={bulkDelete}
-              disabled={bulkBusy || selectedIds.size === 0}
-              title="Supprimer"
-              className="ui-btn h-8 text-[var(--red)] hover:!text-[var(--red)]"
-            >
-              <Trash2 size={14} />
-              <span className="hidden sm:inline">Supprimer</span>
-            </button>
+                <button
+                  onClick={bulkDelete}
+                  disabled={bulkBusy}
+                  title="Supprimer"
+                  aria-label="Supprimer la sélection"
+                  className="ui-btn h-8 text-[var(--red)] hover:!text-[var(--red)]"
+                >
+                  <Trash2 size={14} />
+                  <span className="hidden sm:inline">Supprimer</span>
+                </button>
+              </>
+            )}
 
             <div className="flex-1" />
 
@@ -1533,6 +1500,15 @@ export function CollectionView() {
 
       {selectedCard && (
         <CardDetail card={selectedCard} onClose={() => setSelectedCard(null)} />
+      )}
+
+      {bulkEditOpen && (
+        <BulkEditModal
+          cards={cards.filter((c) => selectedIds.has(c.id))}
+          allCards={cards}
+          onClose={() => setBulkEditOpen(false)}
+          onDone={() => { setBulkEditOpen(false); exitSelectMode(); }}
+        />
       )}
 
       {pricingOpen && (

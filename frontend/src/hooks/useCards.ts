@@ -61,6 +61,19 @@ export function useUpdateCard() {
   });
 }
 
+/** Champs qu'on peut changer d'un coup sur une sélection (POST /cards/bulk-update). */
+export type BulkCardChanges = Partial<Pick<Card,
+  'sport' | 'team' | 'year' | 'brand' | 'set_name' | 'card_type' | 'insert_name' | 'parallel_name' | 'numbered' | 'is_rookie' | 'status'>>;
+
+export function useBulkUpdateCards() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { card_ids: string[]; changes: BulkCardChanges }) =>
+      apiFetch<{ updated: number }>('/cards/bulk-update', { method: 'POST', body: JSON.stringify(data) }, 60000),
+    onSettled: () => qc.invalidateQueries({ queryKey: ['cards'] }),
+  });
+}
+
 export function useDeleteCard() {
   const qc = useQueryClient();
   return useMutation({
