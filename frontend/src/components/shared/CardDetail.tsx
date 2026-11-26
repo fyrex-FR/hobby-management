@@ -711,7 +711,7 @@ export function CardDetail({ card, onClose }: Props) {
               aria-label={SIDE_LABEL[s]}
               className={`flex items-center gap-2 rounded-lg border p-1 text-[13px] font-medium transition-colors sm:pr-2.5 disabled:cursor-not-allowed disabled:opacity-40 ${
                 dragOver === s
-                  ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent)]'
+                  ? 'border-[var(--accent)] bg-[var(--accent-dim)] text-[var(--accent-text)]'
                   : isActive
                     ? 'border-[var(--border-accent)] bg-[var(--accent-dim)] text-[var(--text-primary)]'
                     : 'border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'

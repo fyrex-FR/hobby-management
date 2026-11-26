@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Inbox, Check, Archive, Trash2, MessageSquare, Clock, Download, ShoppingBag, ImageOff } from 'lucide-react';
+import { Inbox, Check, Archive, Trash2, MessageSquare, Clock, Download, ShoppingBag, ImageOff, Copy, ExternalLink } from 'lucide-react';
 import { confirmDialog, errorMessage, toast } from '../../lib/feedback';
 import { useRequests, useUpdateRequest, useDeleteRequest } from '../../hooks/useRequests';
 import { useCards } from '../../hooks/useCards';
@@ -115,6 +115,35 @@ export function RequestsView() {
   );
 }
 
+/** Le pseudo laissé par le visiteur (Instagram ou Discord) : copie, et lien Instagram s'il commence par @. */
+function HandleActions({ handle }: { handle: string }) {
+  const insta = /^@[A-Za-z0-9._]{1,30}$/.test(handle.trim());
+  return (
+    <span className="flex items-center gap-0.5">
+      <button
+        onClick={() => navigator.clipboard.writeText(handle.trim().replace(/^@/, '')).then(() => toast.success('Pseudo copié'), () => {})}
+        className="ui-btn ui-btn-ghost ui-btn-sm ui-btn-icon"
+        title="Copier le pseudo"
+        aria-label={`Copier le pseudo ${handle}`}
+      >
+        <Copy size={13} />
+      </button>
+      {insta && (
+        <a
+          href={`https://www.instagram.com/${handle.trim().slice(1)}/`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="ui-btn ui-btn-ghost ui-btn-sm ui-btn-icon"
+          title="Ouvrir sur Instagram"
+          aria-label={`Ouvrir ${handle} sur Instagram`}
+        >
+          <ExternalLink size={13} />
+        </a>
+      )}
+    </span>
+  );
+}
+
 function RequestCard({
   req,
   cardById,
@@ -179,7 +208,7 @@ function RequestCard({
         <div className="flex min-w-0 items-start gap-3">
           <div
             className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-semibold ${
-              isNew ? 'bg-[var(--accent-dim)] text-[var(--accent)]' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
+              isNew ? 'bg-[var(--accent-dim)] text-[var(--accent-text)]' : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]'
             }`}
             aria-hidden="true"
           >
@@ -190,6 +219,7 @@ function RequestCard({
               <span className={`truncate text-sm ${isNew ? 'font-semibold text-[var(--text-primary)]' : 'font-medium text-[var(--text-secondary)]'}`}>
                 {req.viewer_handle}
               </span>
+              <HandleActions handle={req.viewer_handle} />
               <Badge tone={STATUS_TONE[req.status]}>{STATUS_LABEL[req.status]}</Badge>
               {total > 0 && (
                 <Badge tone="accent"><span className="tabular">Total {formatEuro(total)}</span></Badge>

@@ -45,7 +45,7 @@ function ToastItem({ toast }: { toast: Toast }) {
       </div>
       {toast.action && (
         <button
-          className="shrink-0 rounded-md px-2 py-0.5 text-[13px] font-semibold text-[var(--accent)] hover:bg-[var(--accent-dim)]"
+          className="shrink-0 rounded-md px-2 py-0.5 text-[13px] font-semibold text-[var(--accent-text)] hover:bg-[var(--accent-dim)]"
           onClick={() => { toast.action!.onClick(); dismiss(toast.id); }}
         >
           {toast.action.label}

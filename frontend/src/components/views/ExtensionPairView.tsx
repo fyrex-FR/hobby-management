@@ -50,7 +50,7 @@ export function ExtensionPairView() {
     <div className="flex min-h-[100dvh] justify-center bg-[var(--bg-primary)] px-4 py-10 text-[var(--text-primary)]">
       <div className="w-full max-w-md space-y-5">
         <div className="flex flex-col items-center text-center">
-          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--accent)] text-lg font-extrabold text-[var(--on-accent)]">
+          <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--accent-strong)] text-lg font-extrabold text-[var(--on-accent)]">
             C
           </div>
           <h1 className="text-xl font-semibold tracking-tight">CardVaults Scout</h1>

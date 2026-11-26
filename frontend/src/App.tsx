@@ -212,7 +212,7 @@ function NavButton({ item, active, onClick }: { item: NavItem; active: boolean; 
 function Logo({ subtitle }: { subtitle?: string }) {
   return (
     <div className="flex items-center gap-2.5">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-sm font-extrabold text-[var(--on-accent)]">
+      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-strong)] text-sm font-extrabold text-[var(--on-accent)]">
         C
       </div>
       <div className="min-w-0 text-left">
@@ -390,7 +390,7 @@ function MobileTopBar({ email, onShare }: { email: string; onShare: () => void }
   return (
     <header className="mobile-only sticky top-0 z-40 flex h-14 shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--bg-primary)]/90 px-4 pt-[env(safe-area-inset-top)] backdrop-blur-xl">
       <button onClick={() => setActiveView('dashboard')} className="flex min-w-0 items-center gap-2.5">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--accent)] text-sm font-extrabold text-[var(--on-accent)]">C</div>
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-strong)] text-sm font-extrabold text-[var(--on-accent)]">C</div>
         <span className="truncate text-[15px] font-semibold text-[var(--text-primary)]">{VIEW_TITLES[activeView] ?? 'CardVaults'}</span>
       </button>
       <div className="flex items-center gap-2">

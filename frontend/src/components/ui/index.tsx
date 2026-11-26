@@ -156,7 +156,7 @@ export function Badge({ children, tone = 'neutral', className = '' }: { children
   return (
     <span
       className={`inline-flex h-5 shrink-0 items-center gap-1 whitespace-nowrap rounded-md px-1.5 text-[11px] font-medium ${className}`}
-      style={{ color, background: tone === 'neutral' ? 'var(--bg-elevated)' : `color-mix(in srgb, ${color} 12%, transparent)` }}
+      style={{ color: tone === 'accent' ? 'var(--accent-text)' : color, background: tone === 'neutral' ? 'var(--bg-elevated)' : `color-mix(in srgb, ${color} 12%, transparent)` }}
     >
       {children}
     </span>

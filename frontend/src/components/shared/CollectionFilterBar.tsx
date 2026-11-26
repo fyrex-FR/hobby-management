@@ -172,7 +172,7 @@ function FacetMenu({
               >
                 <span
                   className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                    active ? 'border-[var(--accent)] bg-[var(--accent)] text-[var(--on-accent)]' : 'border-[var(--border-strong)]'
+                    active ? 'border-[var(--accent)] bg-[var(--accent-strong)] text-[var(--on-accent)]' : 'border-[var(--border-strong)]'
                   }`}
                 >
                   {active && <Check size={12} strokeWidth={3} />}

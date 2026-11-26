@@ -142,7 +142,7 @@ export function ShareModal({ onClose }: { onClose: () => void }) {
       title="Partager ma collection"
       subtitle="Crée un lien public : tes visiteurs parcourent tes cartes et t'envoient leurs demandes."
       icon={
-        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--accent-dim)] text-[var(--accent)]">
+        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--accent-dim)] text-[var(--accent-text)]">
           <Share2 size={17} />
         </span>
       }
