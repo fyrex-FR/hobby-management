@@ -152,6 +152,7 @@ const VIEW_TITLES: Partial<Record<ActiveView, string>> = {
   compare: 'Comparer IA',
   migration: 'Migration R2',
   pricing_auto: 'Pricing auto',
+  salon: 'Salon',
 };
 
 /** Items de navigation, partagés entre la sidebar desktop et le menu mobile. */
@@ -161,26 +162,29 @@ function useNavItems(isAdmin: boolean) {
   const draftCount = cards.filter((c) => c.status === 'draft').length;
   const newRequests = shareRequests.filter((r) => r.status === 'new').length;
 
+  // Quotidien d'abord ; l'ajout de cartes vit dans le bouton « + » (Scan,
+  // Ajout rapide, Studio, Import), pas en double ici ; l'admin est replié.
   const main: NavItem[] = [
     { id: 'dashboard', label: 'Vue d\'ensemble', icon: LayoutDashboard },
     { id: 'collection', label: 'Collection', icon: Library },
     { id: 'sales', label: 'Ventes', icon: TrendingUp },
     { id: 'requests', label: 'Demandes', icon: Inbox, badge: newRequests },
     ...(draftCount > 0 ? [{ id: 'review' as const, label: 'Brouillons', icon: FileClock, badge: draftCount }] : []),
+    ...(isAdmin ? [{ id: 'salon' as const, label: 'Salon', icon: Store }] : []),
   ];
   const tools: NavItem[] = [
-    { id: 'scan', label: 'Scan live', icon: Camera },
     { id: 'players', label: 'Joueurs', icon: Users },
     { id: 'grading', label: 'Grading', icon: GraduationCap },
     { id: 'ebay', label: 'eBay', icon: ShoppingBag },
-    { id: 'studio', label: 'Studio photo', icon: ScanLine },
-    { id: 'batch', label: 'Import en lot', icon: Upload },
-    ...(isAdmin ? [{ id: 'salon' as const, label: 'Salon', icon: Store }] : []),
-    ...(isAdmin ? [{ id: 'pricing_auto' as const, label: 'Pricing auto', icon: Bot }] : []),
-    ...(isAdmin ? [{ id: 'compare' as const, label: 'Comparer IA', icon: Database }] : []),
-    ...(isAdmin ? [{ id: 'migration' as const, label: 'Migration R2', icon: HardDrive }] : []),
   ];
-  return { main, tools, cardCount: cards.filter((c) => c.status !== 'draft').length, draftCount };
+  const admin: NavItem[] = isAdmin
+    ? [
+        { id: 'pricing_auto', label: 'Pricing auto', icon: Bot },
+        { id: 'compare', label: 'Comparer IA', icon: Database },
+        { id: 'migration', label: 'Migration R2', icon: HardDrive },
+      ]
+    : [];
+  return { main, tools, admin, cardCount: cards.filter((c) => c.status !== 'draft').length, draftCount };
 }
 
 function NavButton({ item, active, onClick }: { item: NavItem; active: boolean; onClick: () => void }) {
@@ -312,7 +316,7 @@ function AccountMenu({ email, onShare, compact = false }: { email: string; onSha
 
 function Sidebar({ isAdmin, email, onShare }: { isAdmin: boolean; email: string; onShare: () => void }) {
   const { activeView, setActiveView } = useAppStore();
-  const { main, tools, cardCount } = useNavItems(isAdmin);
+  const { main, tools, admin, cardCount } = useNavItems(isAdmin);
 
   return (
     <aside className="desktop-only flex h-full w-60 shrink-0 flex-col border-r border-[var(--border)] bg-[var(--bg-secondary)]">
@@ -337,16 +341,51 @@ function Sidebar({ isAdmin, email, onShare }: { isAdmin: boolean; email: string;
             <NavButton key={item.id} item={item} active={activeView === item.id} onClick={() => setActiveView(item.id)} />
           ))}
         </div>
+        {admin.length > 0 && <AdminSection items={admin} />}
       </nav>
       <div className="space-y-2 border-t border-[var(--border)] p-3">
-        {isAdmin && <ImpersonateSelector />}
         <AccountMenu email={email} onShare={onShare} />
       </div>
     </aside>
   );
 }
 
-function MobileTopBar({ isAdmin, email, onShare }: { isAdmin: boolean; email: string; onShare: () => void }) {
+/** Outils d'administration, repliés par défaut (ouverts si l'un est affiché). */
+function AdminSection({ items, onGo }: { items: NavItem[]; onGo?: (id: ActiveView) => void }) {
+  const { activeView, setActiveView } = useAppStore();
+  const inside = items.some((i) => i.id === activeView);
+  const [open, setOpen] = useState(() => {
+    try { return localStorage.getItem('nav-admin-open') === '1'; } catch { return false; }
+  });
+  const shown = open || inside;
+  function toggle() {
+    const next = !shown;
+    setOpen(next);
+    try { localStorage.setItem('nav-admin-open', next ? '1' : '0'); } catch { /* stockage indisponible */ }
+  }
+  return (
+    <div className="space-y-0.5">
+      <button
+        onClick={toggle}
+        aria-expanded={shown}
+        className="flex w-full items-center gap-1 px-2.5 pb-1 text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)] hover:text-[var(--text-secondary)]"
+      >
+        Admin
+        <ChevronDown size={12} className={`transition-transform ${shown ? '' : '-rotate-90'}`} />
+      </button>
+      {shown && (
+        <>
+          {items.map((item) => (
+            <NavButton key={item.id} item={item} active={activeView === item.id} onClick={() => (onGo ?? setActiveView)(item.id)} />
+          ))}
+          <div className="pt-1"><ImpersonateSelector /></div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function MobileTopBar({ email, onShare }: { email: string; onShare: () => void }) {
   const { activeView, setActiveView } = useAppStore();
   return (
     <header className="mobile-only sticky top-0 z-40 flex h-14 shrink-0 items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--bg-primary)]/90 px-4 pt-[env(safe-area-inset-top)] backdrop-blur-xl">
@@ -355,7 +394,6 @@ function MobileTopBar({ isAdmin, email, onShare }: { isAdmin: boolean; email: st
         <span className="truncate text-[15px] font-semibold text-[var(--text-primary)]">{VIEW_TITLES[activeView] ?? 'CardVaults'}</span>
       </button>
       <div className="flex items-center gap-2">
-        {isAdmin && <ImpersonateSelector compact />}
         <CommandPaletteTrigger compact />
         <AddMenu onSelect={setActiveView} variant="icon" />
         <AccountMenu email={email} onShare={onShare} compact />
@@ -366,12 +404,13 @@ function MobileTopBar({ isAdmin, email, onShare }: { isAdmin: boolean; email: st
 
 function MobileTabBar({ isAdmin }: { isAdmin: boolean }) {
   const { activeView, setActiveView } = useAppStore();
-  const { main, tools } = useNavItems(isAdmin);
+  const { main, tools, admin } = useNavItems(isAdmin);
   const [moreOpen, setMoreOpen] = useState(false);
   const primaryIds: ActiveView[] = ['dashboard', 'collection', 'sales', 'requests'];
   const primary = primaryIds.map((id) => main.find((m) => m.id === id)!).filter(Boolean);
+  // Salon et Brouillons d'abord : ce sont les entrées du quotidien.
   const overflow = [...main.filter((m) => !primaryIds.includes(m.id)), ...tools];
-  const overflowActive = overflow.some((o) => o.id === activeView);
+  const overflowActive = [...overflow, ...admin].some((o) => o.id === activeView);
   const overflowBadge = overflow.reduce((n, o) => n + (o.badge ?? 0), 0);
 
   function go(id: ActiveView) {
@@ -380,7 +419,7 @@ function MobileTabBar({ isAdmin }: { isAdmin: boolean }) {
   }
 
   const tab = (active: boolean) =>
-    `relative flex flex-1 flex-col items-center justify-center gap-0.5 pt-1.5 text-[10px] font-medium transition-colors ${
+    `relative flex flex-1 flex-col items-center justify-center gap-0.5 pt-1.5 text-[11px] font-medium transition-colors ${
       active ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'
     }`;
 
@@ -425,6 +464,7 @@ function MobileTabBar({ isAdmin }: { isAdmin: boolean }) {
                   <NavButton key={item.id} item={item} active={activeView === item.id} onClick={() => go(item.id)} />
                 ))}
               </div>
+              {admin.length > 0 && <div className="mt-3 border-t border-[var(--border)] pt-3"><AdminSection items={admin} onGo={go} /></div>}
             </motion.div>
           </motion.div>
         )}
@@ -627,7 +667,7 @@ function AuthedShell({ userId, email, showShare, setShowShare }: { userId: strin
     <div className="flex h-[100dvh] overflow-hidden bg-[var(--bg-primary)]">
       {!bare && <Sidebar isAdmin={isAdmin} email={email} onShare={() => setShowShare(true)} />}
       <div className="flex min-w-0 flex-1 flex-col">
-        {!bare && <MobileTopBar isAdmin={isAdmin} email={email} onShare={() => setShowShare(true)} />}
+        {!bare && <MobileTopBar email={email} onShare={() => setShowShare(true)} />}
         <main className="relative min-h-0 flex-1 overflow-hidden">
           <AnimatePresence mode="wait" initial={false}>
             <motion.div

@@ -17,6 +17,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { useCards, useUpdateCard } from '../../hooks/useCards';
+import { useAppStore } from '../../stores/appStore';
 import type { Card } from '../../types';
 import { CardDetail } from '../shared/CardDetail';
 import { SoldDialog } from '../shared/SoldDialog';
@@ -285,7 +286,11 @@ function SalesRow({ card, children, meta, onOpen }: { card: Card; children: Reac
 export function SalesView() {
   const { data: cards = [], isLoading } = useCards();
   const updateCard = useUpdateCard();
-  const [tab, setTab] = useState<SalesTab>('stats');
+  const takeSalesTab = useAppStore((s) => s.takeSalesTab);
+  const [tab, setTab] = useState<SalesTab>(() => {
+    const wanted = takeSalesTab();
+    return TABS.some((t) => t.key === wanted) ? (wanted as SalesTab) : 'stats';
+  });
   const [openCard, setOpenCard] = useState<Card | null>(null);
   const [selling, setSelling] = useState<Card | null>(null);
   const [pricing, setPricing] = useState(false);

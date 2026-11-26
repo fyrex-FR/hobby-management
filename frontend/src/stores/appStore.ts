@@ -16,6 +16,10 @@ interface AppStore {
   drillFilter: DrillFilter;
   reviewSessionId: string | null;
   importBatchId: string | null;
+  /** Onglet à ouvrir dans Ventes (lien depuis le tableau de bord), consommé à l'ouverture. */
+  salesTab: string | null;
+  openSales: (tab: string) => void;
+  takeSalesTab: () => string | null;
   setActiveView: (view: ActiveView) => void;
   setViewMode: (mode: ViewMode) => void;
   setDrillFilter: (filter: DrillFilter) => void;
@@ -32,12 +36,19 @@ export function viewFromHash(hash = window.location.hash): ActiveView | null {
   return m && (VIEWS as string[]).includes(m[1]) ? (m[1] as ActiveView) : null;
 }
 
-export const useAppStore = create<AppStore>((set) => ({
+export const useAppStore = create<AppStore>((set, get) => ({
   activeView: viewFromHash() ?? 'dashboard',
   viewMode: 'grid',
   drillFilter: {},
   reviewSessionId: null,
   importBatchId: null,
+  salesTab: null,
+  openSales: (tab) => set({ salesTab: tab, activeView: 'sales' }),
+  takeSalesTab: () => {
+    const tab = get().salesTab;
+    if (tab) set({ salesTab: null });
+    return tab;
+  },
   setActiveView: (view) => set({ activeView: view }),
   setViewMode: (mode) => set({ viewMode: mode }),
   setDrillFilter: (filter) => set({ drillFilter: filter }),
