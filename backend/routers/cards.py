@@ -1,9 +1,10 @@
 import logging
 import os
 import base64
+import uuid
 from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, Header
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Literal, Optional
 import httpx
 
@@ -160,6 +161,32 @@ class CardUpdate(BaseModel):
     folder_ids: Optional[list[str]] = None
 
 
+class CardBulkChanges(BaseModel):
+    """Champs modifiables d'un coup sur une sélection (fiche de la carte, statut).
+    Le prix reste carte par carte : il est poussé vers eBay."""
+    model_config = ConfigDict(extra="forbid")
+
+    sport: Optional[Literal["Basket", "Foot", "Baseball", "Football US", "Hockey", "Autre"]] = None
+    team: Optional[str] = None
+    year: Optional[str] = None
+    brand: Optional[str] = None
+    set_name: Optional[str] = None
+    card_type: Optional[str] = None
+    insert_name: Optional[str] = None
+    parallel_name: Optional[str] = None
+    numbered: Optional[str] = None
+    is_rookie: Optional[bool] = None
+    status: Optional[Literal["collection", "a_vendre", "reserve", "vendu"]] = None
+
+
+class CardBulkUpdate(BaseModel):
+    card_ids: list[str] = Field(min_length=1, max_length=2000)
+    changes: CardBulkChanges
+
+
+BULK_CHUNK = 100
+
+
 class EbayPriceRecalculation(BaseModel):
     card_ids: list[str]
     only_missing: bool = True
@@ -235,6 +262,40 @@ async def reanalyze_card(card_id: str, user: dict = Depends(current_user)):
     if result.get("sport") not in {"Basket", "Foot", "Baseball", "Football US", "Hockey", "Autre"}:
         result["sport"] = "Basket"
     return result
+
+
+@router.post("/cards/bulk-update")
+async def bulk_update_cards(body: CardBulkUpdate, user: dict = Depends(current_user)):
+    """Applique les mêmes changements à plusieurs cartes (année, set, marque…).
+    Un champ envoyé vide ou à null est vidé ; un champ absent n'est pas touché."""
+    user_id = user["sub"]
+    changes = {
+        key: (value.strip() or None) if isinstance(value, str) else value
+        for key, value in body.changes.model_dump(exclude_unset=True).items()
+    }
+    if not changes:
+        raise HTTPException(status_code=422, detail="Aucun changement à appliquer")
+    if changes.get("sport", "") is None or changes.get("status", "") is None or changes.get("is_rookie", False) is None:
+        raise HTTPException(status_code=422, detail="Sport, statut et rookie ne peuvent pas être vidés")
+    try:
+        ids = list(dict.fromkeys(str(uuid.UUID(card_id)) for card_id in body.card_ids))
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Identifiant de carte invalide")
+
+    updated = 0
+    async with httpx.AsyncClient(timeout=60) as client:
+        for start in range(0, len(ids), BULK_CHUNK):
+            chunk = ids[start:start + BULK_CHUNK]
+            resp = await client.patch(
+                f"{SUPABASE_URL}/rest/v1/cards",
+                headers=supabase_headers(),
+                params={"id": f"in.({','.join(chunk)})", "user_id": f"eq.{user_id}", "select": "id"},
+                json=changes,
+            )
+            if resp.status_code not in (200, 204):
+                raise HTTPException(status_code=resp.status_code, detail=resp.text)
+            updated += len(resp.json()) if resp.status_code == 200 else len(chunk)
+    return {"updated": updated}
 
 
 @router.patch("/cards/{card_id}")
