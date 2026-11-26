@@ -114,6 +114,13 @@ export function displayPrice(card: Card): number | null {
   return card.vinted_price ?? card.price ?? null;
 }
 
+/** Valeur estimée : prix des cartes encore là (hors brouillons et vendues), quantités comprises. */
+export function estimatedValue(cards: Card[]): number {
+  return cards
+    .filter((c) => c.status !== 'draft' && c.status !== 'vendu')
+    .reduce((sum, c) => sum + (displayPrice(c) ?? 0) * (c.quantity ?? 1), 0);
+}
+
 export function isAuto(card: Card): boolean {
   return card.card_type === 'auto' || card.card_type === 'auto_patch';
 }

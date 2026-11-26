@@ -32,6 +32,8 @@ import {
 import { SPORTS, type Card, type CardStatus, type CardType, type GradingCompany, type GradingStatus, type Sport } from '../../types';
 import { GradingBadge } from './GradingBadge';
 import { StatusMenu } from './StatusMenu';
+import { SoldDialog } from './SoldDialog';
+import { SALE_CHANNEL_LABEL, soldAt as saleDate, soldPrice as salePrice } from '../../lib/sales';
 import { STATUS_CONFIG } from '../../lib/cardStatus';
 import { CardBadge } from './CardBadge';
 import { useDeleteCardsWithUndo, useUpdateCard } from '../../hooks/useCards';
@@ -314,10 +316,13 @@ export function CardDetail({ card, onClose }: Props) {
   const [vintedPreview, setVintedPreview] = useState<{ image: string; payload: VintedDraft } | null>(null);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [selling, setSelling] = useState(false);
   const moreAnchor = useRef<HTMLButtonElement>(null);
 
   // Statut changé depuis l'en-tête : enregistré tout de suite, « Annuler » remet l'ancien.
   function changeStatus(status: Exclude<CardStatus, 'draft'>) {
+    // Une vente demande son prix, son canal et sa date.
+    if (status === 'vendu') { setSelling(true); return; }
     const previous = card.status;
     updateCard.mutate({ id: card.id, status }, {
       onSuccess: () => toast.success(`Statut : ${STATUS_CONFIG[status].label}`, {
@@ -566,7 +571,7 @@ export function CardDetail({ card, onClose }: Props) {
 
   const [side, setSide] = useState<Side>(card.image_front_url || !card.image_back_url ? 'front' : 'back');
   const panelRef = useRef<HTMLDivElement>(null);
-  const overlayOpen = lightboxSide != null || vintedPreview != null || showEbayPublish;
+  const overlayOpen = lightboxSide != null || vintedPreview != null || showEbayPublish || selling;
   const [photoMenuOpen, setPhotoMenuOpen] = useState(false);
   const photoMenuAnchor = useRef<HTMLButtonElement>(null);
   useDialogFocus(panelRef, !overlayOpen);
@@ -608,7 +613,8 @@ export function CardDetail({ card, onClose }: Props) {
   const vintedPrice = card.vinted_price ?? card.price;
   const isSold = card.status === 'vendu';
   const canPublish = card.status !== 'vendu' && card.status !== 'reserve';
-  const soldPrice = card.ebay_sold_price ?? card.price;
+  const soldPrice = salePrice(card);
+  const soldDate = saleDate(card);
 
   const details: { label: string; value: string | null | undefined; num?: boolean; muted?: boolean }[] = [
     { label: 'Sport', value: card.sport },
@@ -827,9 +833,12 @@ export function CardDetail({ card, onClose }: Props) {
           <div className="mb-2 flex items-baseline justify-between gap-3 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2.5">
             <div className="text-[13px] text-[var(--text-secondary)]">
               Vendue
-              {card.ebay_sold_at && <> sur eBay le {formatDay(card.ebay_sold_at)}</>}
+              {card.sold_channel && <> · {SALE_CHANNEL_LABEL[card.sold_channel]}</>}
+              {soldDate && <> le {formatDay(soldDate)}</>}
             </div>
-            <div className="tabular text-sm font-semibold text-[var(--price)]">{soldPrice != null ? formatEuro(soldPrice) : '—'}</div>
+            <div className="tabular text-sm font-semibold text-[var(--price)]">
+              {soldPrice != null ? formatEuro(soldPrice) : <span className="font-normal text-[var(--text-muted)]">prix non renseigné</span>}
+            </div>
           </div>
         )}
         {ebayError && (
@@ -1236,6 +1245,8 @@ export function CardDetail({ card, onClose }: Props) {
         </motion.div>,
         document.body,
       )}
+
+      {selling && <SoldDialog cards={[card]} onClose={() => setSelling(false)} />}
 
       {lightboxSide && (
         <Lightbox

@@ -439,11 +439,11 @@ async def sync_sold_cards(access_token: str, user_id: str) -> dict:
                     # reste à vendre.
                     fields: dict = {"quantity": remaining, "status": "a_vendre"}
                 else:
-                    fields = {"quantity": 0, "status": "vendu"}
+                    fields = {"quantity": 0, "status": "vendu", "sold_channel": "ebay"}
                     if price is not None:
-                        fields["ebay_sold_price"] = price
+                        fields["ebay_sold_price"] = fields["sold_price"] = price
                     if creation:
-                        fields["ebay_sold_at"] = creation
+                        fields["ebay_sold_at"] = fields["sold_at"] = creation
                 await update_card_fields(sku, user_id, fields)
             except Exception:
                 # Rollback de la marque « traitée » pour réessayer au prochain sync.

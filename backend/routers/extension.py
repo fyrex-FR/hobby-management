@@ -460,6 +460,12 @@ async def vinted_sync_apply(body: SyncBody, user: dict = Depends(current_extensi
             payload["status"] = action.status
         if action.price is not None:
             payload["price"] = payload["vinted_price"] = round(action.price, 2)
+        if action.status == "vendu":
+            # Vendue sur Vinted : prix de l'annonce. Vendue ailleurs : canal inconnu, prix inconnu.
+            payload["sold_channel"] = "vinted" if action.price is not None else "autre"
+            payload["sold_price"] = round(action.price, 2) if action.price is not None else None
+        elif action.status:
+            payload.update({"sold_price": None, "sold_at": None, "sold_channel": None})
         if not payload:
             continue
         try:

@@ -20,6 +20,7 @@ import { useCards } from '../../hooks/useCards';
 import { useAppStore } from '../../stores/appStore';
 import type { Card } from '../../types';
 import { cdnImg } from '../../lib/cdn';
+import { estimatedValue } from '../../lib/collectionFilters';
 import { GradingBadge } from '../shared/GradingBadge';
 import { RookieBadge } from '../shared/RookieBadge';
 import { Badge, EmptyState, Page, PageHeader, Panel, Spinner, StatTile } from '../ui';
@@ -36,7 +37,7 @@ function KpiStrip({ stats, onOpenCollection, onOpenSales }: { stats: ReturnType<
         <StatTile
           label="Valeur estimée"
           value={stats.totalValue > 0 ? euro.format(stats.totalValue) : '—'}
-          hint={stats.totalValue > 0 ? 'Somme des prix renseignés' : 'Aucun prix renseigné'}
+          hint={stats.totalValue > 0 ? 'Prix des cartes encore là, vendues exclues' : 'Aucun prix renseigné'}
           icon={Euro}
           accent={stats.totalValue > 0}
         />
@@ -224,7 +225,7 @@ function buildStats(cards: Card[]) {
       .map(([label, { count, img }]) => ({ label, count, img }));
   }
 
-  const totalValue = active.reduce((sum, c) => sum + (c.price ?? 0), 0);
+  const totalValue = estimatedValue(cards);
 
   return {
     total: active.length,

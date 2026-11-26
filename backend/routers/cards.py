@@ -2,6 +2,7 @@ import logging
 import os
 import base64
 import uuid
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 from fastapi import APIRouter, Depends, HTTPException, Header
 from pydantic import BaseModel, ConfigDict, Field
@@ -159,6 +160,35 @@ class CardUpdate(BaseModel):
     ebay_url: Optional[str] = None
     quantity: Optional[int] = None
     folder_ids: Optional[list[str]] = None
+    sold_price: Optional[float] = None
+    sold_at: Optional[str] = None
+    sold_channel: Optional[Literal["vinted", "ebay", "salon", "direct", "autre"]] = None
+
+
+SOLD_FIELDS = ("sold_price", "sold_at", "sold_channel")
+
+
+def with_sale_fields(payload: dict) -> dict:
+    """Une carte qui revient en collection, en vente ou en réservation perd
+    ses informations de vente (sinon une vente annulée resterait comptée)."""
+    if payload.get("status") in ("draft", "collection", "a_vendre", "reserve"):
+        return {**{k: None for k in SOLD_FIELDS}, **payload}
+    return payload
+
+
+async def stamp_sold_at(client: httpx.AsyncClient, user_id: str, ids: list[str]) -> Optional[str]:
+    """Date de vente par défaut (maintenant) pour les cartes vendues qui n'en ont pas."""
+    now = datetime.now(timezone.utc).isoformat()
+    resp = await client.patch(
+        f"{SUPABASE_URL}/rest/v1/cards",
+        headers=supabase_headers(),
+        params={"id": f"in.({','.join(ids)})", "user_id": f"eq.{user_id}", "sold_at": "is.null", "select": "id"},
+        json={"sold_at": now},
+    )
+    if resp.status_code not in (200, 204):
+        logger.warning("Date de vente non enregistrée : %s", resp.text)
+        return None
+    return now
 
 
 class CardBulkChanges(BaseModel):
@@ -273,6 +303,7 @@ async def bulk_update_cards(body: CardBulkUpdate, user: dict = Depends(current_u
         key: (value.strip() or None) if isinstance(value, str) else value
         for key, value in body.changes.model_dump(exclude_unset=True).items()
     }
+    sold = changes.get("status") == "vendu"
     if not changes:
         raise HTTPException(status_code=422, detail="Aucun changement à appliquer")
     if changes.get("sport", "") is None or changes.get("status", "") is None or changes.get("is_rookie", False) is None:
@@ -290,18 +321,20 @@ async def bulk_update_cards(body: CardBulkUpdate, user: dict = Depends(current_u
                 f"{SUPABASE_URL}/rest/v1/cards",
                 headers=supabase_headers(),
                 params={"id": f"in.({','.join(chunk)})", "user_id": f"eq.{user_id}", "select": "id"},
-                json=changes,
+                json=with_sale_fields(changes),
             )
             if resp.status_code not in (200, 204):
                 raise HTTPException(status_code=resp.status_code, detail=resp.text)
             updated += len(resp.json()) if resp.status_code == 200 else len(chunk)
+            if sold:
+                await stamp_sold_at(client, user_id, chunk)
     return {"updated": updated}
 
 
 @router.patch("/cards/{card_id}")
 async def update_card(card_id: str, body: CardUpdate, user: dict = Depends(current_user)):
     user_id = user["sub"]
-    payload = body.model_dump(exclude_unset=True)
+    payload = with_sale_fields(body.model_dump(exclude_unset=True))
     if "vinted_price" in payload:
         payload["price"] = payload["vinted_price"]
     elif "price" in payload:
@@ -314,15 +347,19 @@ async def update_card(card_id: str, body: CardUpdate, user: dict = Depends(curre
             params={"id": f"eq.{card_id}", "user_id": f"eq.{user_id}"},
             json=payload,
         )
-    if resp.status_code not in (200, 204):
-        raise HTTPException(status_code=resp.status_code, detail=resp.text)
-    data = resp.json()
-    if isinstance(data, list):
-        if not data:
-            raise HTTPException(status_code=404, detail="Card not found")
-        card = data[0]
-    else:
-        card = data
+        if resp.status_code not in (200, 204):
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        data = resp.json()
+        if isinstance(data, list):
+            if not data:
+                raise HTTPException(status_code=404, detail="Card not found")
+            card = data[0]
+        else:
+            card = data
+        if card.get("status") == "vendu" and not card.get("sold_at"):
+            stamped = await stamp_sold_at(client, user_id, [card_id])
+            if stamped:
+                card = {**card, "sold_at": stamped}
 
     if "quantity" in payload or "price" in payload or "ebay_price" in payload:
         card = {**card, "ebay_quantity_sync": await _push_listing_state_to_ebay(card, user_id)}
